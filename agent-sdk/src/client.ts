@@ -47,24 +47,24 @@ export class AgentPayClient {
     throw lastErr;
   }
 
-  verifyIdentity(agentId: string) {
-    return this.request("/identity/verify", { method: "POST", body: JSON.stringify({ agentId }) });
+  verifyIdentity(input: { firstName: string; lastName: string; dob: string; idNumber: string }) {
+    return this.request("/verify-identity", { method: "POST", body: JSON.stringify(input) });
   }
 
   /**
    * Alias for logging/metering only, without performing a tool action.
    */
-  logToolCall(agentId: string, toolName: string, payload?: object) {
-    return this.request("/meter/log", { method: "POST", body: JSON.stringify({ agentId, toolName, payload }) });
+  logToolCall(agentId: string, toolName: string, tokensUsed: number, payload?: object) {
+    return this.request("/meter/log", { method: "POST", body: JSON.stringify({ agentId, toolName, tokensUsed, payload }) });
   }
 
-  async callTool(agentId: string, toolName: string, payload: object) {
-    await this.logToolCall(agentId, toolName, payload);
+  async callTool(agentId: string, toolName: string, payload: object, tokensUsed = 0) {
+    await this.logToolCall(agentId, toolName, tokensUsed, payload);
     return { ok: true, echo: payload };
   }
 
-  payAgent(senderWallet: string, receiverWallet: string, amount: number) {
-    return this.request("/payments/transfer", { method: "POST", body: JSON.stringify({ sender: senderWallet, receiver: receiverWallet, amount }) });
+  payAgent(senderWallet: string, receiverWallet: string, lamports: number) {
+    return this.request("/pay", { method: "POST", body: JSON.stringify({ sender: senderWallet, receiver: receiverWallet, lamports }) });
   }
 }
 

@@ -12,14 +12,19 @@ async function run() {
     baseUrl: process.env.AGENT_BACKEND_URL || "http://localhost:3001"
   });
 
-  await client.verifyIdentity("agent_123");
-  console.log("Identity verified");
+  await client.verifyIdentity({
+    firstName: "Test",
+    lastName: "User",
+    dob: "1990-01-01",
+    idNumber: "ID123"
+  });
+  console.log("Identity verified ✔️");
 
-  await client.logToolCall("agent_123", "summary", { text: "Hello" });
-  console.log("Meter logged");
+  await client.logToolCall("agent_123", "summary", 42, { text: "Hello" });
+  console.log("Meter logged ✔️");
 
-  await client.payAgent("SENDER_WALLET_PUBKEY", "RECEIVER_WALLET_PUBKEY", 0.0001);
-  console.log("Payment sent");
+  const { signature } = await client.payAgent("SENDER_WALLET_PUBKEY", "RECEIVER_WALLET_PUBKEY", 10_000);
+  console.log("Payment sent ✔️", signature);
 }
 
 run().catch((err) => {

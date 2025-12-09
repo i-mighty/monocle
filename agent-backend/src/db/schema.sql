@@ -15,6 +15,7 @@ create table if not exists tool_calls (
   id uuid primary key default gen_random_uuid(),
   agent_id text not null references agents(id),
   tool_name text not null,
+  tokens_used numeric not null default 0,
   cost numeric not null default 0,
   payload jsonb,
   timestamp timestamptz default now()

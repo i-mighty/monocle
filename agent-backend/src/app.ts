@@ -9,9 +9,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.use("/identity", identity);
+app.use("/", identity);
 app.use("/meter", meter);
-app.use("/payments", payments);
+app.use("/pay", payments);
 app.use("/dashboard", analytics);
 
 const port = process.env.PORT || 3001;

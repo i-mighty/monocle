@@ -1,12 +1,13 @@
 import { Router } from "express";
-import { verifyAgent } from "../services/identityService";
+import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { verifyIdentity } from "../services/identityService";
 
 const router = Router();
 
-router.post("/verify", async (req, res) => {
-  const { agentId } = req.body;
-  const valid = await verifyAgent(agentId);
-  res.json({ valid, agentId });
+router.post("/verify-identity", apiKeyAuth, async (req, res) => {
+  const { firstName, lastName, dob, idNumber } = req.body;
+  const result = await verifyIdentity({ firstName, lastName, dob, idNumber });
+  res.json(result);
 });
 
 export default router;
