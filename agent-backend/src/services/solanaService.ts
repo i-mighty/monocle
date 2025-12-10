@@ -2,9 +2,24 @@ import { Connection, PublicKey, Transaction, SystemProgram, Keypair, sendAndConf
 import { query } from "../db/client";
 
 const RPC = process.env.SOLANA_RPC ?? "https://api.devnet.solana.com";
-const payer = Keypair.fromSecretKey(new Uint8Array(JSON.parse(process.env.SOLANA_PAYER_SECRET || "[]")));
+
+let payer: Keypair | null = null;
+try {
+  const secret = process.env.SOLANA_PAYER_SECRET;
+  if (secret) {
+    payer = Keypair.fromSecretKey(new Uint8Array(JSON.parse(secret)));
+  } else {
+    console.warn("⚠️  SOLANA_PAYER_SECRET not set. Solana payments will fail.");
+  }
+} catch (e) {
+  console.error("Failed to load Solana payer:", e);
+}
 
 export async function sendMicropayment(sender: string, receiver: string, amountLamports: number) {
+  if (!payer) {
+    throw new Error("Solana payer not configured. Set SOLANA_PAYER_SECRET environment variable.");
+  }
+
   const connection = new Connection(RPC, "confirmed");
   const tx = new Transaction().add(
     SystemProgram.transfer({
