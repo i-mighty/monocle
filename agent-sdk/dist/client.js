@@ -1,4 +1,4 @@
-import { AgentSdkError } from "./types";
+import { AgentSdkError } from "./types.js";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const defaultBaseUrl = process.env.AGENT_BACKEND_URL || "http://localhost:3001";
 export class AgentPayClient {

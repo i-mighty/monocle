@@ -39,7 +39,7 @@ async function run() {
       console.log("✅ Payment sent", signature);
     } catch (err) {
       // Expected to fail with invalid pubkeys or missing payer
-      console.log("⚠️  Payment endpoint responded (error expected with invalid keys):", (err as Error).message);
+      console.log("⚠️  Payment endpoint responded (error expected with invalid keys):", err?.message || String(err));
     }
 
     console.log("\n✨ All tests completed!");
