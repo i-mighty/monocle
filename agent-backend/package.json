@@ -1,7 +1,6 @@
 {
   "name": "agent-backend",
   "version": "0.0.1",
-  "type": "module",
   "scripts": {
     "dev": "ts-node-dev src/app.ts",
     "start": "node dist/app.js",
@@ -10,6 +9,7 @@
   "dependencies": {
     "@solana/web3.js": "^1.95.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
     "express": "^4.19.2",
     "pg": "^8.11.3"
   },
