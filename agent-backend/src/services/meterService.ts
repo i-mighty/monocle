@@ -1,4 +1,4 @@
-import { query } from "../db/client";
+import { query } from "../db/client.js";
 
 export async function logToolCall(agentId: string, toolName: string, tokensUsed: number, payload?: unknown, cost = 0.0001) {
   await query(
