@@ -1,123 +1,182 @@
-# AgentPay 💳
+# AgentPay - AI Agent Micropayment Infrastructure
 
-**A plug-and-play micropayment infrastructure for AI agents operating on-chain.**
+A complete plug-and-play system for AI agents to verify identity, meter tool usage, and execute Solana micropayments.
 
-AgentPay solves three critical problems for AI agents:
+## 🚀 One-Button Setup (Docker)
 
-1. **Trust** - Verify user identity before any transactions
-2. **Metering** - Log every tool usage and track costs accurately
-3. **Payments** - Execute instant Solana-based micropayments automatically
+**Start everything with a single command:**
 
-```
-AI Agent → SDK → Backend → Solana Blockchain
-                ↓
-             PostgreSQL (metering logs)
-                ↓
-             Dashboard (monitoring)
+```bash
+docker-compose up
 ```
 
-## 🎯 Features
+That's it! This will:
+- ✅ Start PostgreSQL database
+- ✅ Initialize database schema automatically
+- ✅ Start backend API on port 3001
+- ✅ Start dashboard on port 3000
+- ✅ Wire everything together
 
-✅ **Identity Verification (KYC-lite)** - Verify users before enabling payments  
-✅ **Tool Usage Metering** - Log every AI tool call with token counts and costs  
-✅ **Solana Micropayments** - Send instant, cheap payments to agents  
-✅ **Dashboard** - Monitor agent activity and payment history  
-✅ **TypeScript SDK** - Type-safe client library for agents  
-✅ **Mock Mode** - Works without database/Solana for development  
-✅ **Error Resilient** - Automatic retries and graceful fallbacks  
+### First Time Setup
 
-## 🚀 Quick Start
+1. **Optional: Set environment variables** (or use defaults):
+   ```bash
+   cp .env.example .env
+   # Edit .env with your Solana payer secret if needed
+   ```
+
+2. **Start the stack:**
+   ```bash
+   docker-compose up
+   ```
+
+3. **Access the services:**
+   - Dashboard: http://localhost:3000
+   - Backend API: http://localhost:3001
+   - Database: localhost:5432
+
+### Stop Everything
+
+```bash
+docker-compose down
+```
+
+### View Logs
+
+```bash
+docker-compose logs -f
+```
+
+### Reset Everything (Fresh Start)
+
+```bash
+docker-compose down -v  # Removes volumes (database data)
+docker-compose up
+```
+
+---
+
+## 📦 Manual Setup (Without Docker)
+
+If you prefer to run services manually:
 
 ### Prerequisites
 
-- Node.js 18+
-- PostgreSQL 14+
-- npm 9+
+- Node.js 20+
+- PostgreSQL 15+
+- Docker (optional, for containerized setup)
 
-### Installation
+### Backend Setup
 
-```bash
-# Clone this repository (you're already in it)
-
-# Option 1: Automated setup (Unix/Mac)
-bash setup.sh
-
-# Option 2: Automated setup (Windows)
-setup.bat
-
-# Option 3: Manual setup
-cd agent-backend && npm install
-cd ../agent-sdk && npm install && npm run build
-cd ../agent-dashboard && npm install
-```
-
-### Configuration
-
-1. Create environment files:
-   ```bash
-   cp agent-backend/env.sample agent-backend/.env
-   cp agent-sdk/env.sample agent-sdk/.env
-   cp agent-dashboard/env.sample agent-dashboard/.env.local
-   ```
-
-2. Edit `agent-backend/.env` with your settings:
-   ```
-   DATABASE_URL=postgres://postgres:password@localhost:5432/agentpay
-   SOLANA_RPC=https://api.devnet.solana.com
-   SOLANA_PAYER_SECRET=[your_keypair_array]
-   AGENTPAY_API_KEY=test_key_12345
-   ```
-
-3. Create PostgreSQL database:
-   ```bash
-   psql -U postgres -c "CREATE DATABASE agentpay;"
-   psql -U postgres -d agentpay -f agent-backend/src/db/schema.sql
-   ```
-
-### Run
-
-Open three terminal windows:
-
-**Terminal 1 - Backend:**
 ```bash
 cd agent-backend
+npm install
+cp env.sample .env
+# Edit .env with your values
 npm run dev
 ```
 
-**Terminal 2 - Dashboard:**
+### Dashboard Setup
+
 ```bash
 cd agent-dashboard
+npm install
+cp env.sample .env
 npm run dev
 ```
 
-**Terminal 3 - Test:**
+### Database Setup
+
 ```bash
+psql $DATABASE_URL -f agent-backend/src/db/schema.sql
+```
+
+---
+
+## 🧪 Testing
+
+### Quick Test (After Docker Setup)
+
+```bash
+# Test identity verification
+curl -X POST http://localhost:3001/verify-identity \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: test_dev_key_123" \
+  -d '{"firstName":"John","lastName":"Doe","dob":"1990-01-01","idNumber":"ID123"}'
+
+# Test meter logging
+curl -X POST http://localhost:3001/meter/log \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: test_dev_key_123" \
+  -d '{"agentId":"agent_123","toolName":"summary","tokensUsed":42}'
+```
+
+### SDK Test
+
+```bash
+cd agent-sdk
+npm install && npm run build
+cd ..
 node test.js
 ```
 
-### Access
+---
 
-- **Dashboard**: http://localhost:3000
-- **API**: http://localhost:3001
-- **Test Output**: Shows in terminal
+## 📁 Project Structure
 
-## 📚 Documentation
+```
+monocle/
+├── agent-backend/     # Express API + Postgres + Solana
+├── agent-sdk/         # TypeScript SDK for developers
+├── agent-dashboard/   # Next.js dashboard
+├── docker-compose.yml # One-button orchestration
+└── test.js           # End-to-end test harness
+```
 
-- **[SETUP.md](./SETUP.md)** - Complete setup and configuration guide
-- **[IMPLEMENTATION.md](./IMPLEMENTATION.md)** - Implementation checklist
-- **[API Reference](#api-reference)** - REST endpoints below
+---
 
-## 🔌 Using the SDK
+## 🔑 Environment Variables
+
+### Backend (.env)
+- `PORT` - API port (default: 3001)
+- `DATABASE_URL` - Postgres connection string
+- `SOLANA_RPC` - Solana RPC endpoint
+- `SOLANA_PAYER_SECRET` - JSON array of payer keypair
+- `JWT_SECRET` - JWT signing secret
+- `AGENTPAY_API_KEY` - API key for authentication
+
+### Dashboard (.env)
+- `NEXT_PUBLIC_BACKEND_URL` - Backend API URL
+
+### SDK (.env)
+- `AGENT_BACKEND_URL` - Backend API URL
+- `AGENTPAY_API_KEY` - Your API key
+
+---
+
+## 🎯 API Endpoints
+
+- `POST /verify-identity` - Verify agent identity
+- `POST /meter/log` - Log tool usage
+- `GET /meter/logs` - Get usage logs
+- `POST /pay` - Execute Solana micropayment
+- `GET /pay` - Get payment history
+
+All endpoints require `x-api-key` header.
+
+---
+
+## 📚 SDK Usage
 
 ```typescript
-import { AgentPayClient } from "./agent-sdk/dist/index.js";
+import { AgentPayClient } from "agent-sdk";
 
 const client = new AgentPayClient({
-  apiKey: "test_key_12345",
-  baseUrl: "http://localhost:3001"
+  apiKey: process.env.AGENTPAY_API_KEY!,
+  baseUrl: process.env.AGENT_BACKEND_URL!
 });
 
-// 1. Verify user identity
+// Verify identity
 await client.verifyIdentity({
   firstName: "John",
   lastName: "Doe",
@@ -125,188 +184,43 @@ await client.verifyIdentity({
   idNumber: "ID123"
 });
 
-// 2. Log tool usage
-await client.logToolCall("agent_id", "summarize", 150, {
-  text: "Hello world"
-});
+// Log tool usage
+await client.logToolCall("agent_123", "summary", 42);
 
-// 3. Send micropayment
-const { signature } = await client.payAgent(
-  "SENDER_PUBKEY",
-  "RECEIVER_PUBKEY",
-  10000 // lamports
-);
+// Send payment
+await client.payAgent(senderWallet, receiverWallet, 10000);
 ```
-
-## 📡 API Reference
-
-### Identity Verification
-```bash
-POST /verify-identity
-x-api-key: test_key_12345
-
-{
-  "firstName": "John",
-  "lastName": "Doe",
-  "dob": "1990-01-01",
-  "idNumber": "ID123"
-}
-```
-
-### Log Tool Usage
-```bash
-POST /meter/log
-x-api-key: test_key_12345
-
-{
-  "agentId": "agent_123",
-  "toolName": "summarize",
-  "tokensUsed": 150,
-  "payload": { "text": "..." }
-}
-```
-
-### Send Payment
-```bash
-POST /pay
-x-api-key: test_key_12345
-
-{
-  "sender": "SENDER_PUBKEY",
-  "receiver": "RECEIVER_PUBKEY",
-  "lamports": 10000
-}
-```
-
-### Get Logs
-```bash
-GET /meter/logs
-x-api-key: test_key_12345
-```
-
-### Get Receipts
-```bash
-GET /pay
-x-api-key: test_key_12345
-```
-
-### Get Usage Stats
-```bash
-GET /dashboard/usage
-x-api-key: test_key_12345
-```
-
-## 🏗️ Project Structure
-
-```
-monocle/
-├── agent-backend/        # Node.js + Express + Solana
-├── agent-sdk/           # TypeScript client library
-├── agent-dashboard/     # Next.js + React UI
-├── test.js             # End-to-end test
-├── SETUP.md            # Detailed setup guide
-├── IMPLEMENTATION.md   # What's been built
-├── setup.sh            # Linux/Mac setup
-└── setup.bat           # Windows setup
-```
-
-## 🧪 Testing
-
-**End-to-end test** (after all components are running):
-```bash
-node test.js
-```
-
-Expected output:
-```
-✅ Identity verified
-✅ Meter logged
-⚠️  Payment endpoint responded (error expected with invalid keys)
-✨ All tests completed!
-```
-
-## 🚨 Troubleshooting
-
-**Backend won't start:**
-```bash
-# Check if port 3001 is in use
-lsof -i :3001
-
-# Clear build and reinstall
-rm -rf dist node_modules
-npm install
-npm run build
-```
-
-**Dashboard not loading:**
-```bash
-# Clear Next.js cache
-rm -rf .next
-
-# Restart
-npm run dev
-```
-
-**Database connection error:**
-```bash
-# Verify PostgreSQL is running
-psql -U postgres -c "SELECT 1;"
-
-# Check DATABASE_URL in .env
-# Format: postgres://user:password@localhost:5432/dbname
-```
-
-See **[SETUP.md](./SETUP.md)** for more troubleshooting tips.
-
-## 🔐 Security Notes
-
-⚠️ **Development Only**: The current implementation is for development. For production:
-
-- Use environment variables instead of .env files
-- Enable HTTPS (use reverse proxy)
-- Configure CORS properly
-- Use managed Solana RPC endpoints
-- Implement proper authentication (OAuth, JWT)
-- Audit smart contract interactions
-- Rate limit API endpoints
-- Monitor database performance
-
-## 📦 What's Included
-
-✅ Complete REST API  
-✅ TypeScript SDK with retry logic  
-✅ React dashboard with real-time updates  
-✅ PostgreSQL schema with indexes  
-✅ Solana integration  
-✅ Error handling and logging  
-✅ Docker-ready (can be added)  
-✅ 100% TypeScript compilation  
-
-## 🤝 Contributing
-
-1. Make changes
-2. Test locally with `npm run dev` + `node test.js`
-3. Verify no TypeScript errors: `npm run build`
-4. Commit with clear messages
-
-## 📄 License
-
-MIT
-
-## 🚀 What's Next
-
-- [ ] Implement JWT-based authentication
-- [ ] Add database migrations system
-- [ ] Create Solana program for advanced transactions
-- [ ] Add Docker support
-- [ ] Create Kubernetes manifests
-- [ ] Add unit tests with Jest
-- [ ] Add API rate limiting
-- [ ] Implement caching with Redis
-- [ ] Create admin panel
 
 ---
 
-**Built with ❤️ for AI agents**
+## 🐳 Docker Details
 
-Questions? Check [SETUP.md](./SETUP.md) or [IMPLEMENTATION.md](./IMPLEMENTATION.md)
+The `docker-compose.yml` orchestrates:
+- **postgres**: Database with auto-initialized schema
+- **backend**: Node.js API server
+- **dashboard**: Next.js frontend
+
+All services are networked together and start in the correct order.
+
+---
+
+## 🛠️ Development
+
+### Rebuild After Code Changes
+
+```bash
+docker-compose up --build
+```
+
+### Run Individual Services
+
+```bash
+docker-compose up postgres backend  # Just DB + API
+docker-compose up dashboard         # Just dashboard
+```
+
+---
+
+## 📝 License
+
+MIT
