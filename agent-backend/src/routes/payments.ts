@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuth";
-import { sendMicropayment } from "../services/solanaService";
-import { query } from "../db/client";
+import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
+import { sendMicropayment } from "../services/solanaService.js";
+import { query } from "../db/client.js";
 
 const router = Router();
 

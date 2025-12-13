@@ -1,5 +1,5 @@
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, sendAndConfirmTransaction } from "@solana/web3.js";
-import { query } from "../db/client";
+import { query } from "../db/client.js";
 
 const RPC = process.env.SOLANA_RPC ?? "https://api.devnet.solana.com";
 

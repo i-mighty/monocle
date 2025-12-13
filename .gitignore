@@ -1,0 +1,48 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Node modules
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+.next/
+build/
+*.tsbuildinfo
+
+# Docker
+.dockerignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Solana keypairs
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!next.config.js
+
+# Database
+*.db
+*.sqlite
+
+

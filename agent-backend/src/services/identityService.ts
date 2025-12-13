@@ -1,4 +1,4 @@
-import { query } from "../db/client";
+import { query } from "../db/client.js";
 
 type IdentityInput = {
   firstName: string;

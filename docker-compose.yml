@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:14-alpine
+    container_name: agentpay-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: agentpay
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./agent-backend/src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./agent-backend
+      dockerfile: Dockerfile
+    container_name: agentpay-backend
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./agent-backend/.env
+    environment:
+      DATABASE_URL: postgres://postgres:password@postgres:5432/agentpay
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./agent-dashboard
+      dockerfile: Dockerfile
+    container_name: agentpay-dashboard
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./agent-dashboard/.env
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
