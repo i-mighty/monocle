@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuth";
-import { verifyIdentity } from "../services/identityService";
+import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
+import { verifyIdentity } from "../services/identityService.js";
 
 const router = Router();
 

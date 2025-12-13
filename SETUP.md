@@ -32,6 +32,13 @@
 
 ## 📋 Prerequisites
 
+### Docker Setup (Recommended)
+
+- **Docker** 20.10+ and **Docker Compose** 2.0+
+- **Git** for version control
+
+### Manual Setup (Alternative)
+
 - **Node.js** v18+ and npm v9+
 - **PostgreSQL** 14+ running and accessible
 - **Solana CLI** (optional, for generating keypairs)
@@ -39,15 +46,127 @@
 
 ### Verify Installation
 
+**Docker:**
+
+```bash
+docker --version
+docker compose version
+```
+
+**Manual:**
+
 ```bash
 node --version
 npm --version
 psql --version
 ```
 
-## 🚀 Installation Steps
+## 🚀 Quick Start with Docker Compose (Recommended)
 
-### Step 1: Clone and Install Dependencies
+### Step 1: Create Environment Files
+
+Each service uses its own `.env` file. Create them from the sample files:
+
+**Backend** (`agent-backend/.env`):
+```bash
+cp agent-backend/env.sample agent-backend/.env
+```
+
+Edit `agent-backend/.env` and update:
+- `SOLANA_PAYER_SECRET`: Your actual Solana keypair array
+- `AGENTPAY_API_KEY`: Your API key
+- `JWT_SECRET`: A random string (min 32 characters)
+- `DATABASE_URL`: Leave as-is (will be overridden by docker-compose to use service name)
+
+**Dashboard** (`agent-dashboard/.env`):
+```bash
+cp agent-dashboard/env.sample agent-dashboard/.env
+```
+
+Edit `agent-dashboard/.env`:
+- `NEXT_PUBLIC_BACKEND_URL`: Should be `http://localhost:3001` (for browser access)
+
+**Note:** Docker Compose will automatically override `DATABASE_URL` in the backend to use the `postgres` service name instead of `localhost`.
+
+**Important:** Replace `SOLANA_PAYER_SECRET` with your actual Solana keypair array. Generate one with:
+
+```bash
+solana-keygen new --outfile payer.json
+cat payer.json
+```
+
+### Step 2: Build and Start Services
+
+```bash
+docker compose up --build
+```
+
+This will:
+
+- Start PostgreSQL database
+- Initialize database schema automatically
+- Build and start the backend API
+- Build and start the dashboard
+
+### Step 3: Access the Services
+
+- **Backend API**: http://localhost:3001
+- **Dashboard**: http://localhost:3000
+- **PostgreSQL**: localhost:5432 (user: `postgres`, password: `password`, db: `agentpay`)
+
+### Step 4: Build SDK (for local development)
+
+If you're developing with the SDK locally:
+
+```bash
+cd agent-sdk
+npm install
+npm run build
+```
+
+### Step 5: Run Tests
+
+```bash
+node test.js
+```
+
+### Docker Commands
+
+**Stop all services:**
+
+```bash
+docker compose down
+```
+
+**Stop and remove volumes (clears database):**
+
+```bash
+docker compose down -v
+```
+
+**View logs:**
+
+```bash
+docker compose logs -f
+```
+
+**View specific service logs:**
+
+```bash
+docker compose logs -f backend
+docker compose logs -f dashboard
+docker compose logs -f postgres
+```
+
+**Rebuild after code changes:**
+
+```bash
+docker compose up --build
+```
+
+## 🔧 Manual Setup (Alternative)
+
+### Step 1: Install Dependencies
 
 ```bash
 # Install backend
@@ -65,14 +184,14 @@ npm install
 
 ### Step 2: Create Environment Files
 
-Copy the sample environment files to actual `.env` files in each directory:
-
 **Backend** (`agent-backend/.env`):
+
 ```bash
 cp agent-backend/env.sample agent-backend/.env
 ```
 
 Edit `agent-backend/.env`:
+
 ```
 PORT=3001
 DATABASE_URL=postgres://postgres:password@localhost:5432/agentpay
@@ -83,22 +202,26 @@ JWT_SECRET=your_random_secret_string_here
 ```
 
 **SDK** (`agent-sdk/.env`):
+
 ```bash
 cp agent-sdk/env.sample agent-sdk/.env
 ```
 
 Edit `agent-sdk/.env`:
+
 ```
 AGENT_BACKEND_URL=http://localhost:3001
 AGENTPAY_API_KEY=test_key_12345
 ```
 
 **Dashboard** (`agent-dashboard/.env.local`):
+
 ```bash
 cp agent-dashboard/env.sample agent-dashboard/.env.local
 ```
 
 Edit `agent-dashboard/.env.local`:
+
 ```
 NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 ```
@@ -106,31 +229,29 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
 ### Step 3: Set Up PostgreSQL Database
 
 **Create the database:**
+
 ```bash
 psql -U postgres -c "CREATE DATABASE agentpay;"
 ```
 
 **Initialize the schema:**
+
 ```bash
 psql -U postgres -d agentpay -f agent-backend/src/db/schema.sql
 ```
 
 Verify tables were created:
+
 ```bash
 psql -U postgres -d agentpay -c "\dt"
 ```
 
 You should see tables: `agents`, `api_keys`, `tool_calls`, `payments`, `developer_usage`
 
-### Step 4: Generate Solana Keypair (Optional but Recommended)
-
-If you don't have a Solana keypair, generate one:
+### Step 4: Generate Solana Keypair
 
 ```bash
-# Generate keypair
 solana-keygen new --outfile payer.json
-
-# Display as JSON array
 cat payer.json
 ```
 
@@ -145,54 +266,26 @@ cd agent-sdk
 npm run build
 ```
 
-This creates the `dist/` folder with compiled TypeScript.
+### Step 6: Run the System
 
-## 🎯 Running the System
-
-Open three terminal windows and run each component:
-
-### Terminal 1: Backend
+**Terminal 1: Backend**
 
 ```bash
 cd agent-backend
 npm run dev
 ```
 
-Expected output:
-```
-API on :3001
-⚠️  DATABASE_URL not set. Using in-memory mock mode.  # Only if DB not configured
-```
-
-### Terminal 2: Dashboard
+**Terminal 2: Dashboard**
 
 ```bash
 cd agent-dashboard
 npm run dev
 ```
 
-Expected output:
-```
-> Local:        http://localhost:3000
-```
-
-Then open http://localhost:3000 in your browser.
-
-### Terminal 3: Test Harness
+**Terminal 3: Test**
 
 ```bash
 node test.js
-```
-
-Expected output:
-```
-Testing identity verification...
-✅ Identity verified
-Testing meter logging...
-✅ Meter logged
-Testing payment endpoint...
-⚠️  Payment endpoint responded (error expected with invalid keys): ...
-✨ All tests completed!
 ```
 
 ## 📡 API Endpoints
@@ -214,6 +307,7 @@ curl -X POST http://localhost:3001/verify-identity \
 ```
 
 Response:
+
 ```json
 {
   "status": "verified",
@@ -282,7 +376,7 @@ import { AgentPayClient } from "./agent-sdk/dist/index.js";
 
 const client = new AgentPayClient({
   apiKey: "test_key_12345",
-  baseUrl: "http://localhost:3001"
+  baseUrl: "http://localhost:3001",
 });
 
 // Verify identity
@@ -290,7 +384,7 @@ await client.verifyIdentity({
   firstName: "John",
   lastName: "Doe",
   dob: "1990-01-01",
-  idNumber: "ID123"
+  idNumber: "ID123",
 });
 
 // Log tool usage
@@ -336,7 +430,7 @@ import { AgentPayClient } from "./agent-sdk/dist/index.js";
 
 const client = new AgentPayClient({
   apiKey: "test_key_12345",
-  baseUrl: "http://localhost:3001"
+  baseUrl: "http://localhost:3001",
 });
 
 async function loadTest(concurrent = 10) {
@@ -408,45 +502,86 @@ monocle/
 │   └── env.sample
 │
 ├── test.js                 # End-to-end test harness
+├── docker-compose.yml      # Docker Compose configuration
+├── .env                    # Environment variables (create from samples)
 └── README.md
 ```
 
 ## 🚨 Troubleshooting
 
-### "Cannot find module 'pg'"
+### Docker Issues
+
+**"Cannot connect to database"**
+
+- Check postgres container is healthy: `docker compose ps`
+- View postgres logs: `docker compose logs postgres`
+- Verify database initialized: `docker compose exec postgres psql -U postgres -d agentpay -c "\dt"`
+
+**"Backend container keeps restarting"**
+
+- Check logs: `docker compose logs backend`
+- Verify `.env` file exists in root directory
+- Ensure `SOLANA_PAYER_SECRET` is set correctly in `.env`
+
+**"Dashboard not loading"**
+
+- Check dashboard logs: `docker compose logs dashboard`
+- Verify backend is running: `docker compose ps`
+- Try rebuilding: `docker compose up --build dashboard`
+
+**"Port already in use"**
+
+- Stop conflicting services or change ports in `docker-compose.yml`
+- Check what's using the port: `lsof -i :3000` or `lsof -i :3001`
+
+**"Changes not reflecting after rebuild"**
+
+- Rebuild without cache: `docker compose build --no-cache`
+- Restart services: `docker compose restart`
+
+### Manual Setup Issues
+
+**"Cannot find module 'pg'"**
+
 ```bash
 cd agent-backend
 npm install pg @types/pg
 ```
 
-### "Cannot find module 'express'"
+**"Cannot find module 'express'"**
+
 ```bash
 cd agent-backend
 npm install express @types/express
 ```
 
-### "Cannot connect to PostgreSQL"
+**"Cannot connect to PostgreSQL"**
+
 - Verify PostgreSQL is running: `psql -U postgres -c "SELECT version();"`
 - Check DATABASE_URL in `.env`: `postgres://user:password@localhost:5432/dbname`
 - Ensure database exists: `psql -U postgres -l | grep agentpay`
 
-### "SDK dist folder not found"
+**"SDK dist folder not found"**
+
 ```bash
 cd agent-sdk
 npm run build
 ```
 
-### "Dashboard not loading at localhost:3000"
+**"Dashboard not loading at localhost:3000"**
+
 - Check Next.js is running: `npm run dev` in `agent-dashboard`
 - Clear Next.js cache: `rm -rf .next`
 - Restart the dev server
 
-### "API returns 401 Unauthorized"
+**"API returns 401 Unauthorized"**
+
 - Ensure `x-api-key` header is set in requests
-- Verify header value matches `AGENTPAY_API_KEY` in backend `.env`
+- Verify header value matches `AGENTPAY_API_KEY` in backend `.env` or root `.env`
 - Check request headers with curl: `curl -v http://localhost:3001/meter/logs`
 
-### "Solana transaction fails"
+**"Solana transaction fails"**
+
 - Verify `SOLANA_PAYER_SECRET` is a valid keypair array
 - Fund devnet wallet: https://faucet.solana.com
 - Check RPC endpoint is reachable: `curl https://api.devnet.solana.com`
@@ -463,6 +598,7 @@ npm run build
 ### Database Migrations
 
 Add new SQL files in `agent-backend/src/db/migrations/` and run them:
+
 ```bash
 psql -U postgres -d agentpay -f agent-backend/src/db/migrations/001_new_table.sql
 ```

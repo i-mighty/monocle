@@ -20,5 +20,3 @@ EXPOSE 3001
 
 # Start the server
 CMD ["npm", "start"]
-
-
