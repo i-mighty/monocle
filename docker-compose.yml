@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: agentpay-db
+    environment:
+      POSTGRES_USER: agentpay
+      POSTGRES_PASSWORD: agentpay_dev
+      POSTGRES_DB: agentpay
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./agent-backend/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentpay"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./agent-backend
+      dockerfile: Dockerfile
+    container_name: agentpay-backend
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgres://agentpay:agentpay_dev@postgres:5432/agentpay
+      SOLANA_RPC: ${SOLANA_RPC:-https://api.devnet.solana.com}
+      SOLANA_PAYER_SECRET: ${SOLANA_PAYER_SECRET:-[]}
+      JWT_SECRET: ${JWT_SECRET:-supersecret_dev}
+      AGENTPAY_API_KEY: ${AGENTPAY_API_KEY:-test_dev_key_123}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Dashboard (Next.js)
+  dashboard:
+    build:
+      context: ./agent-dashboard
+      dockerfile: Dockerfile
+    container_name: agentpay-dashboard
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+
