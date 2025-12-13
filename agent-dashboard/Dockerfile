@@ -35,4 +35,3 @@ COPY --from=builder /app/next-env.d.ts ./
 EXPOSE 3000
 
 CMD ["npm", "start"]
-
