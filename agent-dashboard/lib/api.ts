@@ -12,4 +12,6 @@ export async function fetchJson(path: string, init?: RequestInit) {
 export const getUsage = () => fetchJson("/dashboard/usage");
 export const getReceipts = () => fetchJson("/pay");
 export const getToolLogs = () => fetchJson("/meter/logs");
+export const getEarnings = () => fetchJson("/dashboard/earnings");
+export const getEarningsByAgent = () => fetchJson("/dashboard/earnings/by-agent");
 
