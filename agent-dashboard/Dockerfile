@@ -1,31 +1,37 @@
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm install
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY next-env.d.ts ./
+COPY next.config.js* ./
 
-COPY . .
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY pages ./pages
+COPY components ./components
+COPY lib ./lib
+
+# Build Next.js
 RUN npm run build
 
-FROM node:18-alpine
+# Production image
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY package.json package-lock.json* ./
-RUN npm install --omit=dev
-
+# Copy built files
 COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/next.config.js ./next.config.js
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
-COPY --from=builder /app/next-env.d.ts ./next-env.d.ts
-COPY --from=builder /app/pages ./pages
-COPY --from=builder /app/components ./components
-COPY --from=builder /app/lib ./lib
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/next-env.d.ts ./
 
 EXPOSE 3000
 
 CMD ["npm", "start"]
-
