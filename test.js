@@ -9,7 +9,7 @@ import { AgentPayClient } from "./agent-sdk/dist/index.js";
 async function run() {
   const client = new AgentPayClient({
     apiKey: process.env.AGENTPAY_API_KEY || "test_key",
-    baseUrl: process.env.AGENT_BACKEND_URL || "http://localhost:3001"
+    baseUrl: process.env.AGENT_BACKEND_URL || "http://localhost:3001",
   });
 
   try {
@@ -19,7 +19,7 @@ async function run() {
       firstName: "Test",
       lastName: "User",
       dob: "1990-01-01",
-      idNumber: "ID123"
+      idNumber: "ID123",
     });
     console.log("✅ Identity verified");
 
@@ -39,7 +39,10 @@ async function run() {
       console.log("✅ Payment sent", signature);
     } catch (err) {
       // Expected to fail with invalid pubkeys or missing payer
-      console.log("⚠️  Payment endpoint responded (error expected with invalid keys):", (err as Error).message);
+      console.log(
+        "⚠️  Payment endpoint responded (error expected with invalid keys):",
+        err?.message || String(err)
+      );
     }
 
     console.log("\n✨ All tests completed!");
@@ -50,5 +53,3 @@ async function run() {
 }
 
 run();
-
-

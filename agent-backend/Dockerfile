@@ -1,23 +1,22 @@
-FROM node:18-alpine AS builder
+FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm install
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
 
-COPY . .
+# Install dependencies
+RUN npm ci
+
+# Copy source code
+COPY src ./src
+
+# Build TypeScript
 RUN npm run build
 
-FROM node:18-alpine
-
-WORKDIR /app
-
-COPY package.json package-lock.json* ./
-RUN npm install --omit=dev
-
-COPY --from=builder /app/dist ./dist
-
+# Expose port
 EXPOSE 3001
 
+# Start the server
 CMD ["npm", "start"]
-
