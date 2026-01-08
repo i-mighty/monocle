@@ -12,3 +12,4 @@ export const query = async (text, params) => {
     }
     return pool.query(text, params);
 };
+//# sourceMappingURL=client.js.map
