@@ -47,24 +47,58 @@ export class AgentPayClient {
     throw lastErr;
   }
 
-  verifyIdentity(input: { firstName: string; lastName: string; dob: string; idNumber: string }) {
-    return this.request("/verify-identity", { method: "POST", body: JSON.stringify(input) });
+  // Register agent with identity verification
+  verifyIdentity(input: {
+    agentId: string;
+    firstName: string;
+    lastName: string;
+    dob: string;
+    idNumber: string;
+    ratePer1kTokens?: number;
+  }) {
+    return this.request("/identity/verify-identity", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
   }
 
-  /**
-   * Alias for logging/metering only, without performing a tool action.
-   */
-  logToolCall(agentId: string, toolName: string, tokensUsed: number, payload?: object) {
-    return this.request("/meter/log", { method: "POST", body: JSON.stringify({ agentId, toolName, tokensUsed, payload }) });
+  // Execute tool call with pricing enforcement (REPLACES logToolCall)
+  executeTool(callerId: string, calleeId: string, toolName: string, tokensUsed: number, payload?: object) {
+    return this.request("/meter/execute", {
+      method: "POST",
+      body: JSON.stringify({ callerId, calleeId, toolName, tokensUsed, payload }),
+    });
   }
 
-  async callTool(agentId: string, toolName: string, payload: object, tokensUsed = 0) {
-    await this.logToolCall(agentId, toolName, tokensUsed, payload);
-    return { ok: true, echo: payload };
+  // Get execution history
+  getToolHistory(agentId: string, asCallee: boolean = false, limit: number = 100) {
+    return this.request(`/meter/history/${agentId}?asCallee=${asCallee}&limit=${limit}`, {
+      method: "GET",
+    });
   }
 
-  payAgent(senderWallet: string, receiverWallet: string, lamports: number) {
-    return this.request("/pay", { method: "POST", body: JSON.stringify({ sender: senderWallet, receiver: receiverWallet, lamports }) });
+  // Get agent metrics (balance, pending, earnings)
+  getMetrics(agentId: string) {
+    return this.request(`/meter/metrics/${agentId}`, { method: "GET" });
+  }
+
+  // Settle pending payments on-chain
+  settle(agentId: string) {
+    return this.request(`/payments/settle/${agentId}`, { method: "POST" });
+  }
+
+  // Get settlement history
+  getSettlements(agentId: string, limit: number = 100) {
+    return this.request(`/payments/settlements/${agentId}?limit=${limit}`, {
+      method: "GET",
+    });
+  }
+
+  // Top up agent balance (dev/testing)
+  topup(agentId: string, lamports: number) {
+    return this.request("/payments/topup", {
+      method: "POST",
+      body: JSON.stringify({ agentId, lamports }),
+    });
   }
 }
-

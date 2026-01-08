@@ -7,3 +7,4 @@ export function apiKeyAuth(req, res, next) {
         return res.status(401).json({ error: "Unauthorized" });
     return next();
 }
+//# sourceMappingURL=apiKeyAuth.js.map

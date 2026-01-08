@@ -9,3 +9,4 @@ export async function verifyIdentity(input) {
     };
     return { status: "verified", details };
 }
+//# sourceMappingURL=identityService.js.map

@@ -1,0 +1,1 @@
+{"version":3,"file":"identityService.d.ts","sourceRoot":"","sources":["../../src/services/identityService.ts"],"names":[],"mappings":"AAEA,KAAK,aAAa,GAAG;IACnB,SAAS,EAAE,MAAM,CAAC;IAClB,QAAQ,EAAE,MAAM,CAAC;IACjB,GAAG,EAAE,MAAM,CAAC;IACZ,QAAQ,EAAE,MAAM,CAAC;CAClB,CAAC;AAEF,wBAAsB,cAAc,CAAC,KAAK,EAAE,aAAa;;;;;;;;;GAUxD"}
