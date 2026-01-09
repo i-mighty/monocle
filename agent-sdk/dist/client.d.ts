@@ -7,18 +7,17 @@ export declare class AgentPayClient {
     constructor(opts: AgentSdkOptions);
     private request;
     verifyIdentity(input: {
+        agentId: string;
         firstName: string;
         lastName: string;
         dob: string;
         idNumber: string;
+        ratePer1kTokens?: number;
     }): Promise<any>;
-    /**
-     * Alias for logging/metering only, without performing a tool action.
-     */
-    logToolCall(agentId: string, toolName: string, tokensUsed: number, payload?: object): Promise<any>;
-    callTool(agentId: string, toolName: string, payload: object, tokensUsed?: number): Promise<{
-        ok: boolean;
-        echo: object;
-    }>;
-    payAgent(senderWallet: string, receiverWallet: string, lamports: number): Promise<any>;
+    executeTool(callerId: string, calleeId: string, toolName: string, tokensUsed: number, payload?: object): Promise<any>;
+    getToolHistory(agentId: string, asCallee?: boolean, limit?: number): Promise<any>;
+    getMetrics(agentId: string): Promise<any>;
+    settle(agentId: string): Promise<any>;
+    getSettlements(agentId: string, limit?: number): Promise<any>;
+    topup(agentId: string, lamports: number): Promise<any>;
 }
