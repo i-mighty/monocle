@@ -101,4 +101,50 @@ export class AgentPayClient {
       body: JSON.stringify({ agentId, lamports }),
     });
   }
+
+  // ==================== x402 Protocol Methods ====================
+
+  /**
+   * Get x402 protocol information
+   */
+  getX402Info() {
+    return this.request("/x402/info", { method: "GET" });
+  }
+
+  /**
+   * Get x402 pricing information
+   */
+  getX402Pricing() {
+    return this.request("/x402/pricing", { method: "GET" });
+  }
+
+  /**
+   * Get a payment quote for a tool execution (returns 402 with requirements)
+   */
+  getX402Quote(agentId: string, toolName: string, estimatedTokens: number) {
+    return this.request("/x402/quote", {
+      method: "POST",
+      body: JSON.stringify({ agentId, toolName, estimatedTokens }),
+    });
+  }
+
+  /**
+   * Simulate an x402 payment flow (for testing/integration)
+   */
+  simulateX402(tokens: number, agentId?: string, toolName?: string) {
+    return this.request("/x402/simulate", {
+      method: "POST",
+      body: JSON.stringify({ tokens, agentId, toolName }),
+    });
+  }
+
+  /**
+   * Verify a payment signature
+   */
+  verifyX402Payment(signature: string, payer: string, amount: number, nonce: string, expectedAmount?: number) {
+    return this.request("/x402/verify", {
+      method: "POST",
+      body: JSON.stringify({ signature, payer, amount, nonce, expectedAmount }),
+    });
+  }
 }

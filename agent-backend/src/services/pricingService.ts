@@ -4,6 +4,9 @@ import { query } from "../db/client";
  * CONSTANTS: Non-negotiable system-wide constraints
  */
 export const PRICING_CONSTANTS = {
+  // Default rate per 1,000 tokens (lamports)
+  DEFAULT_RATE_PER_1K_TOKENS: 1000,
+
   // Minimum cost per call (prevents spam/DoS)
   MIN_COST_LAMPORTS: 100,
 

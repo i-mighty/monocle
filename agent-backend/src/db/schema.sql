@@ -84,6 +84,34 @@ create table if not exists platform_revenue (
 );
 
 -- =============================================================================
+-- X402_PAYMENTS: HTTP 402 payment tracking
+-- =============================================================================
+create table if not exists x402_payments (
+  id uuid primary key default gen_random_uuid(),
+  
+  -- Payment identification
+  tx_signature text unique not null,
+  nonce text unique not null,
+  
+  -- Parties
+  payer_wallet text not null,
+  recipient_wallet text not null,
+  
+  -- Amount in lamports
+  amount_lamports bigint not null,
+  
+  -- Associated resource/execution
+  resource_id text,
+  execution_id uuid references tool_usage(id),
+  
+  -- Verification status
+  verified_at timestamptz,
+  network text not null default 'solana-devnet',
+  
+  created_at timestamptz default now()
+);
+
+-- =============================================================================
 -- INDEXES: Optimized query paths
 -- =============================================================================
 create index idx_tool_usage_caller on tool_usage(caller_agent_id);
@@ -99,5 +127,11 @@ create index idx_platform_revenue_settlement on platform_revenue(settlement_id);
 create index idx_platform_revenue_created_at on platform_revenue(created_at desc);
 
 create index idx_api_keys_key on api_keys(key);
+
+create index idx_x402_payments_signature on x402_payments(tx_signature);
+create index idx_x402_payments_nonce on x402_payments(nonce);
+create index idx_x402_payments_payer on x402_payments(payer_wallet);
+create index idx_x402_payments_created_at on x402_payments(created_at desc);
+
 
 
