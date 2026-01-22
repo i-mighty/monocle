@@ -1,4 +1,5 @@
-import { onToolExecuted, calculateCost, PRICING_CONSTANTS } from "./pricingService";
+import { onToolExecuted, calculateCost, PRICING_CONSTANTS, checkSettlementEligibility, settleAgent } from "./pricingService";
+import { sendMicropayment } from "./solanaService";
 import { query } from "../db/client";
 
 /**
@@ -36,6 +37,12 @@ export async function logToolCall(
     // Execute pricing logic (atomic deduct/credit)
     const costLamports = await onToolExecuted(callerId, calleeId, toolName, tokensUsed);
 
+    // AUTO-SETTLEMENT: Check if callee should be settled automatically
+    // This runs async (fire-and-forget) to not block the response
+    tryAutoSettle(calleeId).catch((err) => {
+      console.warn(`Auto-settle check failed for ${calleeId}:`, err.message);
+    });
+
     return {
       callerId,
       calleeId,
@@ -48,6 +55,52 @@ export async function logToolCall(
       `❌ Tool execution failed for ${callerId} → ${calleeId}: ${(err as Error).message}`
     );
     throw err;
+  }
+}
+
+/**
+ * tryAutoSettle: Automatically settle agent if eligible
+ * 
+ * Called after each tool execution. If the callee's pending balance
+ * exceeds MIN_PAYOUT_LAMPORTS, settlement is triggered automatically.
+ * 
+ * This ensures:
+ * - No manual settlement triggers needed
+ * - Agents get paid as soon as threshold is reached
+ * - Fully autonomous payment flow
+ */
+async function tryAutoSettle(agentId: string): Promise<void> {
+  try {
+    const eligible = await checkSettlementEligibility(agentId);
+    if (!eligible) return;
+
+    // Get agent's public key for settlement
+    const result = await query(
+      "SELECT public_key FROM agents WHERE id = $1",
+      [agentId]
+    );
+    
+    if (!result.rows[0]?.public_key) {
+      console.warn(`Auto-settle skipped: ${agentId} has no public_key`);
+      return;
+    }
+
+    const recipientPublicKey = result.rows[0].public_key;
+
+    console.log(`🔄 Auto-settling ${agentId}...`);
+    
+    const settlement = await settleAgent(agentId, async (_recipientId, lamports) => {
+      return await sendMicropayment(
+        process.env.SOLANA_PAYER_PUBLIC_KEY || "",
+        recipientPublicKey,
+        lamports
+      );
+    });
+
+    console.log(`✅ Auto-settlement complete: ${agentId} received ${settlement.payout} lamports (tx: ${settlement.txSignature})`);
+  } catch (err) {
+    // Log but don't throw - auto-settle failure shouldn't break execution
+    console.error(`Auto-settle failed for ${agentId}:`, (err as Error).message);
   }
 }
 
