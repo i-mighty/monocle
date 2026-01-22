@@ -213,6 +213,108 @@ router.post("/quote", apiKeyAuth, async (req, res) => {
 });
 
 /**
+ * POST /agents/fund
+ *
+ * Add funds to an agent's balance (for testing/demo purposes).
+ * In production, this would be replaced by actual deposit verification.
+ *
+ * Request:
+ *   { agentId: string, amount: number (lamports) }
+ */
+router.post("/fund", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId, amount } = req.body;
+
+    if (!agentId || !amount) {
+      return res.status(400).json({ error: "agentId and amount are required" });
+    }
+
+    const lamports = Math.floor(Number(amount));
+    if (lamports <= 0) {
+      return res.status(400).json({ error: "amount must be positive" });
+    }
+
+    const result = await query(
+      `update agents 
+       set balance_lamports = balance_lamports + $1 
+       where id = $2
+       returning id, balance_lamports`,
+      [lamports, agentId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Agent not found" });
+    }
+
+    res.json({
+      agentId: result.rows[0].id,
+      balance: Number(result.rows[0].balance_lamports),
+      funded: lamports,
+      message: `Added ${lamports} lamports to balance`,
+    });
+  } catch (error) {
+    console.error("Error funding agent:", error);
+    res.status(500).json({ error: "Failed to fund agent" });
+  }
+});
+
+/**
+ * GET /agents/:agentId/balance
+ *
+ * Get agent's current balance.
+ */
+router.get("/:agentId/balance", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    const result = await query(
+      "select balance_lamports from agents where id = $1",
+      [agentId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Agent not found" });
+    }
+
+    res.json({
+      agentId,
+      balance: Number(result.rows[0].balance_lamports),
+    });
+  } catch (error) {
+    console.error("Error getting balance:", error);
+    res.status(500).json({ error: "Failed to get balance" });
+  }
+});
+
+/**
+ * GET /agents/:agentId/pending
+ *
+ * Get agent's pending balance (earnings not yet settled).
+ */
+router.get("/:agentId/pending", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+
+    const result = await query(
+      "select pending_lamports from agents where id = $1",
+      [agentId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Agent not found" });
+    }
+
+    res.json({
+      agentId,
+      pendingBalance: Number(result.rows[0].pending_lamports),
+    });
+  } catch (error) {
+    console.error("Error getting pending balance:", error);
+    res.status(500).json({ error: "Failed to get pending balance" });
+  }
+});
+
+/**
  * GET /agents
  *
  * List all registered agents (paginated).
