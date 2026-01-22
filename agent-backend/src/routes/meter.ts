@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
-import { logToolCall, getToolCallHistory } from "../services/meterService.js";
-import { getAgentMetrics } from "../services/pricingService.js";
-import { query } from "../db/client.js";
+import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { logToolCall, getToolCallHistory } from "../services/meterService";
+import { getAgentMetrics } from "../services/pricingService";
+import { query } from "../db/client";
 
 const router = Router();
 

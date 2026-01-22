@@ -1,13 +1,13 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
-import { sendMicropayment } from "../services/solanaService.js";
+import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { sendMicropayment } from "../services/solanaService";
 import {
   settleAgent,
   checkSettlementEligibility,
   getAgentMetrics,
   PRICING_CONSTANTS,
-} from "../services/pricingService.js";
-import { query } from "../db/client.js";
+} from "../services/pricingService";
+import { query } from "../db/client";
 
 const router = Router();
 

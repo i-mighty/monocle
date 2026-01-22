@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
-import { verifyIdentity } from "../services/identityService.js";
-import { query } from "../db/client.js";
+import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { verifyIdentity } from "../services/identityService";
+import { query } from "../db/client";
 
 const router = Router();
 

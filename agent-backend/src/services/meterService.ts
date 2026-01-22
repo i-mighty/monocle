@@ -1,5 +1,5 @@
-import { onToolExecuted, calculateCost, PRICING_CONSTANTS } from "./pricingService.js";
-import { query } from "../db/client.js";
+import { onToolExecuted, calculateCost, PRICING_CONSTANTS } from "./pricingService";
+import { query } from "../db/client";
 
 /**
  * logToolCall: Execute tool with pricing enforcement
