@@ -1,6 +1,75 @@
 # AgentPay - AI Agent Micropayment Infrastructure
 
-A complete plug-and-play system for AI agents to verify identity, meter tool usage, and execute Solana micropayments.
+A complete plug-and-play system for AI agents to verify identity, meter tool usage, and execute Solana micropayments. **Built on the x402 protocol for HTTP-native machine-to-machine payments.**
+
+## 🔌 x402 Protocol Support
+
+AgentPay implements the **x402 protocol** - an HTTP-native payment standard for AI agents:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          x402 Payment Flow                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│   AI Agent                          AgentPay Server                     │
+│      │                                    │                             │
+│      │──── 1. Request protected ──────────▶│                             │
+│      │         resource                   │                             │
+│      │                                    │                             │
+│      │◀─── 2. HTTP 402 + payment ─────────│                             │
+│      │         requirements               │                             │
+│      │                                    │                             │
+│      │──── 3. Solana payment ─────────────▶│  ┌──────────┐              │
+│      │                                    │  │ Solana   │              │
+│      │                                    │──▶│ Network  │              │
+│      │                                    │  └──────────┘              │
+│      │──── 4. Retry with payment ─────────▶│                             │
+│      │         proof headers              │                             │
+│      │                                    │                             │
+│      │◀─── 5. 200 OK + resource ──────────│                             │
+│      │                                    │                             │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### x402 Headers
+
+**Request (Payment Proof):**
+```
+X-Payment-Signature: <solana_tx_signature>
+X-Payment-Payer: <wallet_address>
+X-Payment-Amount: <lamports>
+X-Payment-Nonce: <server_nonce>
+```
+
+**Response (Payment Required):**
+```
+HTTP/1.1 402 Payment Required
+X-Payment-Required: true
+X-Payment-Amount: 2000
+X-Payment-Recipient: <wallet_address>
+X-Payment-Network: solana-devnet
+X-Payment-Expires: 2026-01-22T12:00:00Z
+X-Payment-Nonce: abc123
+```
+
+### Try x402
+
+```bash
+# Get x402 protocol info
+curl http://localhost:3001/x402/info
+
+# Simulate x402 payment flow
+curl -X POST http://localhost:3001/x402/simulate \
+  -H "Content-Type: application/json" \
+  -d '{"tokens": 1500}'
+
+# Request a quote (returns 402)
+curl -X POST http://localhost:3001/x402/quote \
+  -H "Content-Type: application/json" \
+  -d '{"agentId":"agent_1","toolName":"summarize","estimatedTokens":1000}'
+```
+
+---
 
 ## 🚀 One-Button Setup (Docker)
 
@@ -162,21 +231,42 @@ monocle/
 
 ## 🎯 API Endpoints
 
+### Identity & Metering
 - `POST /verify-identity` - Verify agent identity
 - `POST /meter/log` - Log tool usage
 - `GET /meter/logs` - Get usage logs
 - `POST /pay` - Execute Solana micropayment
 - `GET /pay` - Get payment history
 
-All endpoints require `x-api-key` header.
+### x402 Protocol
+- `GET /x402/info` - Protocol information & capabilities
+- `GET /x402/pricing` - Current pricing model
+- `POST /x402/quote` - Get payment quote (returns 402)
+- `POST /x402/execute` - Execute with x402 payment
+- `POST /x402/verify` - Verify payment signature
+- `POST /x402/simulate` - Simulate payment flow
+- `GET /x402/demo-resource` - Demo protected resource
+
+### Agents & Pricing
+- `POST /agents/register` - Register agent
+- `GET /agents/:id` - Get agent details
+- `PATCH /agents/:id/pricing` - Update pricing rate
+- `GET /agents/:id/metrics` - Agent metrics
+- `POST /agents/quote` - Price quote
+- `GET /pricing/constants` - Pricing constants
+- `POST /pricing/calculate` - Calculate cost
+
+All endpoints require `x-api-key` header (except /x402/info).
 
 ---
 
 ## 📚 SDK Usage
 
 ```typescript
-import { AgentPayClient } from "agent-sdk";
+import { AgentPayClient, X402Client, createX402Client } from "agent-sdk";
+import { Keypair } from "@solana/web3.js";
 
+// Standard client
 const client = new AgentPayClient({
   apiKey: process.env.AGENTPAY_API_KEY!,
   baseUrl: process.env.AGENT_BACKEND_URL!,
@@ -193,8 +283,41 @@ await client.verifyIdentity({
 // Log tool usage
 await client.logToolCall("agent_123", "summary", 42);
 
-// Send payment
-await client.payAgent(senderWallet, receiverWallet, 10000);
+// Get x402 info
+const info = await client.getX402Info();
+```
+
+### x402 Client (Auto-Payment)
+
+```typescript
+import { X402Client } from "agent-sdk";
+import { Keypair, Connection } from "@solana/web3.js";
+
+// Create x402 client with your Solana keypair
+const x402 = new X402Client({
+  keypair: Keypair.fromSecretKey(yourSecretKey),
+  connection: new Connection("https://api.devnet.solana.com"),
+  maxPaymentPerRequest: 100_000, // Max 100k lamports per request
+  autoPayEnabled: true,          // Auto-pay 402 responses
+});
+
+// Make request - automatically handles 402 + payment + retry
+const result = await x402.post(
+  "http://localhost:3001/x402/execute",
+  {
+    callerId: "my-agent",
+    calleeId: "tool-provider",
+    toolName: "summarize",
+    tokensUsed: 1500,
+  }
+);
+
+if (result.success) {
+  console.log("Execution succeeded:", result.data);
+  console.log("Payment made:", result.payment);
+} else if (result.paymentRequired) {
+  console.log("Payment required:", result.paymentRequired);
+}
 ```
 
 ---
