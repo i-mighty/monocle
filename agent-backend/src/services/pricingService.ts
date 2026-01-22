@@ -1,4 +1,4 @@
-import { query } from "../db/client.js";
+import { query } from "../db/client";
 
 /**
  * CONSTANTS: Non-negotiable system-wide constraints
@@ -43,7 +43,10 @@ export function calculateCost(
     throw new Error("Rate per 1k tokens cannot be negative");
   }
 
-  const costBeforeMinimum = Math.ceil((tokensUsed / 1000) * ratePer1kTokens);
+  // Formula: ceil(tokens / 1000) * rate_per_1k_tokens
+  // Ceil first (token blocks), then multiply by rate
+  const tokenBlocks = Math.ceil(tokensUsed / 1000);
+  const costBeforeMinimum = tokenBlocks * ratePer1kTokens;
   const finalCost = Math.max(costBeforeMinimum, PRICING_CONSTANTS.MIN_COST_LAMPORTS);
 
   return Math.floor(finalCost); // Ensure integer
