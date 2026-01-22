@@ -5,7 +5,7 @@
  * Uses simple Node.js assertions instead of Jest
  */
 
-import { calculateCost, PRICING_CONSTANTS } from "./pricingService.js";
+import { calculateCost, PRICING_CONSTANTS } from "./pricingService";
 import { strict as assert } from "assert";
 
 // Test counter

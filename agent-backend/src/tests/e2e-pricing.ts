@@ -15,8 +15,8 @@
  * Run with: npx ts-node-dev src/tests/e2e-pricing.ts
  */
 
-import { query } from "../db/client.js";
-import { calculateCost, onToolExecuted, checkSettlementEligibility, getAgentMetrics } from "../services/pricingService.js";
+import { query } from "../db/client";
+import { calculateCost, onToolExecuted, checkSettlementEligibility, getAgentMetrics } from "../services/pricingService";
 
 // Color output for readability
 const colors = {
