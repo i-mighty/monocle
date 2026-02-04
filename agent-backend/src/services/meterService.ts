@@ -1,23 +1,30 @@
-import { onToolExecuted, calculateCost, PRICING_CONSTANTS, checkSettlementEligibility, settleAgent } from "./pricingService";
+import { 
+  onToolExecuted, 
+  calculateCost, 
+  PRICING_CONSTANTS, 
+  checkSettlementEligibility, 
+  settleAgent,
+  getAgent,
+  getToolUsageHistory 
+} from "./pricingService";
 import { sendMicropayment } from "./solanaService";
-import { query } from "../db/client";
 
 /**
- * logToolCall: Execute tool with pricing enforcement
+ * logToolCall: Execute tool with per-tool pricing enforcement
  *
  * This is the **new** metering function that integrates AgentPay pricing.
- * It replaces the old mock cost system with deterministic, trustless pricing.
+ * Now supports per-tool pricing - each tool can have its own rate.
  *
  * Workflow:
- *   1. Call onToolExecuted (enforces balance, calculates cost, records ledger)
- *   2. Returns actual cost in lamports
+ *   1. Call onToolExecuted (gets tool-specific rate, enforces balance, records ledger)
+ *   2. Returns actual cost in lamports + rate used
  *   3. Fails atomically if balance insufficient
  *
  * @param callerId - Agent making the call
  * @param calleeId - Agent being called
  * @param toolName - Name of the tool
  * @param tokensUsed - Tokens consumed
- * @returns { callerId, calleeId, toolName, tokensUsed, costLamports }
+ * @returns { callerId, calleeId, toolName, tokensUsed, costLamports, ratePer1kTokens }
  * @throws Error if balance insufficient or transaction fails
  */
 export async function logToolCall(
@@ -34,8 +41,8 @@ export async function logToolCall(
       );
     }
 
-    // Execute pricing logic (atomic deduct/credit)
-    const costLamports = await onToolExecuted(callerId, calleeId, toolName, tokensUsed);
+    // Execute pricing logic (atomic deduct/credit) - now with per-tool pricing
+    const result = await onToolExecuted(callerId, calleeId, toolName, tokensUsed);
 
     // AUTO-SETTLEMENT: Check if callee should be settled automatically
     // This runs async (fire-and-forget) to not block the response
@@ -48,7 +55,9 @@ export async function logToolCall(
       calleeId,
       toolName,
       tokensUsed,
-      costLamports,
+      costLamports: result.costLamports,
+      ratePer1kTokens: result.ratePer1kTokens,
+      toolId: result.toolId,
     };
   } catch (err) {
     console.error(
@@ -75,17 +84,14 @@ async function tryAutoSettle(agentId: string): Promise<void> {
     if (!eligible) return;
 
     // Get agent's public key for settlement
-    const result = await query(
-      "SELECT public_key FROM agents WHERE id = $1",
-      [agentId]
-    );
+    const agent = await getAgent(agentId);
     
-    if (!result.rows[0]?.public_key) {
+    if (!agent.publicKey) {
       console.warn(`Auto-settle skipped: ${agentId} has no public_key`);
       return;
     }
 
-    const recipientPublicKey = result.rows[0].public_key;
+    const recipientPublicKey = agent.publicKey;
 
     console.log(`🔄 Auto-settling ${agentId}...`);
     
@@ -97,7 +103,7 @@ async function tryAutoSettle(agentId: string): Promise<void> {
       );
     });
 
-    console.log(`✅ Auto-settlement complete: ${agentId} received ${settlement.payout} lamports (tx: ${settlement.txSignature})`);
+    console.log(`✅ Auto-settlement complete: ${agentId} received ${settlement.netLamports} lamports (tx: ${settlement.txSignature})`);
   } catch (err) {
     // Log but don't throw - auto-settle failure shouldn't break execution
     console.error(`Auto-settle failed for ${agentId}:`, (err as Error).message);
@@ -114,16 +120,8 @@ export async function getToolCallHistory(
   asCallee: boolean = false
 ) {
   try {
-    const column = asCallee ? "callee_agent_id" : "caller_agent_id";
-    const { rows } = await query(
-      `select caller_agent_id, callee_agent_id, tool_name, tokens_used, cost_lamports, created_at
-       from tool_usage
-       where ${column} = $1
-       order by created_at desc
-       limit $2`,
-      [agentId, limit]
-    );
-    return rows || [];
+    const history = await getToolUsageHistory(agentId, limit, asCallee);
+    return history;
   } catch (err) {
     console.warn(
       "⚠️  Tool history fetch failed:",

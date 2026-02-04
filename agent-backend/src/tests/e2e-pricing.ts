@@ -178,9 +178,10 @@ async function testMetrics() {
     const metrics = await getAgentMetrics("test_agent_a");
 
     log(`  Agent: ${metrics.agentId}`, "cyan");
-    log(`  Rate: ${metrics.ratePer1kTokens} lamports/1k tokens`, "cyan");
+    log(`  Default Rate: ${metrics.defaultRatePer1kTokens} lamports/1k tokens`, "cyan");
     log(`  Balance: ${metrics.balanceLamports} lamports`, "cyan");
     log(`  Pending: ${metrics.pendingLamports} lamports`, "cyan");
+    log(`  Tools: ${metrics.tools.length}`, "cyan");
     log(`  Calls made: ${metrics.usage.callCount}`, "cyan");
     log(`  Total spend: ${metrics.usage.totalSpend} lamports`, "cyan");
     log(`  Calls received: ${metrics.earnings.callCount}`, "cyan");
