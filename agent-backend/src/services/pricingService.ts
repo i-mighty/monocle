@@ -1,24 +1,41 @@
-import { query } from "../db/client";
-
 /**
- * CONSTANTS: Non-negotiable system-wide constraints
+ * Pricing Service (Drizzle ORM + Per-Tool Pricing)
+ *
+ * This service handles:
+ * - Deterministic cost calculation
+ * - Per-tool pricing (each tool can have its own rate)
+ * - Balance enforcement (no debt)
+ * - Atomic transactions
+ * - Settlement with platform fees
  */
+
+import { eq, and, desc, sql, sum, count } from "drizzle-orm";
+import { db, pool, agents, tools, toolUsage, settlements, platformRevenue } from "../db/client";
+import type { Agent, Tool, ToolUsage, Settlement } from "../db/client";
+
+// =============================================================================
+// CONSTANTS
+// =============================================================================
 export const PRICING_CONSTANTS = {
-  // Default rate per 1,000 tokens (lamports)
+  /** Default rate per 1,000 tokens (lamports) */
   DEFAULT_RATE_PER_1K_TOKENS: 1000,
 
-  // Minimum cost per call (prevents spam/DoS)
+  /** Minimum cost per call (prevents spam/DoS) */
   MIN_COST_LAMPORTS: 100,
 
-  // Maximum tokens per single call (prevents runaway execution)
-  MAX_TOKENS_PER_CALL: 100000,
+  /** Maximum tokens per single call (prevents runaway execution) */
+  MAX_TOKENS_PER_CALL: 100_000,
 
-  // Platform fee percentage (0.0 to 1.0)
+  /** Platform fee percentage (0.0 to 1.0) */
   PLATFORM_FEE_PERCENT: 0.05, // 5%
 
-  // Minimum payout threshold before settlement is triggered
-  MIN_PAYOUT_LAMPORTS: 10000,
+  /** Minimum payout threshold before settlement is triggered */
+  MIN_PAYOUT_LAMPORTS: 10_000,
 } as const;
+
+// =============================================================================
+// PURE FUNCTIONS (No DB, testable in isolation)
+// =============================================================================
 
 /**
  * calculateCost: Deterministic pricing formula
@@ -26,13 +43,8 @@ export const PRICING_CONSTANTS = {
  * Formula:
  *   cost = max(ceil(tokens / 1000) * rate_per_1k_tokens, MIN_COST_LAMPORTS)
  *
- * This ensures:
- *   - Integer-only arithmetic (no floating-point disputes)
- *   - Same inputs → same cost (determinism)
- *   - Minimum charge prevents spam
- *
  * @param tokensUsed - Number of tokens consumed by the call
- * @param ratePer1kTokens - Agent's fixed rate per 1,000 tokens (in lamports)
+ * @param ratePer1kTokens - Tool's rate per 1,000 tokens (in lamports)
  * @returns Cost in lamports (always integer)
  */
 export function calculateCost(
@@ -46,61 +58,218 @@ export function calculateCost(
     throw new Error("Rate per 1k tokens cannot be negative");
   }
 
-  // Formula: ceil(tokens / 1000) * rate_per_1k_tokens
-  // Ceil first (token blocks), then multiply by rate
   const tokenBlocks = Math.ceil(tokensUsed / 1000);
   const costBeforeMinimum = tokenBlocks * ratePer1kTokens;
   const finalCost = Math.max(costBeforeMinimum, PRICING_CONSTANTS.MIN_COST_LAMPORTS);
 
-  return Math.floor(finalCost); // Ensure integer
+  return Math.floor(finalCost);
 }
 
 /**
- * getAgent: Fetch agent pricing & balance data
+ * calculatePlatformFee: Deterministic fee calculation
  */
-async function getAgent(agentId: string) {
-  const result = await query(
-    "select id, rate_per_1k_tokens, balance_lamports, pending_lamports from agents where id = $1",
-    [agentId]
-  );
+export function calculatePlatformFee(grossLamports: number): number {
+  return Math.floor(grossLamports * PRICING_CONSTANTS.PLATFORM_FEE_PERCENT);
+}
 
-  if (result.rows.length === 0) {
+// =============================================================================
+// AGENT OPERATIONS
+// =============================================================================
+
+/**
+ * Get agent by ID
+ */
+export async function getAgent(agentId: string): Promise<Agent> {
+  if (!db) throw new Error("Database not connected");
+
+  const result = await db
+    .select()
+    .from(agents)
+    .where(eq(agents.id, agentId))
+    .limit(1);
+
+  if (result.length === 0) {
     throw new Error(`Agent not found: ${agentId}`);
   }
 
-  return result.rows[0] as {
-    id: string;
-    rate_per_1k_tokens: number;
-    balance_lamports: number;
-    pending_lamports: number;
+  return result[0];
+}
+
+/**
+ * Create or update an agent
+ */
+export async function upsertAgent(agent: {
+  id: string;
+  name?: string;
+  publicKey?: string;
+  defaultRatePer1kTokens?: number;
+  balanceLamports?: number;
+}): Promise<Agent> {
+  if (!db) throw new Error("Database not connected");
+
+  const result = await db
+    .insert(agents)
+    .values({
+      id: agent.id,
+      name: agent.name,
+      publicKey: agent.publicKey,
+      defaultRatePer1kTokens: agent.defaultRatePer1kTokens ?? PRICING_CONSTANTS.DEFAULT_RATE_PER_1K_TOKENS,
+      balanceLamports: agent.balanceLamports ?? 0,
+      pendingLamports: 0,
+    })
+    .onConflictDoUpdate({
+      target: agents.id,
+      set: {
+        name: agent.name,
+        defaultRatePer1kTokens: agent.defaultRatePer1kTokens,
+      },
+    })
+    .returning();
+
+  return result[0];
+}
+
+// =============================================================================
+// TOOL OPERATIONS (Per-Tool Pricing)
+// =============================================================================
+
+/**
+ * Register a tool with its pricing
+ */
+export async function registerTool(tool: {
+  agentId: string;
+  name: string;
+  description?: string;
+  ratePer1kTokens: number;
+}): Promise<Tool> {
+  if (!db) throw new Error("Database not connected");
+
+  // Verify agent exists
+  await getAgent(tool.agentId);
+
+  const result = await db
+    .insert(tools)
+    .values({
+      agentId: tool.agentId,
+      name: tool.name,
+      description: tool.description,
+      ratePer1kTokens: tool.ratePer1kTokens,
+    })
+    .onConflictDoUpdate({
+      target: [tools.agentId, tools.name],
+      set: {
+        description: tool.description,
+        ratePer1kTokens: tool.ratePer1kTokens,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+
+  return result[0];
+}
+
+/**
+ * Get tool pricing for a specific tool
+ *
+ * Falls back to agent's default rate if tool not found
+ */
+export async function getToolPricing(
+  agentId: string,
+  toolName: string
+): Promise<{ toolId: string | null; ratePer1kTokens: number }> {
+  if (!db) throw new Error("Database not connected");
+
+  // Try to find specific tool pricing
+  const toolResult = await db
+    .select()
+    .from(tools)
+    .where(and(eq(tools.agentId, agentId), eq(tools.name, toolName)))
+    .limit(1);
+
+  if (toolResult.length > 0) {
+    return {
+      toolId: toolResult[0].id,
+      ratePer1kTokens: toolResult[0].ratePer1kTokens,
+    };
+  }
+
+  // Fall back to agent's default rate
+  const agent = await getAgent(agentId);
+  return {
+    toolId: null,
+    ratePer1kTokens: agent.defaultRatePer1kTokens,
   };
 }
 
 /**
- * onToolExecuted: Core pricing logic
+ * List all tools for an agent
+ */
+export async function listAgentTools(agentId: string): Promise<Tool[]> {
+  if (!db) throw new Error("Database not connected");
+
+  return db
+    .select()
+    .from(tools)
+    .where(eq(tools.agentId, agentId))
+    .orderBy(tools.name);
+}
+
+/**
+ * Update tool pricing
+ */
+export async function updateToolPricing(
+  agentId: string,
+  toolName: string,
+  ratePer1kTokens: number
+): Promise<Tool> {
+  if (!db) throw new Error("Database not connected");
+
+  const result = await db
+    .update(tools)
+    .set({ ratePer1kTokens, updatedAt: new Date() })
+    .where(and(eq(tools.agentId, agentId), eq(tools.name, toolName)))
+    .returning();
+
+  if (result.length === 0) {
+    throw new Error(`Tool not found: ${agentId}/${toolName}`);
+  }
+
+  return result[0];
+}
+
+// =============================================================================
+// EXECUTION & PRICING
+// =============================================================================
+
+/**
+ * onToolExecuted: Core pricing logic with per-tool pricing
  *
  * Workflow:
- *   1. Fetch agent pricing & balances
+ *   1. Get tool-specific pricing (or agent default)
  *   2. Calculate cost deterministically
  *   3. Enforce balance constraint (no debt allowed)
  *   4. Deduct from caller, credit to callee (atomic transaction)
  *   5. Record immutable ledger entry
  *
- * This is the ATOMIC UNIT of AgentPay economics.
- *
  * @param callerId - Agent ID making the call
  * @param calleeId - Agent ID being called
  * @param toolName - Name of the tool executed
  * @param tokensUsed - Number of tokens consumed
- * @returns Cost in lamports
- * @throws Error if balance insufficient or agents missing
+ * @returns Execution result with cost details
  */
 export async function onToolExecuted(
   callerId: string,
   calleeId: string,
   toolName: string,
   tokensUsed: number
-): Promise<number> {
+): Promise<{
+  costLamports: number;
+  ratePer1kTokens: number;
+  toolId: string | null;
+  tokensUsed: number;
+}> {
+  if (!db || !pool) throw new Error("Database not connected");
+
   // Validate inputs
   if (tokensUsed > PRICING_CONSTANTS.MAX_TOKENS_PER_CALL) {
     throw new Error(
@@ -108,75 +277,88 @@ export async function onToolExecuted(
     );
   }
 
-  // Fetch both agents (throws if missing)
-  const caller = await getAgent(callerId);
-  const callee = await getAgent(calleeId);
+  // Get tool-specific pricing (or agent default)
+  const { toolId, ratePer1kTokens } = await getToolPricing(calleeId, toolName);
 
   // Calculate cost deterministically
-  const cost = calculateCost(tokensUsed, callee.rate_per_1k_tokens);
+  const cost = calculateCost(tokensUsed, ratePer1kTokens);
 
-  // CONSTRAINT: No debt. Reject if caller cannot afford the call.
-  if (caller.balance_lamports < cost) {
+  // Fetch caller to check balance
+  const caller = await getAgent(callerId);
+
+  // CONSTRAINT: No debt
+  if (caller.balanceLamports < cost) {
     throw new Error(
-      `Insufficient balance: ${callerId} has ${caller.balance_lamports} lamports, ` +
+      `Insufficient balance: ${callerId} has ${caller.balanceLamports} lamports, ` +
       `but call costs ${cost} lamports`
     );
   }
 
-  // ATOMIC TRANSACTION: Deduct + Credit + Log
+  // ATOMIC TRANSACTION using raw SQL for transaction control
+  const client = await pool.connect();
   try {
-    await query("BEGIN");
+    await client.query("BEGIN");
 
-    // Record immutable execution (append-only)
-    await query(
-      `insert into tool_usage (caller_agent_id, callee_agent_id, tool_name, tokens_used, rate_per_1k_tokens, cost_lamports)
-       values ($1, $2, $3, $4, $5, $6)`,
-      [callerId, calleeId, toolName, tokensUsed, callee.rate_per_1k_tokens, cost]
+    // 1. Insert tool usage record
+    await client.query(
+      `INSERT INTO tool_usage 
+       (caller_agent_id, callee_agent_id, tool_id, tool_name, tokens_used, rate_per_1k_tokens, cost_lamports)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [callerId, calleeId, toolId, toolName, tokensUsed, ratePer1kTokens, cost]
     );
 
-    // Deduct from caller's balance
-    await query(
-      "update agents set balance_lamports = balance_lamports - $1 where id = $2",
+    // 2. Deduct from caller's balance
+    await client.query(
+      "UPDATE agents SET balance_lamports = balance_lamports - $1 WHERE id = $2",
       [cost, callerId]
     );
 
-    // Credit to callee's pending balance
-    await query(
-      "update agents set pending_lamports = pending_lamports + $1 where id = $2",
+    // 3. Credit to callee's pending balance
+    await client.query(
+      "UPDATE agents SET pending_lamports = pending_lamports + $1 WHERE id = $2",
       [cost, calleeId]
     );
 
-    await query("COMMIT");
+    await client.query("COMMIT");
   } catch (error) {
-    await query("ROLLBACK");
+    await client.query("ROLLBACK");
     throw new Error(`Transaction failed: ${(error as Error).message}`);
+  } finally {
+    client.release();
   }
 
-  return cost;
+  return {
+    costLamports: cost,
+    ratePer1kTokens,
+    toolId,
+    tokensUsed,
+  };
 }
+
+// =============================================================================
+// SETTLEMENT
+// =============================================================================
 
 /**
  * settleAgent: Execute on-chain settlement
- *
- * Workflow:
- *   1. Fetch agent's pending balance
- *   2. Calculate platform fee
- *   3. Create settlement record (pending)
- *   4. Send on-chain transaction
- *   5. On confirmation, clear pending and record platform fee
- *   6. On failure, mark failed (retry manually)
- *
- * @param agentId - Agent to settle
- * @param sendTransaction - Function to execute the on-chain transfer
- * @returns Settlement record
  */
 export async function settleAgent(
   agentId: string,
   sendTransaction: (recipientId: string, lamports: number) => Promise<string>
-) {
-  const agent = await getAgent(agentId);
+): Promise<{
+  settlementId: string;
+  agentId: string;
+  grossLamports: number;
+  platformFeeLamports: number;
+  netLamports: number;
+  txSignature: string;
+  status: string;
+}> {
+  if (!db || !pool) throw new Error("Database not connected");
 
-  const pending = agent.pending_lamports;
+  const agent = await getAgent(agentId);
+  const pending = agent.pendingLamports;
+
   if (pending < PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS) {
     throw new Error(
       `Pending balance (${pending}) below minimum payout (${PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS})`
@@ -184,30 +366,21 @@ export async function settleAgent(
   }
 
   // Calculate fee
-  const platformFee = Math.floor(pending * PRICING_CONSTANTS.PLATFORM_FEE_PERCENT);
-  const payout = pending - platformFee;
+  const fee = calculatePlatformFee(pending);
+  const payout = pending - fee;
 
-  // Create settlement record (status = pending)
-  const settlementResult = await query(
-    `insert into settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, status)
-     values ($1, $1, $2, $3, $4, 'pending')
-     returning id, from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, status`,
-    [agentId, pending, platformFee, payout]
-  );
-
-  if (settlementResult.rows.length === 0) {
-    throw new Error("Failed to create settlement record");
-  }
-
-  const settlement = settlementResult.rows[0] as {
-    id: string;
-    from_agent_id: string;
-    to_agent_id: string;
-    gross_lamports: number;
-    platform_fee_lamports: number;
-    net_lamports: number;
-    status: string;
-  };
+  // Create settlement record
+  const [settlement] = await db
+    .insert(settlements)
+    .values({
+      fromAgentId: agentId,
+      toAgentId: agentId,
+      grossLamports: pending,
+      platformFeeLamports: fee,
+      netLamports: payout,
+      status: "pending",
+    })
+    .returning();
 
   // Send on-chain transaction
   let txSignature: string;
@@ -215,90 +388,170 @@ export async function settleAgent(
     txSignature = await sendTransaction(agentId, payout);
   } catch (error) {
     // Mark settlement as failed
-    await query(
-      "update settlements set status = 'failed' where id = $1",
-      [settlement.id]
-    );
+    await db
+      .update(settlements)
+      .set({ status: "failed" })
+      .where(eq(settlements.id, settlement.id));
     throw new Error(`On-chain settlement failed: ${(error as Error).message}`);
   }
 
-  // On confirmation, clear pending and record platform fee (atomic)
+  // Finalize settlement (atomic)
+  const client = await pool.connect();
   try {
-    await query("BEGIN");
+    await client.query("BEGIN");
 
     // Update settlement to confirmed
-    await query(
-      "update settlements set tx_signature = $1, status = 'confirmed' where id = $2",
+    await client.query(
+      "UPDATE settlements SET tx_signature = $1, status = 'confirmed' WHERE id = $2",
       [txSignature, settlement.id]
     );
 
     // Clear pending balance
-    await query(
-      "update agents set pending_lamports = 0 where id = $1",
+    await client.query(
+      "UPDATE agents SET pending_lamports = 0 WHERE id = $1",
       [agentId]
     );
 
     // Record platform revenue
-    await query(
-      "insert into platform_revenue (settlement_id, fee_lamports) values ($1, $2)",
-      [settlement.id, platformFee]
+    await client.query(
+      "INSERT INTO platform_revenue (settlement_id, fee_lamports) VALUES ($1, $2)",
+      [settlement.id, fee]
     );
 
-    await query("COMMIT");
+    await client.query("COMMIT");
   } catch (error) {
-    await query("ROLLBACK");
+    await client.query("ROLLBACK");
     throw new Error(`Settlement confirmation failed: ${(error as Error).message}`);
+  } finally {
+    client.release();
   }
 
   return {
     settlementId: settlement.id,
     agentId,
-    pending,
-    platformFee,
-    payout,
+    grossLamports: pending,
+    platformFeeLamports: fee,
+    netLamports: payout,
     txSignature,
     status: "confirmed",
   };
 }
 
 /**
- * checkSettlementEligibility: Check if agent should be settled
+ * Check if agent is eligible for settlement
  */
 export async function checkSettlementEligibility(agentId: string): Promise<boolean> {
   const agent = await getAgent(agentId);
-  return agent.pending_lamports >= PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS;
+  return agent.pendingLamports >= PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS;
 }
 
+// =============================================================================
+// METRICS & ANALYTICS
+// =============================================================================
+
 /**
- * getAgentMetrics: Fetch agent's current economic state
+ * Get agent metrics including per-tool breakdown
  */
 export async function getAgentMetrics(agentId: string) {
+  if (!db) throw new Error("Database not connected");
+
   const agent = await getAgent(agentId);
 
-  const usageResult = await query(
-    `select count(*) as call_count, sum(cost_lamports) as total_spend
-     from tool_usage where caller_agent_id = $1`,
-    [agentId]
-  );
+  // Get agent's tools with their pricing
+  const agentTools = await listAgentTools(agentId);
 
-  const earningsResult = await query(
-    `select count(*) as call_count, sum(cost_lamports) as total_earned
-     from tool_usage where callee_agent_id = $1`,
-    [agentId]
-  );
+  // Usage as caller (spending)
+  const spendingResult = await db
+    .select({
+      callCount: count(),
+      totalSpend: sum(toolUsage.costLamports),
+    })
+    .from(toolUsage)
+    .where(eq(toolUsage.callerAgentId, agentId));
+
+  // Usage as callee (earnings)
+  const earningsResult = await db
+    .select({
+      callCount: count(),
+      totalEarned: sum(toolUsage.costLamports),
+    })
+    .from(toolUsage)
+    .where(eq(toolUsage.calleeAgentId, agentId));
+
+  // Per-tool earnings breakdown
+  const toolBreakdown = await db
+    .select({
+      toolName: toolUsage.toolName,
+      callCount: count(),
+      totalEarned: sum(toolUsage.costLamports),
+      avgTokens: sql<number>`avg(${toolUsage.tokensUsed})::int`,
+    })
+    .from(toolUsage)
+    .where(eq(toolUsage.calleeAgentId, agentId))
+    .groupBy(toolUsage.toolName)
+    .orderBy(desc(sql`sum(${toolUsage.costLamports})`));
 
   return {
     agentId,
-    ratePer1kTokens: agent.rate_per_1k_tokens,
-    balanceLamports: agent.balance_lamports,
-    pendingLamports: agent.pending_lamports,
+    defaultRatePer1kTokens: agent.defaultRatePer1kTokens,
+    balanceLamports: agent.balanceLamports,
+    pendingLamports: agent.pendingLamports,
+    tools: agentTools.map((t) => ({
+      name: t.name,
+      ratePer1kTokens: t.ratePer1kTokens,
+      description: t.description,
+    })),
     usage: {
-      callCount: parseInt(usageResult.rows[0]?.call_count || 0),
-      totalSpend: parseInt(usageResult.rows[0]?.total_spend || 0),
+      callCount: Number(spendingResult[0]?.callCount || 0),
+      totalSpend: Number(spendingResult[0]?.totalSpend || 0),
     },
     earnings: {
-      callCount: parseInt(earningsResult.rows[0]?.call_count || 0),
-      totalEarned: parseInt(earningsResult.rows[0]?.total_earned || 0),
+      callCount: Number(earningsResult[0]?.callCount || 0),
+      totalEarned: Number(earningsResult[0]?.totalEarned || 0),
+      byTool: toolBreakdown.map((t) => ({
+        toolName: t.toolName,
+        callCount: Number(t.callCount),
+        totalEarned: Number(t.totalEarned || 0),
+        avgTokens: t.avgTokens || 0,
+      })),
     },
   };
 }
+
+/**
+ * Get tool execution history
+ */
+export async function getToolUsageHistory(
+  agentId: string,
+  limit: number = 100,
+  asCallee: boolean = false
+): Promise<ToolUsage[]> {
+  if (!db) throw new Error("Database not connected");
+
+  const column = asCallee ? toolUsage.calleeAgentId : toolUsage.callerAgentId;
+
+  return db
+    .select()
+    .from(toolUsage)
+    .where(eq(column, agentId))
+    .orderBy(desc(toolUsage.createdAt))
+    .limit(limit);
+}
+
+/**
+ * Get settlement history
+ */
+export async function getSettlementHistory(
+  agentId: string,
+  limit: number = 50
+): Promise<Settlement[]> {
+  if (!db) throw new Error("Database not connected");
+
+  return db
+    .select()
+    .from(settlements)
+    .where(eq(settlements.toAgentId, agentId))
+    .orderBy(desc(settlements.createdAt))
+    .limit(limit);
+}
+

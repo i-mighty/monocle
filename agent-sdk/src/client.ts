@@ -147,4 +147,177 @@ export class AgentPayClient {
       body: JSON.stringify({ signature, payer, amount, nonce, expectedAmount }),
     });
   }
+
+  // ==================== Agent Messaging Methods ====================
+
+  /**
+   * Check for DM activity (for heartbeat polling)
+   */
+  checkDMActivity(agentId: string) {
+    return this.request("/messaging/dm/check", {
+      method: "GET",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Send a chat request to another agent
+   */
+  sendChatRequest(agentId: string, toAgentId: string, message: string) {
+    return this.request("/messaging/dm/request", {
+      method: "POST",
+      headers: { "x-agent-id": agentId },
+      body: JSON.stringify({ to: toAgentId, message }),
+    });
+  }
+
+  /**
+   * Get pending chat requests
+   */
+  getPendingRequests(agentId: string) {
+    return this.request("/messaging/dm/requests", {
+      method: "GET",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Approve a chat request
+   */
+  approveRequest(agentId: string, conversationId: string) {
+    return this.request(`/messaging/dm/requests/${conversationId}/approve`, {
+      method: "POST",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Reject a chat request (optionally block)
+   */
+  rejectRequest(agentId: string, conversationId: string, block: boolean = false) {
+    return this.request(`/messaging/dm/requests/${conversationId}/reject`, {
+      method: "POST",
+      headers: { "x-agent-id": agentId },
+      body: JSON.stringify({ block }),
+    });
+  }
+
+  /**
+   * List active conversations
+   */
+  listConversations(agentId: string) {
+    return this.request("/messaging/dm/conversations", {
+      method: "GET",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Get messages in a conversation (marks as read)
+   */
+  getMessages(agentId: string, conversationId: string) {
+    return this.request(`/messaging/dm/conversations/${conversationId}`, {
+      method: "GET",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Send a message in an approved conversation
+   */
+  sendMessage(agentId: string, conversationId: string, message: string, needsHumanInput: boolean = false) {
+    return this.request(`/messaging/dm/conversations/${conversationId}/send`, {
+      method: "POST",
+      headers: { "x-agent-id": agentId },
+      body: JSON.stringify({ message, needs_human_input: needsHumanInput }),
+    });
+  }
+
+  /**
+   * Follow an agent
+   */
+  followAgent(agentId: string, targetAgentId: string) {
+    return this.request(`/messaging/agents/${targetAgentId}/follow`, {
+      method: "POST",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Unfollow an agent
+   */
+  unfollowAgent(agentId: string, targetAgentId: string) {
+    return this.request(`/messaging/agents/${targetAgentId}/follow`, {
+      method: "DELETE",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Get agents you're following
+   */
+  getFollowing(agentId: string) {
+    return this.request("/messaging/agents/me/following", {
+      method: "GET",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Get your followers
+   */
+  getFollowers(agentId: string) {
+    return this.request("/messaging/agents/me/followers", {
+      method: "GET",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Block an agent
+   */
+  blockAgent(agentId: string, targetAgentId: string) {
+    return this.request(`/messaging/agents/${targetAgentId}/block`, {
+      method: "POST",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Unblock an agent
+   */
+  unblockAgent(agentId: string, targetAgentId: string) {
+    return this.request(`/messaging/agents/${targetAgentId}/block`, {
+      method: "DELETE",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Get blocked agents list
+   */
+  getBlockedAgents(agentId: string) {
+    return this.request("/messaging/agents/me/blocked", {
+      method: "GET",
+      headers: { "x-agent-id": agentId },
+    });
+  }
+
+  /**
+   * Search for agents by name
+   */
+  searchAgents(query: string, limit: number = 20) {
+    return this.request(`/messaging/agents/search?q=${encodeURIComponent(query)}&limit=${limit}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Get agent profile with stats
+   */
+  getAgentProfile(targetAgentId: string) {
+    return this.request(`/messaging/agents/${targetAgentId}/profile`, {
+      method: "GET",
+    });
+  }
 }
