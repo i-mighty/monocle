@@ -33,7 +33,7 @@ function log(message: string, color: keyof typeof colors = "reset") {
 }
 
 async function setupTestAgents() {
-  log("\n📋 SETUP: Creating test agents...", "blue");
+  log("\n[SETUP] Creating test agents...", "blue");
 
   // Clean up any existing test agents
   await query("delete from agents where id like 'test_%'");
@@ -56,11 +56,11 @@ async function setupTestAgents() {
     ["test_agent_c", "Test Agent C", 5000, 50_000, 0]
   );
 
-  log("✅ Test agents created: A, B, C", "green");
+  log("[PASS] Test agents created: A, B, C", "green");
 }
 
 async function testDeterministicPricing() {
-  log("\n🧮 TEST 1: Deterministic Pricing", "blue");
+  log("\n[TEST1] Deterministic Pricing", "blue");
 
   // Same inputs must always produce same cost
   const cost1 = calculateCost(1000, 1000);
@@ -68,15 +68,15 @@ async function testDeterministicPricing() {
   const cost3 = calculateCost(1000, 1000);
 
   if (cost1 === cost2 && cost2 === cost3) {
-    log(`✅ Determinism verified: 1000 tokens @ 1000 rate = ${cost1} lamports (consistent)`, "green");
+    log(`[PASS] Determinism verified: 1000 tokens @ 1000 rate = ${cost1} lamports (consistent)`, "green");
   } else {
-    log(`❌ Determinism FAILED: costs were ${cost1}, ${cost2}, ${cost3}`, "red");
+    log(`[FAIL] Determinism FAILED: costs were ${cost1}, ${cost2}, ${cost3}`, "red");
     throw new Error("Pricing not deterministic");
   }
 }
 
 async function testExecutionWithBalance() {
-  log("\n💰 TEST 2: Execution with Balance Enforcement", "blue");
+  log("\n[TEST2] Execution with Balance Enforcement", "blue");
 
   // Agent A calls Agent B with 500 tokens
   const tokensUsed = 500;
@@ -87,7 +87,7 @@ async function testExecutionWithBalance() {
 
   try {
     const result = await onToolExecuted("test_agent_a", "test_agent_b", "summarize", tokensUsed);
-    log(`✅ Execution succeeded: cost = ${result} lamports`, "green");
+    log(`[PASS] Execution succeeded: cost = ${result} lamports`, "green");
 
     // Verify balances changed
     const agentA = await query("select balance_lamports from agents where id = $1", ["test_agent_a"]);
@@ -99,25 +99,25 @@ async function testExecutionWithBalance() {
     log(`  A balance: ${actualABalance} (expected ${expectedABalance})`, "cyan");
 
     if (actualABalance === expectedABalance) {
-      log(`✅ Balance deduction correct`, "green");
+      log(`[PASS] Balance deduction correct`, "green");
     } else {
-      log(`❌ Balance mismatch: got ${actualABalance}, expected ${expectedABalance}`, "red");
+      log(`[FAIL] Balance mismatch: got ${actualABalance}, expected ${expectedABalance}`, "red");
     }
 
     const actualBPending = agentB.rows[0].pending_lamports;
     if (actualBPending === costA) {
-      log(`✅ Pending credit correct: ${actualBPending} lamports`, "green");
+      log(`[PASS] Pending credit correct: ${actualBPending} lamports`, "green");
     } else {
-      log(`❌ Pending mismatch: got ${actualBPending}, expected ${costA}`, "red");
+      log(`[FAIL] Pending mismatch: got ${actualBPending}, expected ${costA}`, "red");
     }
   } catch (error) {
-    log(`❌ Execution failed: ${(error as Error).message}`, "red");
+    log(`[FAIL] Execution failed: ${(error as Error).message}`, "red");
     throw error;
   }
 }
 
 async function testInsufficientBalance() {
-  log("\n❌ TEST 3: Insufficient Balance Rejection", "blue");
+  log("\n[TEST3] Insufficient Balance Rejection", "blue");
 
   // Create agent with very low balance
   await query(
@@ -128,11 +128,11 @@ async function testInsufficientBalance() {
   try {
     // Try to call (minimum cost is 100 lamports)
     await onToolExecuted("test_poor_agent", "test_agent_b", "test_tool", 100);
-    log(`❌ FAILED: Should have rejected due to insufficient balance`, "red");
+    log(`[FAIL] FAILED: Should have rejected due to insufficient balance`, "red");
     throw new Error("Balance check not enforced");
   } catch (error) {
     if ((error as Error).message.includes("Insufficient balance")) {
-      log(`✅ Correctly rejected: ${(error as Error).message}`, "green");
+      log(`[PASS] Correctly rejected: ${(error as Error).message}`, "green");
     } else {
       throw error;
     }
@@ -140,7 +140,7 @@ async function testInsufficientBalance() {
 }
 
 async function testComposability() {
-  log("\n🔗 TEST 4: Composable Recursive Calls", "blue");
+  log("\n[TEST4] Composable Recursive Calls", "blue");
 
   // Create fresh test agents
   await query(
@@ -158,21 +158,21 @@ async function testComposability() {
   try {
     // D → E
     const cost1 = await onToolExecuted("test_comp_d", "test_comp_e", "tool1", 1000);
-    log(`  ✓ D → E: ${cost1} lamports deducted`, "cyan");
+    log(`  [OK] D → E: ${cost1} lamports deducted`, "cyan");
 
     // E → B (E has pending from D, but separate balance for calling B)
     const cost2 = await onToolExecuted("test_comp_e", "test_agent_b", "tool2", 500);
-    log(`  ✓ E → B: ${cost2} lamports deducted`, "cyan");
+    log(`  [OK] E → B: ${cost2} lamports deducted`, "cyan");
 
-    log(`✅ Composability works: both calls executed independently`, "green");
+    log(`[PASS] Composability works: both calls executed independently`, "green");
   } catch (error) {
-    log(`❌ Composability test failed: ${(error as Error).message}`, "red");
+    log(`[FAIL] Composability test failed: ${(error as Error).message}`, "red");
     throw error;
   }
 }
 
 async function testMetrics() {
-  log("\n📊 TEST 5: Agent Metrics", "blue");
+  log("\n[TEST5] Agent Metrics", "blue");
 
   try {
     const metrics = await getAgentMetrics("test_agent_a");
@@ -187,15 +187,15 @@ async function testMetrics() {
     log(`  Calls received: ${metrics.earnings.callCount}`, "cyan");
     log(`  Total earned: ${metrics.earnings.totalEarned} lamports`, "cyan");
 
-    log(`✅ Metrics retrieved successfully`, "green");
+    log(`[PASS] Metrics retrieved successfully`, "green");
   } catch (error) {
-    log(`❌ Metrics failed: ${(error as Error).message}`, "red");
+    log(`[FAIL] Metrics failed: ${(error as Error).message}`, "red");
     throw error;
   }
 }
 
 async function testSettlementEligibility() {
-  log("\n🏦 TEST 6: Settlement Eligibility Check", "blue");
+  log("\n[TEST6] Settlement Eligibility Check", "blue");
 
   try {
     const agentB = await query("select pending_lamports from agents where id = $1", ["test_agent_b"]);
@@ -206,18 +206,18 @@ async function testSettlementEligibility() {
     const eligible = await checkSettlementEligibility("test_agent_b");
 
     if (eligible) {
-      log(`✅ Agent B is eligible for settlement (pending >= min threshold)`, "green");
+      log(`[PASS] Agent B is eligible for settlement (pending >= min threshold)`, "green");
     } else {
-      log(`⚠️  Agent B not eligible yet (pending ${pending} < min ${10000})`, "yellow");
+      log(`[WARN] Agent B not eligible yet (pending ${pending} < min ${10000})`, "yellow");
     }
   } catch (error) {
-    log(`❌ Settlement check failed: ${(error as Error).message}`, "red");
+    log(`[FAIL] Settlement check failed: ${(error as Error).message}`, "red");
     throw error;
   }
 }
 
 async function testImmutableLedger() {
-  log("\n📝 TEST 7: Immutable Execution Ledger", "blue");
+  log("\n[TEST7] Immutable Execution Ledger", "blue");
 
   try {
     const result = await query(
@@ -225,7 +225,7 @@ async function testImmutableLedger() {
     );
 
     if (result.rows.length === 0) {
-      log(`⚠️  No executions recorded yet`, "yellow");
+      log(`[WARN] No executions recorded yet`, "yellow");
       return;
     }
 
@@ -238,20 +238,20 @@ async function testImmutableLedger() {
       );
     });
 
-    log(`✅ Immutable ledger working correctly`, "green");
+    log(`[PASS] Immutable ledger working correctly`, "green");
   } catch (error) {
-    log(`❌ Ledger check failed: ${(error as Error).message}`, "red");
+    log(`[FAIL] Ledger check failed: ${(error as Error).message}`, "red");
     throw error;
   }
 }
 
 async function cleanup() {
-  log("\n🧹 CLEANUP: Removing test data...", "blue");
+  log("\n[CLEANUP] Removing test data...", "blue");
 
   await query("delete from tool_usage where caller_agent_id like 'test_%' or callee_agent_id like 'test_%'");
   await query("delete from agents where id like 'test_%'");
 
-  log("✅ Test data cleaned up", "green");
+  log("[PASS] Test data cleaned up", "green");
 }
 
 async function main() {
@@ -270,11 +270,11 @@ async function main() {
     await testImmutableLedger();
 
     log("\n" + "=".repeat(70), "cyan");
-    log("✨ ALL TESTS PASSED ✨", "green");
+    log("[SUCCESS] ALL TESTS PASSED", "green");
     log("=".repeat(70), "cyan");
   } catch (error) {
     log("\n" + "=".repeat(70), "cyan");
-    log(`❌ TEST SUITE FAILED: ${(error as Error).message}`, "red");
+    log(`[FAIL] TEST SUITE FAILED: ${(error as Error).message}`, "red");
     log("=".repeat(70), "cyan");
     process.exit(1);
   } finally {
