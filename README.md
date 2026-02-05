@@ -2,7 +2,7 @@
 
 A complete plug-and-play system for AI agents to verify identity, meter tool usage, and execute Solana micropayments. **Built on the x402 protocol for HTTP-native machine-to-machine payments.**
 
-## 🔌 x402 Protocol Support
+## [PROTOCOL] x402 Protocol Support
 
 AgentPay implements the **x402 protocol** - an HTTP-native payment standard for AI agents:
 
@@ -71,7 +71,7 @@ curl -X POST http://localhost:3001/x402/quote \
 
 ---
 
-## 🚀 One-Button Setup (Docker)
+## [LAUNCH] One-Button Setup (Docker)
 
 **Start everything with a single command:**
 
@@ -81,11 +81,11 @@ docker-compose up
 
 That's it! This will:
 
-- ✅ Start PostgreSQL database
-- ✅ Initialize database schema automatically
-- ✅ Start backend API on port 3001
-- ✅ Start dashboard on port 3000
-- ✅ Wire everything together
+- [PASS] Start PostgreSQL database
+- [PASS] Initialize database schema automatically
+- [PASS] Start backend API on port 3001
+- [PASS] Start dashboard on port 3000
+- [PASS] Wire everything together
 
 ### First Time Setup
 
