@@ -50,11 +50,11 @@ async function apiCall<T>(
 }
 
 async function main() {
-  console.log("🚀 AgentPay Quickstart\n");
+  console.log("[START] AgentPay Quickstart\n");
   console.log("=".repeat(50));
 
   // Step 1: Register Payer Agent
-  console.log("\n📝 Step 1: Register Payer Agent");
+  console.log("\n[STEP] Step 1: Register Payer Agent");
   const payer = await apiCall<Agent>("/agents/register", {
     method: "POST",
     body: JSON.stringify({
@@ -63,10 +63,10 @@ async function main() {
       description: "Demo payer agent for quickstart",
     }),
   });
-  console.log(`   ✅ Created: ${payer.name} (${payer.id})`);
+  console.log(`   [OK] Created: ${payer.name} (${payer.id})`);
 
   // Step 2: Register Provider Agent  
-  console.log("\n📝 Step 2: Register Provider Agent");
+  console.log("\n[STEP] Step 2: Register Provider Agent");
   const provider = await apiCall<Agent>("/agents/register", {
     method: "POST",
     body: JSON.stringify({
@@ -75,10 +75,10 @@ async function main() {
       description: "Demo tool provider for quickstart",
     }),
   });
-  console.log(`   ✅ Created: ${provider.name} (${provider.id})`);
+  console.log(`   [OK] Created: ${provider.name} (${provider.id})`);
 
   // Step 3: Add balance to payer (in real system, this comes from deposits)
-  console.log("\n💰 Step 3: Fund Payer Account");
+  console.log("\n[STEP] Step 3: Fund Payer Account");
   await apiCall("/agents/fund", {
     method: "POST",
     body: JSON.stringify({
@@ -86,17 +86,17 @@ async function main() {
       amount: 100000, // 100,000 lamports = 0.0001 SOL
     }),
   });
-  console.log(`   ✅ Funded ${payer.name} with 100,000 lamports`);
+  console.log(`   [OK] Funded ${payer.name} with 100,000 lamports`);
 
   // Step 4: Check initial balances
-  console.log("\n📊 Step 4: Check Initial Balances");
+  console.log("\n[STEP] Step 4: Check Initial Balances");
   const payerBefore = await apiCall<{ balance: number }>(`/agents/${payer.id}/balance`);
   const providerBefore = await apiCall<{ pendingBalance: number }>(`/agents/${provider.id}/pending`);
   console.log(`   Payer balance:    ${payerBefore.balance.toLocaleString()} lamports`);
   console.log(`   Provider pending: ${providerBefore.pendingBalance.toLocaleString()} lamports`);
 
   // Step 5: Get pricing quote
-  console.log("\n💵 Step 5: Get Pricing Quote");
+  console.log("\n[STEP] Step 5: Get Pricing Quote");
   const tokensToUse = 5000; // 5000 tokens
   const quote = await apiCall<{ cost: number; breakdown: any }>("/pricing/quote", {
     method: "POST",
@@ -111,7 +111,7 @@ async function main() {
   console.log(`   Formula: ceil(${tokensToUse}/1000) × ${quote.breakdown.ratePerThousand} = ${quote.cost}`);
 
   // Step 6: Execute paid tool call
-  console.log("\n⚡ Step 6: Execute Paid Tool Call");
+  console.log("\n[STEP] Step 6: Execute Paid Tool Call");
   const toolCall = await apiCall<ToolCallResult>("/meter/log", {
     method: "POST",
     headers: {
@@ -124,11 +124,11 @@ async function main() {
       tokensUsed: tokensToUse,
     }),
   });
-  console.log(`   ✅ Tool call executed!`);
+  console.log(`   [OK] Tool call executed!`);
   console.log(`   Cost charged: ${toolCall.costLamports.toLocaleString()} lamports`);
 
   // Step 7: Check final balances
-  console.log("\n📊 Step 7: Check Final Balances");
+  console.log("\n[STEP] Step 7: Check Final Balances");
   const payerAfter = await apiCall<{ balance: number }>(`/agents/${payer.id}/balance`);
   const providerAfter = await apiCall<{ pendingBalance: number }>(`/agents/${provider.id}/pending`);
   console.log(`   Payer balance:    ${payerAfter.balance.toLocaleString()} lamports (was ${payerBefore.balance.toLocaleString()})`);
@@ -141,26 +141,26 @@ async function main() {
   console.log(`   Provider earned: ${providerDiff.toLocaleString()} lamports`);
 
   // Step 8: Show settlement info
-  console.log("\n🏦 Step 8: Settlement Info");
+  console.log("\n[STEP] Step 8: Settlement Info");
   const MIN_PAYOUT = 10000; // lamports
   const PLATFORM_FEE = 0.05; // 5%
   const currentPending = providerAfter.pendingBalance;
   const needsMore = MIN_PAYOUT - currentPending;
   
   if (currentPending >= MIN_PAYOUT) {
-    console.log(`   ✅ Provider eligible for auto-settlement!`);
+    console.log(`   [OK] Provider eligible for auto-settlement!`);
     const payout = Math.floor(currentPending * (1 - PLATFORM_FEE));
     const fee = currentPending - payout;
     console.log(`   Payout: ${payout.toLocaleString()} lamports`);
     console.log(`   Platform fee (5%): ${fee.toLocaleString()} lamports`);
   } else {
-    console.log(`   ⏳ Provider needs ${needsMore.toLocaleString()} more lamports for auto-settlement`);
+    console.log(`   [PENDING] Provider needs ${needsMore.toLocaleString()} more lamports for auto-settlement`);
     console.log(`   (Threshold: ${MIN_PAYOUT.toLocaleString()} lamports)`);
   }
 
   // Summary
   console.log("\n" + "=".repeat(50));
-  console.log("✅ Quickstart Complete!");
+  console.log("[DONE] Quickstart Complete!");
   console.log("\nKey Takeaways:");
   console.log("• Pricing is deterministic: ceil(tokens/1000) × rate");
   console.log("• Platform takes 5% fee on settlement");
@@ -173,6 +173,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("❌ Error:", err.message);
+  console.error("[ERROR] Error:", err.message);
   process.exit(1);
 });
