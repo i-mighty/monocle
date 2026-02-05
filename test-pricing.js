@@ -18,9 +18,9 @@ const headers = {
 };
 
 async function runTests() {
-  console.log("🧪 AgentPay Pricing Test Suite\n");
-  console.log(`📍 Base URL: ${BASE_URL}`);
-  console.log(`🔑 API Key: ${API_KEY.substring(0, 10)}...\n`);
+  console.log("[TEST] AgentPay Pricing Test Suite\n");
+  console.log(`Base URL: ${BASE_URL}`);
+  console.log(`API Key: ${API_KEY.substring(0, 10)}...\n`);
 
   let passed = 0;
   let failed = 0;
@@ -33,13 +33,13 @@ async function runTests() {
     const data = await res.json();
     console.log("  Constants:", JSON.stringify(data, null, 2));
     if (data.minCostLamports && data.maxTokensPerCall) {
-      console.log("  ✅ PASSED");
+      console.log("  [PASS] PASSED");
       passed++;
     } else {
       throw new Error("Missing expected fields");
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -59,13 +59,13 @@ async function runTests() {
     console.log("  Result:", JSON.stringify(data, null, 2));
     // Expected: ceil(1500/1000) * 1000 = 2 * 1000 = 2000 lamports
     if (data.costLamports === 2000) {
-      console.log("  ✅ PASSED (cost = 2000 lamports)");
+      console.log("  [PASS] PASSED (cost = 2000 lamports)");
       passed++;
     } else {
       throw new Error(`Expected 2000, got ${data.costLamports}`);
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -86,13 +86,13 @@ async function runTests() {
     const data = await res.json();
     console.log("  Registered:", JSON.stringify(data, null, 2));
     if (data.agentId === callerAgentId && data.balanceLamports === 0) {
-      console.log("  ✅ PASSED");
+      console.log("  [PASS] PASSED");
       passed++;
     } else {
       throw new Error("Unexpected response");
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -113,13 +113,13 @@ async function runTests() {
     const data = await res.json();
     console.log("  Registered:", JSON.stringify(data, null, 2));
     if (data.agentId === calleeAgentId && data.ratePer1kTokens === 2000) {
-      console.log("  ✅ PASSED");
+      console.log("  [PASS] PASSED");
       passed++;
     } else {
       throw new Error("Unexpected response");
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -139,13 +139,13 @@ async function runTests() {
     console.log("  Quote:", JSON.stringify(data, null, 2));
     // ceil(1500/1000) * 2000 = 2 * 2000 = 4000 lamports
     if (data.costLamports === 4000) {
-      console.log("  ✅ PASSED (quoted cost = 4000 lamports)");
+      console.log("  [PASS] PASSED (quoted cost = 4000 lamports)");
       passed++;
     } else {
       throw new Error(`Expected 4000, got ${data.costLamports}`);
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -164,13 +164,13 @@ async function runTests() {
     const data = await res.json();
     console.log("  Topup result:", JSON.stringify(data, null, 2));
     if (data.newBalance === 50000) {
-      console.log("  ✅ PASSED");
+      console.log("  [PASS] PASSED");
       passed++;
     } else {
       throw new Error(`Expected balance 50000, got ${data.newBalance}`);
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -191,13 +191,13 @@ async function runTests() {
     const data = await res.json();
     console.log("  Execution result:", JSON.stringify(data, null, 2));
     if (data.costLamports === 4000) {
-      console.log("  ✅ PASSED (charged 4000 lamports)");
+      console.log("  [PASS] PASSED (charged 4000 lamports)");
       passed++;
     } else {
       throw new Error(`Expected cost 4000, got ${data.costLamports}`);
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -210,13 +210,13 @@ async function runTests() {
     console.log("  Caller state:", JSON.stringify(data, null, 2));
     // 50000 - 4000 = 46000
     if (data.balanceLamports === 46000) {
-      console.log("  ✅ PASSED (balance = 46000 lamports)");
+      console.log("  [PASS] PASSED (balance = 46000 lamports)");
       passed++;
     } else {
       throw new Error(`Expected 46000, got ${data.balanceLamports}`);
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -228,13 +228,13 @@ async function runTests() {
     const data = await res.json();
     console.log("  Callee state:", JSON.stringify(data, null, 2));
     if (data.pendingLamports === 4000) {
-      console.log("  ✅ PASSED (pending = 4000 lamports)");
+      console.log("  [PASS] PASSED (pending = 4000 lamports)");
       passed++;
     } else {
       throw new Error(`Expected 4000, got ${data.pendingLamports}`);
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -247,13 +247,13 @@ async function runTests() {
     console.log("  Ledger entries:", JSON.stringify(data, null, 2));
     const entry = data.find((e) => e.tool_name === "test-tool");
     if (entry && entry.cost_lamports === 4000 && entry.rate_per_1k_tokens === 2000) {
-      console.log("  ✅ PASSED (rate frozen at execution time)");
+      console.log("  [PASS] PASSED (rate frozen at execution time)");
       passed++;
     } else {
       throw new Error("Ledger entry missing or incorrect");
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -275,13 +275,13 @@ async function runTests() {
     const data = await res.json();
     console.log("  Response:", JSON.stringify(data, null, 2));
     if (res.status === 402 && data.error.includes("Insufficient balance")) {
-      console.log("  ✅ PASSED (correctly rejected with 402)");
+      console.log("  [PASS] PASSED (correctly rejected with 402)");
       passed++;
     } else {
       throw new Error("Should have been rejected");
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -300,13 +300,13 @@ async function runTests() {
     const data = await res.json();
     console.log("  Result:", JSON.stringify(data, null, 2));
     if (data.costLamports === 100 && data.breakdown.minimumApplied === true) {
-      console.log("  ✅ PASSED (minimum 100 lamports enforced)");
+      console.log("  [PASS] PASSED (minimum 100 lamports enforced)");
       passed++;
     } else {
       throw new Error("Minimum cost not enforced");
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -323,13 +323,13 @@ async function runTests() {
     console.log("  Estimate:", JSON.stringify(data, null, 2));
     // 5% fee: 10000 * 0.05 = 500
     if (data.platformFeeLamports === 500 && data.netPayoutLamports === 9500) {
-      console.log("  ✅ PASSED (5% platform fee = 500 lamports)");
+      console.log("  [PASS] PASSED (5% platform fee = 500 lamports)");
       passed++;
     } else {
       throw new Error("Settlement estimate incorrect");
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
@@ -341,29 +341,29 @@ async function runTests() {
     const data = await res.json();
     console.log("  Metrics:", JSON.stringify(data, null, 2));
     if (data.usage && data.usage.totalSpend === 4000) {
-      console.log("  ✅ PASSED");
+      console.log("  [PASS] PASSED");
       passed++;
     } else {
       throw new Error("Metrics incorrect");
     }
   } catch (err) {
-    console.log("  ❌ FAILED:", err?.message || err);
+    console.log("  [FAIL] FAILED:", err?.message || err);
     failed++;
   }
 
   // Summary
   console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log("TEST SUMMARY");
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`  ✅ Passed: ${passed}`);
-  console.log(`  ❌ Failed: ${failed}`);
-  console.log(`  📊 Total:  ${passed + failed}`);
+  console.log("-".repeat(60));
+  console.log(`  [PASS] Passed: ${passed}`);
+  console.log(`  [FAIL] Failed: ${failed}`);
+  console.log(`  [TOTAL] Total:  ${passed + failed}`);
   console.log("");
 
   if (failed === 0) {
-    console.log("🎉 All pricing tests passed!");
+    console.log("[DONE] All pricing tests passed!");
   } else {
-    console.log("⚠️  Some tests failed. Check logs above.");
+    console.log("[WARN] Some tests failed. Check logs above.");
     process.exit(1);
   }
 }

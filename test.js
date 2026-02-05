@@ -21,12 +21,12 @@ async function run() {
       dob: "1990-01-01",
       idNumber: "ID123",
     });
-    console.log("✅ Identity verified");
+    console.log("[OK] Identity verified");
 
     // Test 2: Log tool call
     console.log("Testing meter logging...");
     await client.logToolCall("agent_123", "summary", 42, { text: "Hello" });
-    console.log("✅ Meter logged");
+    console.log("[OK] Meter logged");
 
     // Test 3: Send payment (will fail without valid wallets, but tests connectivity)
     console.log("Testing payment endpoint...");
@@ -36,18 +36,18 @@ async function run() {
         "RECEIVER_WALLET_PUBKEY",
         10_000
       );
-      console.log("✅ Payment sent", signature);
+      console.log("[OK] Payment sent", signature);
     } catch (err) {
       // Expected to fail with invalid pubkeys or missing payer
       console.log(
-        "⚠️  Payment endpoint responded (error expected with invalid keys):",
+        "[WARN] Payment endpoint responded (error expected with invalid keys):",
         err?.message || String(err)
       );
     }
 
-    console.log("\n✨ All tests completed!");
+    console.log("\n[DONE] All tests completed!");
   } catch (err) {
-    console.error("❌ Test failed:", err);
+    console.error("[FAIL] Test failed:", err);
     process.exit(1);
   }
 }

@@ -2,13 +2,13 @@
  * COMPREHENSIVE INTEGRATION TEST: AgentPay Pricing System
  * 
  * Tests:
- * 1. ✅ Pricing determinism (unit level)
- * 2. ✅ SDK integration with new pricing API
- * 3. ✅ Identity verification + agent registration
- * 4. ✅ Tool execution with pricing enforcement
- * 5. ✅ Balance tracking and settlement
- * 6. ✅ Analytics queries on new schema
- * 7. ✅ Error handling (insufficient balance, etc)
+ * 1. [x] Pricing determinism (unit level)
+ * 2. [x] SDK integration with new pricing API
+ * 3. [x] Identity verification + agent registration
+ * 4. [x] Tool execution with pricing enforcement
+ * 5. [x] Balance tracking and settlement
+ * 6. [x] Analytics queries on new schema
+ * 7. [x] Error handling (insufficient balance, etc)
  * 
  * Run with:
  *   npm run build (in agent-sdk)
@@ -29,16 +29,16 @@ let testsFailed = 0;
 // ============================================
 
 function describe(name) {
-  console.log(`\n📋 ${name}`);
+  console.log(`\n[SUITE] ${name}`);
 }
 
 async function test(name, fn) {
   try {
     await fn();
-    console.log(`  ✅ ${name}`);
+    console.log(`  [PASS] ${name}`);
     testsPassed++;
   } catch (error) {
-    console.error(`  ❌ ${name}`);
+    console.error(`  [FAIL] ${name}`);
     console.error(`     Error: ${error.message}`);
     testsFailed++;
   }
@@ -89,8 +89,8 @@ const AGENT_B = {
 // ============================================
 
 async function runTests() {
-  console.log("🚀 AgentPay Pricing System - Integration Tests");
-  console.log("═".repeat(60));
+  console.log("[START] AgentPay Pricing System - Integration Tests");
+  console.log("=".repeat(60));
 
   // ============================================
   // Test Suite 1: SDK + Identity Integration
@@ -368,18 +368,18 @@ async function runTests() {
   // TEST SUMMARY
   // ============================================
 
-  console.log("\n" + "═".repeat(60));
-  console.log(`✅ Tests Passed: ${testsPassed}`);
-  console.log(`❌ Tests Failed: ${testsFailed}`);
-  console.log(`📊 Total Tests: ${testsPassed + testsFailed}`);
-  console.log("═".repeat(60));
+  console.log("\n" + "=".repeat(60));
+  console.log(`[PASS] Tests Passed: ${testsPassed}`);
+  console.log(`[FAIL] Tests Failed: ${testsFailed}`);
+  console.log(`[TOTAL] Total Tests: ${testsPassed + testsFailed}`);
+  console.log("=".repeat(60));
 
   if (testsFailed > 0) {
-    console.log("\n⚠️  Some tests failed. Check logs above.");
+    console.log("\n[WARN] Some tests failed. Check logs above.");
     process.exit(1);
   } else {
     console.log(
-      "\n✨ ALL TESTS PASSED! AgentPay pricing system is fully operational. ✨\n"
+      "\n[DONE] ALL TESTS PASSED! AgentPay pricing system is fully operational.\n"
     );
     process.exit(0);
   }
