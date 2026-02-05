@@ -1,0 +1,482 @@
+/**
+ * Drizzle ORM Schema Definition
+ *
+ * This schema supports:
+ * - Agent registration & balance tracking
+ * - Per-tool pricing (each tool has its own rate)
+ * - Immutable tool usage ledger
+ * - Settlement tracking
+ * - Platform revenue accounting
+ */
+
+import {
+  pgTable,
+  text,
+  bigint,
+  integer,
+  uuid,
+  timestamp,
+  uniqueIndex,
+  index,
+  check,
+} from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
+
+// =============================================================================
+// AGENTS: Agent registration & balance tracking
+// =============================================================================
+export const agents = pgTable(
+  "agents",
+  {
+    id: text("id").primaryKey(),
+    name: text("name"),
+    publicKey: text("public_key").unique(),
+
+    // Default rate (used when tool doesn't specify its own rate)
+    defaultRatePer1kTokens: bigint("default_rate_per_1k_tokens", { mode: "number" })
+      .notNull()
+      .default(1000),
+
+    // Balances: integer-only (lamports), no floating-point
+    balanceLamports: bigint("balance_lamports", { mode: "number" })
+      .notNull()
+      .default(0),
+    pendingLamports: bigint("pending_lamports", { mode: "number" })
+      .notNull()
+      .default(0),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  }
+);
+
+// =============================================================================
+// TOOLS: Per-tool pricing configuration
+// =============================================================================
+export const tools = pgTable(
+  "tools",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+
+    // Tool identification
+    name: text("name").notNull(),
+    description: text("description"),
+
+    // Per-tool pricing (overrides agent default)
+    ratePer1kTokens: bigint("rate_per_1k_tokens", { mode: "number" }).notNull(),
+
+    // Tool metadata
+    isActive: text("is_active").notNull().default("true"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    // Unique constraint: one tool name per agent
+    agentToolUnique: uniqueIndex("tools_agent_tool_unique").on(
+      table.agentId,
+      table.name
+    ),
+    agentIdIdx: index("tools_agent_id_idx").on(table.agentId),
+  })
+);
+
+// =============================================================================
+// API_KEYS: Authentication
+// =============================================================================
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    developerId: text("developer_id").notNull(),
+    key: text("key").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    keyIdx: index("api_keys_key_idx").on(table.key),
+  })
+);
+
+// =============================================================================
+// TOOL_USAGE: Immutable execution ledger (append-only, auditable)
+// =============================================================================
+export const toolUsage = pgTable(
+  "tool_usage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    callerAgentId: text("caller_agent_id").notNull(),
+    calleeAgentId: text("callee_agent_id").notNull(),
+
+    // Tool reference (nullable for backward compatibility)
+    toolId: uuid("tool_id").references(() => tools.id),
+    toolName: text("tool_name").notNull(),
+    tokensUsed: integer("tokens_used").notNull(),
+
+    // Price frozen at execution time (prevents retroactive disputes)
+    ratePer1kTokens: bigint("rate_per_1k_tokens", { mode: "number" }).notNull(),
+    costLamports: bigint("cost_lamports", { mode: "number" }).notNull(),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    callerIdx: index("tool_usage_caller_idx").on(table.callerAgentId),
+    calleeIdx: index("tool_usage_callee_idx").on(table.calleeAgentId),
+    createdAtIdx: index("tool_usage_created_at_idx").on(table.createdAt),
+    toolIdIdx: index("tool_usage_tool_id_idx").on(table.toolId),
+  })
+);
+
+// =============================================================================
+// SETTLEMENTS: On-chain transaction tracking
+// =============================================================================
+export const settlements = pgTable(
+  "settlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    fromAgentId: text("from_agent_id").notNull(),
+    toAgentId: text("to_agent_id").notNull(),
+
+    // Amounts in lamports (integer-only)
+    grossLamports: bigint("gross_lamports", { mode: "number" }).notNull(),
+    platformFeeLamports: bigint("platform_fee_lamports", { mode: "number" }).notNull(),
+    netLamports: bigint("net_lamports", { mode: "number" }).notNull(),
+
+    // Solana transaction tracking
+    txSignature: text("tx_signature").unique(),
+    status: text("status").notNull().default("pending"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    fromAgentIdx: index("settlements_from_agent_idx").on(table.fromAgentId),
+    toAgentIdx: index("settlements_to_agent_idx").on(table.toAgentId),
+    statusIdx: index("settlements_status_idx").on(table.status),
+    createdAtIdx: index("settlements_created_at_idx").on(table.createdAt),
+  })
+);
+
+// =============================================================================
+// PLATFORM_REVENUE: Fee accounting
+// =============================================================================
+export const platformRevenue = pgTable(
+  "platform_revenue",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    settlementId: uuid("settlement_id")
+      .notNull()
+      .references(() => settlements.id),
+    feeLamports: bigint("fee_lamports", { mode: "number" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    settlementIdx: index("platform_revenue_settlement_idx").on(table.settlementId),
+    createdAtIdx: index("platform_revenue_created_at_idx").on(table.createdAt),
+  })
+);
+
+// =============================================================================
+// X402_PAYMENTS: HTTP 402 payment tracking
+// =============================================================================
+export const x402Payments = pgTable(
+  "x402_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    txSignature: text("tx_signature").notNull().unique(),
+    nonce: text("nonce").notNull().unique(),
+
+    payerWallet: text("payer_wallet").notNull(),
+    recipientWallet: text("recipient_wallet").notNull(),
+
+    amountLamports: bigint("amount_lamports", { mode: "number" }).notNull(),
+
+    resourceId: text("resource_id"),
+    executionId: uuid("execution_id").references(() => toolUsage.id),
+
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    network: text("network").notNull().default("solana-devnet"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    signatureIdx: index("x402_payments_signature_idx").on(table.txSignature),
+    nonceIdx: index("x402_payments_nonce_idx").on(table.nonce),
+    payerIdx: index("x402_payments_payer_idx").on(table.payerWallet),
+    createdAtIdx: index("x402_payments_created_at_idx").on(table.createdAt),
+  })
+);
+
+// =============================================================================
+// RELATIONS: Drizzle relation definitions
+// =============================================================================
+export const agentsRelations = relations(agents, ({ many }) => ({
+  tools: many(tools),
+  toolUsageAsCaller: many(toolUsage, { relationName: "caller" }),
+  toolUsageAsCallee: many(toolUsage, { relationName: "callee" }),
+  // Messaging relations
+  conversationsInitiated: many(conversations, { relationName: "conversationsInitiated" }),
+  conversationsReceived: many(conversations, { relationName: "conversationsReceived" }),
+  messagesSent: many(messages),
+  blocking: many(agentBlocks, { relationName: "blocking" }),
+  blockedBy: many(agentBlocks, { relationName: "blockedBy" }),
+  following: many(agentFollows, { relationName: "following" }),
+  followers: many(agentFollows, { relationName: "followers" }),
+}));
+
+export const toolsRelations = relations(tools, ({ one, many }) => ({
+  agent: one(agents, {
+    fields: [tools.agentId],
+    references: [agents.id],
+  }),
+  usages: many(toolUsage),
+}));
+
+export const toolUsageRelations = relations(toolUsage, ({ one }) => ({
+  caller: one(agents, {
+    fields: [toolUsage.callerAgentId],
+    references: [agents.id],
+    relationName: "caller",
+  }),
+  callee: one(agents, {
+    fields: [toolUsage.calleeAgentId],
+    references: [agents.id],
+    relationName: "callee",
+  }),
+  tool: one(tools, {
+    fields: [toolUsage.toolId],
+    references: [tools.id],
+  }),
+}));
+
+export const settlementsRelations = relations(settlements, ({ many }) => ({
+  platformRevenue: many(platformRevenue),
+}));
+
+export const platformRevenueRelations = relations(platformRevenue, ({ one }) => ({
+  settlement: one(settlements, {
+    fields: [platformRevenue.settlementId],
+    references: [settlements.id],
+  }),
+}));
+
+// =============================================================================
+// CONVERSATIONS: Consent-based agent-to-agent messaging
+// =============================================================================
+export const conversations = pgTable(
+  "conversations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // Participants
+    initiatorAgentId: text("initiator_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    receiverAgentId: text("receiver_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+
+    // Consent workflow: pending → approved | rejected | blocked
+    status: text("status").notNull().default("pending"),
+
+    // Initial request message (shown to receiver before approval)
+    requestMessage: text("request_message").notNull(),
+
+    // Metadata
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    initiatorUnreadCount: integer("initiator_unread_count").notNull().default(0),
+    receiverUnreadCount: integer("receiver_unread_count").notNull().default(0),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    // One conversation per agent pair
+    agentPairUnique: uniqueIndex("conversations_agent_pair_unique").on(
+      table.initiatorAgentId,
+      table.receiverAgentId
+    ),
+    initiatorIdx: index("conversations_initiator_idx").on(table.initiatorAgentId),
+    receiverIdx: index("conversations_receiver_idx").on(table.receiverAgentId),
+    statusIdx: index("conversations_status_idx").on(table.status),
+    lastMessageIdx: index("conversations_last_message_idx").on(table.lastMessageAt),
+  })
+);
+
+// =============================================================================
+// MESSAGES: Private messages within conversations
+// =============================================================================
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+
+    senderAgentId: text("sender_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+
+    // Message content
+    content: text("content").notNull(),
+
+    // Optional: flag for messages that need human review
+    needsHumanInput: text("needs_human_input").notNull().default("false"),
+
+    // Read status
+    isRead: text("is_read").notNull().default("false"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    conversationIdx: index("messages_conversation_idx").on(table.conversationId),
+    senderIdx: index("messages_sender_idx").on(table.senderAgentId),
+    createdAtIdx: index("messages_created_at_idx").on(table.createdAt),
+  })
+);
+
+// =============================================================================
+// AGENT_BLOCKS: Track blocked agent pairs
+// =============================================================================
+export const agentBlocks = pgTable(
+  "agent_blocks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    blockerAgentId: text("blocker_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    blockedAgentId: text("blocked_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    blockPairUnique: uniqueIndex("agent_blocks_pair_unique").on(
+      table.blockerAgentId,
+      table.blockedAgentId
+    ),
+    blockerIdx: index("agent_blocks_blocker_idx").on(table.blockerAgentId),
+    blockedIdx: index("agent_blocks_blocked_idx").on(table.blockedAgentId),
+  })
+);
+
+// =============================================================================
+// AGENT_FOLLOWS: Social following for discovery
+// =============================================================================
+export const agentFollows = pgTable(
+  "agent_follows",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    followerAgentId: text("follower_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    followingAgentId: text("following_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    followPairUnique: uniqueIndex("agent_follows_pair_unique").on(
+      table.followerAgentId,
+      table.followingAgentId
+    ),
+    followerIdx: index("agent_follows_follower_idx").on(table.followerAgentId),
+    followingIdx: index("agent_follows_following_idx").on(table.followingAgentId),
+  })
+);
+
+// =============================================================================
+// RELATIONS: Messaging relations
+// =============================================================================
+export const conversationsRelations = relations(conversations, ({ one, many }) => ({
+  initiator: one(agents, {
+    fields: [conversations.initiatorAgentId],
+    references: [agents.id],
+    relationName: "conversationsInitiated",
+  }),
+  receiver: one(agents, {
+    fields: [conversations.receiverAgentId],
+    references: [agents.id],
+    relationName: "conversationsReceived",
+  }),
+  messages: many(messages),
+}));
+
+export const messagesRelations = relations(messages, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [messages.conversationId],
+    references: [conversations.id],
+  }),
+  sender: one(agents, {
+    fields: [messages.senderAgentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentBlocksRelations = relations(agentBlocks, ({ one }) => ({
+  blocker: one(agents, {
+    fields: [agentBlocks.blockerAgentId],
+    references: [agents.id],
+    relationName: "blocking",
+  }),
+  blocked: one(agents, {
+    fields: [agentBlocks.blockedAgentId],
+    references: [agents.id],
+    relationName: "blockedBy",
+  }),
+}));
+
+export const agentFollowsRelations = relations(agentFollows, ({ one }) => ({
+  follower: one(agents, {
+    fields: [agentFollows.followerAgentId],
+    references: [agents.id],
+    relationName: "following",
+  }),
+  following: one(agents, {
+    fields: [agentFollows.followingAgentId],
+    references: [agents.id],
+    relationName: "followers",
+  }),
+}));
+
+// =============================================================================
+// TYPE EXPORTS: TypeScript types for the schema
+// =============================================================================
+export type Agent = typeof agents.$inferSelect;
+export type NewAgent = typeof agents.$inferInsert;
+
+export type Tool = typeof tools.$inferSelect;
+export type NewTool = typeof tools.$inferInsert;
+
+export type ToolUsage = typeof toolUsage.$inferSelect;
+export type NewToolUsage = typeof toolUsage.$inferInsert;
+
+export type Settlement = typeof settlements.$inferSelect;
+export type NewSettlement = typeof settlements.$inferInsert;
+
+export type PlatformRevenue = typeof platformRevenue.$inferSelect;
+export type NewPlatformRevenue = typeof platformRevenue.$inferInsert;
+
+export type X402Payment = typeof x402Payments.$inferSelect;
+export type NewX402Payment = typeof x402Payments.$inferInsert;
+
+export type Conversation = typeof conversations.$inferSelect;
+export type NewConversation = typeof conversations.$inferInsert;
+
+export type Message = typeof messages.$inferSelect;
+export type NewMessage = typeof messages.$inferInsert;
+
+export type AgentBlock = typeof agentBlocks.$inferSelect;
+export type NewAgentBlock = typeof agentBlocks.$inferInsert;
+
+export type AgentFollow = typeof agentFollows.$inferSelect;
+export type NewAgentFollow = typeof agentFollows.$inferInsert;
