@@ -25,7 +25,7 @@ function log(message, color = "reset") {
 
 function assert(condition, message) {
   if (!condition) {
-    log(`❌ ASSERTION FAILED: ${message}`, "red");
+    log(`[FAIL] ASSERTION FAILED: ${message}`, "red");
     throw new Error(message);
   }
 }
@@ -69,10 +69,10 @@ function runTests() {
 
     assert(cost1 === cost2 && cost2 === cost3, "Costs should be identical");
     assert(cost1 === 500, `Cost should be 500, got ${cost1}`);
-    log(`  ✅ Determinism verified: 500 tokens @ 1000 rate = 500 lamports (consistent)`, "green");
+    log(`  [PASS] Determinism verified: 500 tokens @ 1000 rate = 500 lamports (consistent)`, "green");
     passed++;
   } catch (err) {
-    log(`  ❌ Failed: ${err.message}`, "red");
+      log(`  [FAIL] Failed: ${err.message}`, "red");
     failed++;
   }
 
@@ -92,18 +92,18 @@ function runTests() {
     testCases.forEach(({ tokens, rate, expected, desc }) => {
       const cost = calculateCost(tokens, rate);
       assert(cost === expected, `${desc}: expected ${expected}, got ${cost}`);
-      log(`  ✓ ${desc} → ${cost} lamports`, "cyan");
+      log(`  [OK] ${desc} → ${cost} lamports`, "cyan");
     });
 
-    log(`  ✅ All rounding tests passed`, "green");
+    log(`  [PASS] All rounding tests passed`, "green");
     passed++;
   } catch (err) {
-    log(`  ❌ Failed: ${err.message}`, "red");
+    log(`  [FAIL] Failed: ${err.message}`, "red");
     failed++;
   }
 
   // Test 3: Minimum cost enforcement
-  log("\n[TEST 3] Minimum cost enforcement (spam prevention)", "blue");
+  log("\n[TEST3] Minimum cost enforcement (spam prevention)", "blue");
   try {
     // Even with 1 token at rate 1, should be MIN_COST
     const cost1 = calculateCost(1, 1);
@@ -113,16 +113,16 @@ function runTests() {
     const cost0 = calculateCost(0, 1000);
     assert(cost0 === PRICING_CONSTANTS.MIN_COST_LAMPORTS, `Zero tokens should be ${PRICING_CONSTANTS.MIN_COST_LAMPORTS}, got ${cost0}`);
 
-    log(`  ✓ Minimum cost: ${PRICING_CONSTANTS.MIN_COST_LAMPORTS} lamports enforced`, "cyan");
-    log(`  ✅ Minimum cost enforcement working`, "green");
+    log(`  [OK] Minimum cost: ${PRICING_CONSTANTS.MIN_COST_LAMPORTS} lamports enforced`, "cyan");
+    log(`  [PASS] Minimum cost enforcement working`, "green");
     passed++;
   } catch (err) {
-    log(`  ❌ Failed: ${err.message}`, "red");
+    log(`  [FAIL] Failed: ${err.message}`, "red");
     failed++;
   }
 
   // Test 4: Rate scaling
-  log("\n[TEST 4] Linear scaling with rate", "blue");
+  log("\n[TEST4] Linear scaling with rate", "blue");
   try {
     const tokens = 2000;
     const cost1k = calculateCost(tokens, 1000);
@@ -136,10 +136,10 @@ function runTests() {
     assert(cost2k === cost1k * 2, "Cost should scale linearly");
     assert(cost5k === cost1k * 5, "Cost should scale linearly");
 
-    log(`  ✓ 2000 tokens @ 1000 rate = ${cost1k} lamports`, "cyan");
-    log(`  ✓ 2000 tokens @ 2000 rate = ${cost2k} lamports (2x)`, "cyan");
-    log(`  ✓ 2000 tokens @ 5000 rate = ${cost5k} lamports (5x)`, "cyan");
-    log(`  ✅ Linear scaling verified`, "green");
+    log(`  [OK] 2000 tokens @ 1000 rate = ${cost1k} lamports`, "cyan");
+    log(`  [OK] 2000 tokens @ 2000 rate = ${cost2k} lamports (2x)`, "cyan");
+    log(`  [OK] 2000 tokens @ 5000 rate = ${cost5k} lamports (5x)`, "cyan");
+    log(`  [PASS] Linear scaling verified`, "green");
     passed++;
   } catch (err) {
     log(`  ❌ Failed: ${err.message}`, "red");
@@ -161,16 +161,16 @@ function runTests() {
       assert(Number.isInteger(cost), `Cost must be integer, got ${cost}`);
     });
 
-    log(`  ✓ All costs are integers (no floating-point)`, "cyan");
-    log(`  ✅ Integer-only enforcement verified`, "green");
+    log(`  [OK] All costs are integers (no floating-point)`, "cyan");
+    log(`  [PASS] Integer-only enforcement verified`, "green");
     passed++;
   } catch (err) {
-    log(`  ❌ Failed: ${err.message}`, "red");
+    log(`  [FAIL] Failed: ${err.message}`, "red");
     failed++;
   }
 
   // Test 6: Error handling
-  log("\n[TEST 6] Error handling (invalid inputs)", "blue");
+  log("\n[TEST6] Error handling (invalid inputs)", "blue");
   try {
     let errorCaught = false;
 
@@ -178,7 +178,7 @@ function runTests() {
       calculateCost(-1, 1000);
     } catch (err) {
       assert(err.message.includes("Tokens used cannot be negative"), "Should reject negative tokens");
-      log(`  ✓ Rejected negative tokens`, "cyan");
+      log(`  [OK] Rejected negative tokens`, "cyan");
       errorCaught = true;
     }
 
@@ -186,19 +186,19 @@ function runTests() {
       calculateCost(100, -1000);
     } catch (err) {
       assert(err.message.includes("Rate per 1k tokens cannot be negative"), "Should reject negative rate");
-      log(`  ✓ Rejected negative rate`, "cyan");
+      log(`  [OK] Rejected negative rate`, "cyan");
       errorCaught = true;
     }
 
-    log(`  ✅ Error handling verified`, "green");
+    log(`  [PASS] Error handling verified`, "green");
     passed++;
   } catch (err) {
-    log(`  ❌ Failed: ${err.message}`, "red");
+    log(`  [FAIL] Failed: ${err.message}`, "red");
     failed++;
   }
 
   // Test 7: Real-world scenarios
-  log("\n[TEST 7] Real-world pricing scenarios", "blue");
+  log("\n[TEST7] Real-world pricing scenarios", "blue");
   try {
     const scenarios = [
       {
@@ -230,18 +230,18 @@ function runTests() {
     scenarios.forEach(({ name, tokens, rate, expected }) => {
       const cost = calculateCost(tokens, rate);
       assert(cost === expected, `${name}: expected ${expected}, got ${cost}`);
-      log(`  ✓ ${name} = ${cost} lamports`, "cyan");
+      log(`  [OK] ${name} = ${cost} lamports`, "cyan");
     });
 
-    log(`  ✅ All real-world scenarios passed`, "green");
+    log(`  [PASS] All real-world scenarios passed`, "green");
     passed++;
   } catch (err) {
-    log(`  ❌ Failed: ${err.message}`, "red");
+    log(`  [FAIL] Failed: ${err.message}`, "red");
     failed++;
   }
 
   // Test 8: Settlement math
-  log("\n[TEST 8] Settlement & platform fee math", "blue");
+  log("\n[TEST8] Settlement & platform fee math", "blue");
   try {
     // Agent B has 100,000 lamports pending
     const pending = 100_000;
@@ -253,19 +253,19 @@ function runTests() {
     assert(payout === 95000, `Payout should be 95000, got ${payout}`);
     assert(platformFee + payout === pending, "Fee + payout should equal pending");
 
-    log(`  ✓ Pending: ${pending} lamports`, "cyan");
-    log(`  ✓ Platform fee (5%): ${platformFee} lamports`, "cyan");
-    log(`  ✓ Payout: ${payout} lamports`, "cyan");
-    log(`  ✓ Total: ${platformFee + payout} lamports`, "cyan");
-    log(`  ✅ Settlement math verified`, "green");
+    log(`  [OK] Pending: ${pending} lamports`, "cyan");
+    log(`  [OK] Platform fee (5%): ${platformFee} lamports`, "cyan");
+    log(`  [OK] Payout: ${payout} lamports`, "cyan");
+    log(`  [OK] Total: ${platformFee + payout} lamports`, "cyan");
+    log(`  [PASS] Settlement math verified`, "green");
     passed++;
   } catch (err) {
-    log(`  ❌ Failed: ${err.message}`, "red");
+    log(`  [FAIL] Failed: ${err.message}`, "red");
     failed++;
   }
 
   // Test 9: Balance enforcement logic
-  log("\n[TEST 9] Balance enforcement (no debt)", "blue");
+  log("\n[TEST9] Balance enforcement (no debt)", "blue");
   try {
     const agentBalance = 500;
     const callCost = 1000;
@@ -277,17 +277,17 @@ function runTests() {
     const canAfford2 = agentBalance2 >= callCost;
     assert(canAfford2, "Should be able to afford 1000 with 5000 balance");
 
-    log(`  ✓ Balance 500 lamports < Cost 1000: REJECTED`, "cyan");
-    log(`  ✓ Balance 5000 lamports ≥ Cost 1000: ALLOWED`, "cyan");
-    log(`  ✅ Balance enforcement logic verified`, "green");
+    log(`  [OK] Balance 500 lamports < Cost 1000: REJECTED`, "cyan");
+    log(`  [OK] Balance 5000 lamports >= Cost 1000: ALLOWED`, "cyan");
+    log(`  [PASS] Balance enforcement logic verified`, "green");
     passed++;
   } catch (err) {
-    log(`  ❌ Failed: ${err.message}`, "red");
+    log(`  [FAIL] Failed: ${err.message}`, "red");
     failed++;
   }
 
   // Test 10: Composability stacking
-  log("\n[TEST 10] Composability: Sequential call stacking", "blue");
+  log("\n[TEST10] Composability: Sequential call stacking", "blue");
   try {
     let balance = 10_000;
 
@@ -303,13 +303,13 @@ function runTests() {
 
     assert(balance > 0, "Agent should have remaining balance");
 
-    log(`  ✓ Call 1: 1000 tokens → 1000 lamports (balance: 9000)`, "cyan");
-    log(`  ✓ Call 2: 2000 tokens → 2000 lamports (balance: 7000)`, "cyan");
-    log(`  ✓ Call 3: 1000 tokens → 1000 lamports (balance: 6000)`, "cyan");
-    log(`  ✅ Composability stacking verified`, "green");
+    log(`  [OK] Call 1: 1000 tokens [ARR] 1000 lamports (balance: 9000)`, "cyan");
+    log(`  [OK] Call 2: 2000 tokens [ARR] 2000 lamports (balance: 7000)`, "cyan");
+    log(`  [OK] Call 3: 1000 tokens [ARR] 1000 lamports (balance: 6000)`, "cyan");
+    log(`  [PASS] Composability stacking verified`, "green");
     passed++;
   } catch (err) {
-    log(`  ❌ Failed: ${err.message}`, "red");
+    log(`  [FAIL] Failed: ${err.message}`, "red");
     failed++;
   }
 
@@ -319,11 +319,11 @@ function runTests() {
   log("=".repeat(70), "cyan");
 
   if (failed === 0) {
-    log(`\n✨ ALL TESTS PASSED ✨`, "green");
+    log(`\n[SUCCESS] ALL TESTS PASSED`, "green");
     log(`\nPricing system is deterministic, trustless, and ready for use!`, "green");
     return 0;
   } else {
-    log(`\n❌ ${failed} TEST(S) FAILED`, "red");
+    log(`\n[FAIL] ${failed} TEST(S) FAILED`, "red");
     return 1;
   }
 }
