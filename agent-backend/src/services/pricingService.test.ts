@@ -14,17 +14,17 @@ let testsFailed = 0;
 
 // Simple test runner
 function describe(suiteName: string, fn: () => void) {
-  console.log(`\n📋 ${suiteName}`);
+  console.log(`\n[SUITE] ${suiteName}`);
   fn();
 }
 
 function it(testName: string, fn: () => void) {
   try {
     fn();
-    console.log(`  ✅ ${testName}`);
+    console.log(`  [PASS] ${testName}`);
     testsPassed++;
   } catch (error) {
-    console.error(`  ❌ ${testName}`);
+    console.error(`  [FAIL] ${testName}`);
     console.error(`     Error: ${(error as Error).message}`);
     testsFailed++;
   }
@@ -285,13 +285,13 @@ describe("PRICING INTEGRATION SCENARIOS", () => {
 // ============================================
 
 console.log("\n" + "=".repeat(60));
-console.log(`✅ Tests Passed: ${testsPassed}`);
-console.log(`❌ Tests Failed: ${testsFailed}`);
-console.log(`📊 Total Tests: ${testsPassed + testsFailed}`);
+console.log(`[PASS] Tests Passed: ${testsPassed}`);
+console.log(`[FAIL] Tests Failed: ${testsFailed}`);
+console.log(`[TOTAL] Tests: ${testsPassed + testsFailed}`);
 console.log("=".repeat(60));
 
 if (testsFailed > 0) {
   process.exit(1);
 }
 
-console.log("\n✨ ALL TESTS PASSED ✨\n");
+console.log("\n[SUCCESS] ALL TESTS PASSED\n");
