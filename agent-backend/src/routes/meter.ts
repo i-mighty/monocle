@@ -1,8 +1,15 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuth";
 import { logToolCall, getToolCallHistory } from "../services/meterService";
-import { getAgentMetrics } from "../services/pricingService";
-import { query } from "../db/client";
+import { 
+  getAgentMetrics, 
+  registerTool, 
+  listAgentTools, 
+  updateToolPricing,
+  getToolPricing 
+} from "../services/pricingService";
+import { db, toolUsage } from "../db/client";
+import { desc } from "drizzle-orm";
 
 const router = Router();
 
@@ -108,16 +115,124 @@ router.get("/metrics/:agentId", apiKeyAuth, async (req, res) => {
  */
 router.get("/logs", apiKeyAuth, async (_req, res) => {
   try {
-    const { rows } = await query(
-      `select caller_agent_id, callee_agent_id, tool_name, tokens_used, cost_lamports, created_at
-       from tool_usage
-       order by created_at desc
-       limit 100`
-    );
+    if (!db) {
+      return res.json([]);
+    }
+    const rows = await db
+      .select()
+      .from(toolUsage)
+      .orderBy(desc(toolUsage.createdAt))
+      .limit(100);
     res.json(rows || []);
   } catch (error) {
     console.error("Error fetching logs:", error);
     res.json([]);
+  }
+});
+
+// =============================================================================
+// TOOL MANAGEMENT ROUTES (Per-Tool Pricing)
+// =============================================================================
+
+/**
+ * POST /meter/tools
+ *
+ * Register a new tool with its pricing.
+ *
+ * Request:
+ *   {
+ *     agentId: string,
+ *     name: string,
+ *     description?: string,
+ *     ratePer1kTokens: number
+ *   }
+ */
+router.post("/tools", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId, name, description, ratePer1kTokens } = req.body;
+
+    if (!agentId || !name || ratePer1kTokens === undefined) {
+      return res.status(400).json({
+        error: "Missing required fields: agentId, name, ratePer1kTokens",
+      });
+    }
+
+    const tool = await registerTool({
+      agentId,
+      name,
+      description,
+      ratePer1kTokens: Number(ratePer1kTokens),
+    });
+
+    res.status(201).json(tool);
+  } catch (error) {
+    const message = (error as Error).message;
+    const statusCode = message.includes("not found") ? 404 : 500;
+    res.status(statusCode).json({ error: message });
+  }
+});
+
+/**
+ * GET /meter/tools/:agentId
+ *
+ * List all tools for an agent with their pricing.
+ */
+router.get("/tools/:agentId", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const tools = await listAgentTools(agentId);
+    res.json(tools);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+/**
+ * GET /meter/tools/:agentId/:toolName/pricing
+ *
+ * Get pricing for a specific tool (or agent default if tool not registered).
+ */
+router.get("/tools/:agentId/:toolName/pricing", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId, toolName } = req.params;
+    const pricing = await getToolPricing(agentId, toolName);
+    res.json({
+      agentId,
+      toolName,
+      ...pricing,
+    });
+  } catch (error) {
+    const message = (error as Error).message;
+    const statusCode = message.includes("not found") ? 404 : 500;
+    res.status(statusCode).json({ error: message });
+  }
+});
+
+/**
+ * PATCH /meter/tools/:agentId/:toolName
+ *
+ * Update pricing for a specific tool.
+ *
+ * Request:
+ *   { ratePer1kTokens: number }
+ */
+router.patch("/tools/:agentId/:toolName", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId, toolName } = req.params;
+    const { ratePer1kTokens } = req.body;
+
+    if (ratePer1kTokens === undefined) {
+      return res.status(400).json({
+        error: "Missing required field: ratePer1kTokens",
+      });
+    }
+
+    const tool = await updateToolPricing(agentId, toolName, Number(ratePer1kTokens));
+    res.json(tool);
+  } catch (error) {
+    const message = (error as Error).message;
+    const statusCode = message.includes("not found") ? 404 : 500;
+    res.status(statusCode).json({ error: message });
   }
 });
 

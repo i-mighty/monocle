@@ -1,22 +1,30 @@
-import { onToolExecuted, calculateCost, PRICING_CONSTANTS } from "./pricingService";
-import { query } from "../db/client";
+import { 
+  onToolExecuted, 
+  calculateCost, 
+  PRICING_CONSTANTS, 
+  checkSettlementEligibility, 
+  settleAgent,
+  getAgent,
+  getToolUsageHistory 
+} from "./pricingService";
+import { sendMicropayment } from "./solanaService";
 
 /**
- * logToolCall: Execute tool with pricing enforcement
+ * logToolCall: Execute tool with per-tool pricing enforcement
  *
  * This is the **new** metering function that integrates AgentPay pricing.
- * It replaces the old mock cost system with deterministic, trustless pricing.
+ * Now supports per-tool pricing - each tool can have its own rate.
  *
  * Workflow:
- *   1. Call onToolExecuted (enforces balance, calculates cost, records ledger)
- *   2. Returns actual cost in lamports
+ *   1. Call onToolExecuted (gets tool-specific rate, enforces balance, records ledger)
+ *   2. Returns actual cost in lamports + rate used
  *   3. Fails atomically if balance insufficient
  *
  * @param callerId - Agent making the call
  * @param calleeId - Agent being called
  * @param toolName - Name of the tool
  * @param tokensUsed - Tokens consumed
- * @returns { callerId, calleeId, toolName, tokensUsed, costLamports }
+ * @returns { callerId, calleeId, toolName, tokensUsed, costLamports, ratePer1kTokens }
  * @throws Error if balance insufficient or transaction fails
  */
 export async function logToolCall(
@@ -33,21 +41,72 @@ export async function logToolCall(
       );
     }
 
-    // Execute pricing logic (atomic deduct/credit)
-    const costLamports = await onToolExecuted(callerId, calleeId, toolName, tokensUsed);
+    // Execute pricing logic (atomic deduct/credit) - now with per-tool pricing
+    const result = await onToolExecuted(callerId, calleeId, toolName, tokensUsed);
+
+    // AUTO-SETTLEMENT: Check if callee should be settled automatically
+    // This runs async (fire-and-forget) to not block the response
+    tryAutoSettle(calleeId).catch((err) => {
+      console.warn(`Auto-settle check failed for ${calleeId}:`, err.message);
+    });
 
     return {
       callerId,
       calleeId,
       toolName,
       tokensUsed,
-      costLamports,
+      costLamports: result.costLamports,
+      ratePer1kTokens: result.ratePer1kTokens,
+      toolId: result.toolId,
     };
   } catch (err) {
     console.error(
       `❌ Tool execution failed for ${callerId} → ${calleeId}: ${(err as Error).message}`
     );
     throw err;
+  }
+}
+
+/**
+ * tryAutoSettle: Automatically settle agent if eligible
+ * 
+ * Called after each tool execution. If the callee's pending balance
+ * exceeds MIN_PAYOUT_LAMPORTS, settlement is triggered automatically.
+ * 
+ * This ensures:
+ * - No manual settlement triggers needed
+ * - Agents get paid as soon as threshold is reached
+ * - Fully autonomous payment flow
+ */
+async function tryAutoSettle(agentId: string): Promise<void> {
+  try {
+    const eligible = await checkSettlementEligibility(agentId);
+    if (!eligible) return;
+
+    // Get agent's public key for settlement
+    const agent = await getAgent(agentId);
+    
+    if (!agent.publicKey) {
+      console.warn(`Auto-settle skipped: ${agentId} has no public_key`);
+      return;
+    }
+
+    const recipientPublicKey = agent.publicKey;
+
+    console.log(`🔄 Auto-settling ${agentId}...`);
+    
+    const settlement = await settleAgent(agentId, async (_recipientId, lamports) => {
+      return await sendMicropayment(
+        process.env.SOLANA_PAYER_PUBLIC_KEY || "",
+        recipientPublicKey,
+        lamports
+      );
+    });
+
+    console.log(`✅ Auto-settlement complete: ${agentId} received ${settlement.netLamports} lamports (tx: ${settlement.txSignature})`);
+  } catch (err) {
+    // Log but don't throw - auto-settle failure shouldn't break execution
+    console.error(`Auto-settle failed for ${agentId}:`, (err as Error).message);
   }
 }
 
@@ -61,16 +120,8 @@ export async function getToolCallHistory(
   asCallee: boolean = false
 ) {
   try {
-    const column = asCallee ? "callee_agent_id" : "caller_agent_id";
-    const { rows } = await query(
-      `select caller_agent_id, callee_agent_id, tool_name, tokens_used, cost_lamports, created_at
-       from tool_usage
-       where ${column} = $1
-       order by created_at desc
-       limit $2`,
-      [agentId, limit]
-    );
-    return rows || [];
+    const history = await getToolUsageHistory(agentId, limit, asCallee);
+    return history;
   } catch (err) {
     console.warn(
       "⚠️  Tool history fetch failed:",

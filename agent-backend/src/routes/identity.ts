@@ -1,18 +1,44 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuth";
 import { verifyIdentity } from "../services/identityService";
-import { query } from "../db/client";
+import { upsertAgent, registerTool, PRICING_CONSTANTS } from "../services/pricingService";
 
 const router = Router();
 
-// Register/verify identity and initialize agent with pricing
+/**
+ * POST /identity/verify-identity
+ *
+ * Register/verify identity and initialize agent with pricing.
+ * Now supports per-tool pricing - can register tools at the same time.
+ *
+ * Request:
+ *   {
+ *     agentId: string,
+ *     firstName: string,
+ *     lastName: string,
+ *     dob: string,
+ *     idNumber: string,
+ *     defaultRatePer1kTokens?: number,  // Agent's default rate
+ *     tools?: [{ name: string, ratePer1kTokens: number, description?: string }]
+ *   }
+ */
 router.post("/verify-identity", apiKeyAuth, async (req, res) => {
   try {
-    const { agentId, firstName, lastName, dob, idNumber, ratePer1kTokens } = req.body;
+    const { 
+      agentId, 
+      firstName, 
+      lastName, 
+      dob, 
+      idNumber, 
+      defaultRatePer1kTokens,
+      tools: toolsToRegister 
+    } = req.body;
 
     // Validate required fields
     if (!agentId || !firstName || !lastName || !dob || !idNumber) {
-      return res.status(400).json({ error: "Missing required fields: agentId, firstName, lastName, dob, idNumber" });
+      return res.status(400).json({ 
+        error: "Missing required fields: agentId, firstName, lastName, dob, idNumber" 
+      });
     }
 
     // Verify identity
@@ -27,28 +53,46 @@ router.post("/verify-identity", apiKeyAuth, async (req, res) => {
       return res.status(400).json({ error: "Identity verification failed" });
     }
 
-    // Register agent with pricing (default rate if not provided)
-    const rate = ratePer1kTokens || 1000; // Default: 1000 lamports per 1k tokens
+    // Register agent with pricing
+    const rate = defaultRatePer1kTokens || PRICING_CONSTANTS.DEFAULT_RATE_PER_1K_TOKENS;
     const initialBalance = 1_000_000; // 1M lamports initial balance for testing
 
     try {
-      // Upsert agent with pricing
-      await query(
-        `insert into agents (id, name, rate_per_1k_tokens, balance_lamports, pending_lamports, created_at)
-         values ($1, $2, $3, $4, $5, now())
-         on conflict (id) do update set
-           rate_per_1k_tokens = $3,
-           name = $2`,
-        [agentId, `${firstName} ${lastName}`, rate, initialBalance, 0]
-      );
+      // Upsert agent using Drizzle
+      const agent = await upsertAgent({
+        id: agentId,
+        name: `${firstName} ${lastName}`,
+        defaultRatePer1kTokens: rate,
+        balanceLamports: initialBalance,
+      });
+
+      // Register tools if provided
+      const registeredTools = [];
+      if (Array.isArray(toolsToRegister)) {
+        for (const tool of toolsToRegister) {
+          if (tool.name && tool.ratePer1kTokens !== undefined) {
+            const registered = await registerTool({
+              agentId,
+              name: tool.name,
+              description: tool.description,
+              ratePer1kTokens: tool.ratePer1kTokens,
+            });
+            registeredTools.push({
+              name: registered.name,
+              ratePer1kTokens: registered.ratePer1kTokens,
+            });
+          }
+        }
+      }
 
       res.json({
         status: "verified",
         agent: {
-          id: agentId,
-          name: `${firstName} ${lastName}`,
-          ratePer1kTokens: rate,
-          balanceLamports: initialBalance,
+          id: agent.id,
+          name: agent.name,
+          defaultRatePer1kTokens: agent.defaultRatePer1kTokens,
+          balanceLamports: agent.balanceLamports,
+          tools: registeredTools,
         },
         details: verificationResult.details,
       });
