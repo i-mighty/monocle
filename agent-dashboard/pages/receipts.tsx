@@ -18,6 +18,7 @@ export default function Receipts() {
         <div className="links">
           <Link href="/usage">Usage</Link>
           <Link href="/receipts">Receipts</Link>
+          <Link href="/messaging">Messaging</Link>
         </div>
       </header>
 
