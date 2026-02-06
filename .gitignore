@@ -3,5 +3,7 @@
 **/.env
 *.log
 dist/
+.next/
+**/.next/
 payer.json
 **/payer.json
