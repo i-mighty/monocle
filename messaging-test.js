@@ -6,6 +6,7 @@
  */
 
 const BASE_URL = process.env.API_URL || "http://localhost:3001";
+const API_KEY = process.env.AGENTPAY_API_KEY || "test_key_12345";
 
 // Test agents
 const AGENT_A = "test-agent-alice-" + Date.now();
@@ -13,9 +14,10 @@ const AGENT_B = "test-agent-bob-" + Date.now();
 
 let conversationId = null;
 
-async function request(method, path, body = null, agentId = null) {
+async function request(method, path, body = null, agentId = null, requiresApiKey = false) {
   const headers = { "Content-Type": "application/json" };
   if (agentId) headers["x-agent-id"] = agentId;
+  if (requiresApiKey) headers["x-api-key"] = API_KEY;
   
   const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
@@ -27,10 +29,10 @@ async function request(method, path, body = null, agentId = null) {
 async function test(name, fn) {
   try {
     await fn();
-    console.log(`✅ ${name}`);
+    console.log(`[PASS] ${name}`);
     return true;
   } catch (err) {
-    console.log(`❌ ${name}: ${err.message}`);
+    console.log(`[FAIL] ${name}: ${err.message}`);
     return false;
   }
 }
@@ -40,7 +42,7 @@ function assert(condition, msg) {
 }
 
 async function runTests() {
-  console.log("\n🔧 Messaging System Tests\n");
+  console.log("\n[TEST] Messaging System Tests\n");
   console.log(`Agent A: ${AGENT_A}`);
   console.log(`Agent B: ${AGENT_B}\n`);
   
@@ -49,25 +51,25 @@ async function runTests() {
 
   // 1. Register test agents
   if (await test("1. Register Agent A", async () => {
-    const res = await request("POST", "/identity/verify-identity", {
+    const res = await request("POST", "/verify-identity", {
       agentId: AGENT_A,
       firstName: "Alice",
       lastName: "Test",
       dob: "1990-01-01",
       idNumber: "A123456",
-    });
-    assert(res.agentId === AGENT_A || res.success, "Failed to register Agent A");
+    }, null, true);
+    assert(res.agent?.id === AGENT_A || res.status === "verified", "Failed to register Agent A");
   })) passed++; else failed++;
 
   if (await test("2. Register Agent B", async () => {
-    const res = await request("POST", "/identity/verify-identity", {
+    const res = await request("POST", "/verify-identity", {
       agentId: AGENT_B,
       firstName: "Bob",
       lastName: "Test",
       dob: "1990-01-02",
       idNumber: "B123456",
-    });
-    assert(res.agentId === AGENT_B || res.success, "Failed to register Agent B");
+    }, null, true);
+    assert(res.agent?.id === AGENT_B || res.status === "verified", "Failed to register Agent B");
   })) passed++; else failed++;
 
   // 2. Send chat request
