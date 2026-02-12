@@ -1,0 +1,1089 @@
+{
+  "agents": {
+    "16815678-f9e0-4fd6-8508-93befdf2aaf4": {
+      "id": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "name": "Claude Code Agent",
+      "slug": "claude-code",
+      "builderId": "48f83e11-d19b-4026-98bc-c798f421f9b5",
+      "description": "Expert coding assistant for complex software development tasks. Handles code generation, debugging, refactoring, and code review with near-human accuracy.",
+      "version": "3.5.2",
+      "sourceUrl": "https://github.com/anthropic/claude-code",
+      "mcpEndpoint": "https://mcp.anthropic.com/claude-code",
+      "isVerified": true,
+      "verificationTier": "enterprise",
+      "status": "active",
+      "createdAt": 1765709020,
+      "updatedAt": 1770806620
+    },
+    "f399748a-f1e1-43b1-bbfe-61ea88ef100a": {
+      "id": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "name": "GPT DevOps",
+      "slug": "gpt-devops",
+      "builderId": "6b65c399-026d-48d9-9008-ad9069b6a86c",
+      "description": "Infrastructure automation and deployment specialist. Automates CI/CD pipelines, manages Kubernetes clusters, and handles cloud deployments.",
+      "version": "2.1.0",
+      "sourceUrl": "https://github.com/openai/gpt-devops",
+      "isVerified": true,
+      "verificationTier": "standard",
+      "status": "active",
+      "createdAt": 1767005020,
+      "updatedAt": 1770720220
+    },
+    "7dcba2e9-8088-42d6-8068-a432f7eda8c6": {
+      "id": "7dcba2e9-8088-42d6-8068-a432f7eda8c6",
+      "name": "DataMiner Pro",
+      "slug": "dataminer-pro",
+      "builderId": "9af1e8a0-351a-4a46-a7c4-c968839f4e2c",
+      "description": "Data analysis and visualization agent. Transforms raw data into actionable insights with automated reporting.",
+      "version": "1.4.0",
+      "isVerified": false,
+      "verificationTier": "basic",
+      "status": "active",
+      "createdAt": 1768301020,
+      "updatedAt": 1770461020
+    },
+    "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5": {
+      "id": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "name": "SecurityBot",
+      "slug": "securitybot",
+      "builderId": "ab0f22dd-0a9b-4495-b307-2aaabe7e1cd1",
+      "description": "Automated security auditing and vulnerability detection. Scans codebases for CVEs, misconfigurations, and security anti-patterns.",
+      "version": "4.0.0",
+      "sourceUrl": "https://github.com/agentforge/securitybot",
+      "isVerified": true,
+      "verificationTier": "enterprise",
+      "status": "active",
+      "createdAt": 1764413020,
+      "updatedAt": 1770806620
+    },
+    "55a0452d-d16a-443b-a63c-26233f9f845d": {
+      "id": "55a0452d-d16a-443b-a63c-26233f9f845d",
+      "name": "ContentWriter AI",
+      "slug": "contentwriter",
+      "builderId": "9af1e8a0-351a-4a46-a7c4-c968839f4e2c",
+      "description": "Technical documentation and content generation. Creates API docs, tutorials, and marketing copy.",
+      "version": "2.0.1",
+      "isVerified": false,
+      "verificationTier": "none",
+      "status": "active",
+      "createdAt": 1769165020,
+      "updatedAt": 1770633820
+    },
+    "1e7df897-f49c-4e1b-b3de-61a151014851": {
+      "id": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "name": "Claude Code Agent",
+      "slug": "claude-code",
+      "builderId": "6a857a50-f4ba-4465-8d96-60a8ac3a52d7",
+      "description": "Expert coding assistant for complex software development tasks. Handles code generation, debugging, refactoring, and code review with near-human accuracy.",
+      "version": "3.5.2",
+      "sourceUrl": "https://github.com/anthropic/claude-code",
+      "mcpEndpoint": "https://mcp.anthropic.com/claude-code",
+      "isVerified": true,
+      "verificationTier": "enterprise",
+      "status": "active",
+      "createdAt": 1765709286,
+      "updatedAt": 1770806886
+    },
+    "80a077a6-f3fe-4294-b20b-857cc4d41746": {
+      "id": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "name": "GPT DevOps",
+      "slug": "gpt-devops",
+      "builderId": "a93b7e9e-362b-416f-bc0f-8e30968c657c",
+      "description": "Infrastructure automation and deployment specialist. Automates CI/CD pipelines, manages Kubernetes clusters, and handles cloud deployments.",
+      "version": "2.1.0",
+      "sourceUrl": "https://github.com/openai/gpt-devops",
+      "isVerified": true,
+      "verificationTier": "standard",
+      "status": "active",
+      "createdAt": 1767005286,
+      "updatedAt": 1770720486
+    },
+    "99d22023-f126-420a-ba1e-2164ab486475": {
+      "id": "99d22023-f126-420a-ba1e-2164ab486475",
+      "name": "DataMiner Pro",
+      "slug": "dataminer-pro",
+      "builderId": "7a2ce8ab-02bc-4474-a6b2-8704467c1148",
+      "description": "Data analysis and visualization agent. Transforms raw data into actionable insights with automated reporting.",
+      "version": "1.4.0",
+      "isVerified": false,
+      "verificationTier": "basic",
+      "status": "active",
+      "createdAt": 1768301286,
+      "updatedAt": 1770461286
+    },
+    "1f4f1c89-7318-449e-8471-6491d2e795ee": {
+      "id": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "name": "SecurityBot",
+      "slug": "securitybot",
+      "builderId": "e6b91c97-6e21-45a6-88e0-b1cf5f5d1466",
+      "description": "Automated security auditing and vulnerability detection. Scans codebases for CVEs, misconfigurations, and security anti-patterns.",
+      "version": "4.0.0",
+      "sourceUrl": "https://github.com/agentforge/securitybot",
+      "isVerified": true,
+      "verificationTier": "enterprise",
+      "status": "active",
+      "createdAt": 1764413286,
+      "updatedAt": 1770806886
+    },
+    "cda7d19d-796b-431d-a175-d147698c7da7": {
+      "id": "cda7d19d-796b-431d-a175-d147698c7da7",
+      "name": "ContentWriter AI",
+      "slug": "contentwriter",
+      "builderId": "7a2ce8ab-02bc-4474-a6b2-8704467c1148",
+      "description": "Technical documentation and content generation. Creates API docs, tutorials, and marketing copy.",
+      "version": "2.0.1",
+      "isVerified": false,
+      "verificationTier": "none",
+      "status": "active",
+      "createdAt": 1769165286,
+      "updatedAt": 1770634086
+    }
+  },
+  "builders": {
+    "48f83e11-d19b-4026-98bc-c798f421f9b5": {
+      "id": "48f83e11-d19b-4026-98bc-c798f421f9b5",
+      "name": "Anthropic",
+      "slug": "anthropic",
+      "website": "https://anthropic.com",
+      "verified": true,
+      "createdAt": 1763117020
+    },
+    "6b65c399-026d-48d9-9008-ad9069b6a86c": {
+      "id": "6b65c399-026d-48d9-9008-ad9069b6a86c",
+      "name": "OpenAI",
+      "slug": "openai",
+      "website": "https://openai.com",
+      "verified": true,
+      "createdAt": 1763117020
+    },
+    "9af1e8a0-351a-4a46-a7c4-c968839f4e2c": {
+      "id": "9af1e8a0-351a-4a46-a7c4-c968839f4e2c",
+      "name": "Indie Labs",
+      "slug": "indie-labs",
+      "website": "https://indielabs.io",
+      "verified": false,
+      "createdAt": 1765709020
+    },
+    "ab0f22dd-0a9b-4495-b307-2aaabe7e1cd1": {
+      "id": "ab0f22dd-0a9b-4495-b307-2aaabe7e1cd1",
+      "name": "AgentForge",
+      "slug": "agentforge",
+      "website": "https://agentforge.dev",
+      "verified": true,
+      "createdAt": 1763981020
+    },
+    "6a857a50-f4ba-4465-8d96-60a8ac3a52d7": {
+      "id": "6a857a50-f4ba-4465-8d96-60a8ac3a52d7",
+      "name": "Anthropic",
+      "slug": "anthropic",
+      "website": "https://anthropic.com",
+      "verified": true,
+      "createdAt": 1763117286
+    },
+    "a93b7e9e-362b-416f-bc0f-8e30968c657c": {
+      "id": "a93b7e9e-362b-416f-bc0f-8e30968c657c",
+      "name": "OpenAI",
+      "slug": "openai",
+      "website": "https://openai.com",
+      "verified": true,
+      "createdAt": 1763117286
+    },
+    "7a2ce8ab-02bc-4474-a6b2-8704467c1148": {
+      "id": "7a2ce8ab-02bc-4474-a6b2-8704467c1148",
+      "name": "Indie Labs",
+      "slug": "indie-labs",
+      "website": "https://indielabs.io",
+      "verified": false,
+      "createdAt": 1765709286
+    },
+    "e6b91c97-6e21-45a6-88e0-b1cf5f5d1466": {
+      "id": "e6b91c97-6e21-45a6-88e0-b1cf5f5d1466",
+      "name": "AgentForge",
+      "slug": "agentforge",
+      "website": "https://agentforge.dev",
+      "verified": true,
+      "createdAt": 1763981286
+    }
+  },
+  "skills": {
+    "a5592764-2620-423e-b2fb-6fe85afe6cc8": {
+      "id": "a5592764-2620-423e-b2fb-6fe85afe6cc8",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "skillName": "code-generation",
+      "benchmarkName": "HumanEval",
+      "benchmarkScore": 92.3,
+      "benchmarkPercentile": 98,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1768301020
+    },
+    "16153bfc-51b0-4c06-ba45-2f59838dceb5": {
+      "id": "16153bfc-51b0-4c06-ba45-2f59838dceb5",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "skillName": "debugging",
+      "benchmarkName": "SWE-bench",
+      "benchmarkScore": 48.5,
+      "benchmarkPercentile": 95,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1768301020
+    },
+    "73fdbe5c-0509-4c8f-b16f-3273e8c6b1da": {
+      "id": "73fdbe5c-0509-4c8f-b16f-3273e8c6b1da",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "skillName": "code-review",
+      "benchmarkName": null,
+      "benchmarkScore": null,
+      "benchmarkPercentile": null,
+      "verified": false,
+      "selfReported": true
+    },
+    "e7470deb-1fde-4c91-87ec-277a5ebc74db": {
+      "id": "e7470deb-1fde-4c91-87ec-277a5ebc74db",
+      "agentId": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "skillName": "infrastructure",
+      "benchmarkName": "DevOps-Eval",
+      "benchmarkScore": 87,
+      "benchmarkPercentile": 90,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1768733020
+    },
+    "1acfddc5-6bd7-4859-b48a-ea40f1f27c13": {
+      "id": "1acfddc5-6bd7-4859-b48a-ea40f1f27c13",
+      "agentId": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "skillName": "kubernetes",
+      "benchmarkName": null,
+      "benchmarkScore": null,
+      "benchmarkPercentile": null,
+      "verified": false,
+      "selfReported": true
+    },
+    "5e4c2335-922f-481f-8d32-1fc0d4a2e820": {
+      "id": "5e4c2335-922f-481f-8d32-1fc0d4a2e820",
+      "agentId": "7dcba2e9-8088-42d6-8068-a432f7eda8c6",
+      "skillName": "data-analysis",
+      "benchmarkName": "TabBench",
+      "benchmarkScore": 76.2,
+      "benchmarkPercentile": 75,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1769165020
+    },
+    "cbb01a9f-cbbc-4084-88a8-e849148beec5": {
+      "id": "cbb01a9f-cbbc-4084-88a8-e849148beec5",
+      "agentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "skillName": "security-audit",
+      "benchmarkName": "SecEval",
+      "benchmarkScore": 94.1,
+      "benchmarkPercentile": 99,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1769597020
+    },
+    "65daa09a-b55f-4232-adc5-0f456e59c763": {
+      "id": "65daa09a-b55f-4232-adc5-0f456e59c763",
+      "agentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "skillName": "vulnerability-detection",
+      "benchmarkName": "CVE-Catch",
+      "benchmarkScore": 89.5,
+      "benchmarkPercentile": 96,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1769597020
+    },
+    "e0a3e6b6-9391-463d-8506-725862ab6037": {
+      "id": "e0a3e6b6-9391-463d-8506-725862ab6037",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "skillName": "code-generation",
+      "benchmarkName": "HumanEval",
+      "benchmarkScore": 92.3,
+      "benchmarkPercentile": 98,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1768301286
+    },
+    "8a9cdeb8-e1a0-4f8f-9912-eb1f4e4ac3ec": {
+      "id": "8a9cdeb8-e1a0-4f8f-9912-eb1f4e4ac3ec",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "skillName": "debugging",
+      "benchmarkName": "SWE-bench",
+      "benchmarkScore": 48.5,
+      "benchmarkPercentile": 95,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1768301286
+    },
+    "891768ab-7960-4444-bdc4-fde75b85f0c3": {
+      "id": "891768ab-7960-4444-bdc4-fde75b85f0c3",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "skillName": "code-review",
+      "benchmarkName": null,
+      "benchmarkScore": null,
+      "benchmarkPercentile": null,
+      "verified": false,
+      "selfReported": true
+    },
+    "ca77638a-f82a-4260-9e95-b5a8388587c5": {
+      "id": "ca77638a-f82a-4260-9e95-b5a8388587c5",
+      "agentId": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "skillName": "infrastructure",
+      "benchmarkName": "DevOps-Eval",
+      "benchmarkScore": 87,
+      "benchmarkPercentile": 90,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1768733286
+    },
+    "bb706bda-d888-476e-91e2-56ba2581788f": {
+      "id": "bb706bda-d888-476e-91e2-56ba2581788f",
+      "agentId": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "skillName": "kubernetes",
+      "benchmarkName": null,
+      "benchmarkScore": null,
+      "benchmarkPercentile": null,
+      "verified": false,
+      "selfReported": true
+    },
+    "aed43678-f5d5-43d0-b4b6-87993d5a6f42": {
+      "id": "aed43678-f5d5-43d0-b4b6-87993d5a6f42",
+      "agentId": "99d22023-f126-420a-ba1e-2164ab486475",
+      "skillName": "data-analysis",
+      "benchmarkName": "TabBench",
+      "benchmarkScore": 76.2,
+      "benchmarkPercentile": 75,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1769165286
+    },
+    "0ca19369-733a-4102-87ee-6ac1121e640a": {
+      "id": "0ca19369-733a-4102-87ee-6ac1121e640a",
+      "agentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "skillName": "security-audit",
+      "benchmarkName": "SecEval",
+      "benchmarkScore": 94.1,
+      "benchmarkPercentile": 99,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1769597286
+    },
+    "5ba89aa6-8073-464e-bded-04c855074786": {
+      "id": "5ba89aa6-8073-464e-bded-04c855074786",
+      "agentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "skillName": "vulnerability-detection",
+      "benchmarkName": "CVE-Catch",
+      "benchmarkScore": 89.5,
+      "benchmarkPercentile": 96,
+      "verified": true,
+      "selfReported": false,
+      "benchmarkDate": 1769597286
+    }
+  },
+  "metrics": {
+    "57b43998-6424-4710-96ad-9f6da7801688": {
+      "id": "57b43998-6424-4710-96ad-9f6da7801688",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "periodStart": 1768301020,
+      "periodEnd": 1770893020,
+      "deploymentCount": 15420,
+      "activeDeployments": 8932,
+      "totalTasksCompleted": 2847500,
+      "totalTasksFailed": 28475,
+      "uptimePercentage": 99.94,
+      "errorRate": 0.01,
+      "p50LatencyMs": 245,
+      "p95LatencyMs": 890
+    },
+    "0d522629-ae03-4ceb-9263-1fd2086791d9": {
+      "id": "0d522629-ae03-4ceb-9263-1fd2086791d9",
+      "agentId": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "periodStart": 1768301020,
+      "periodEnd": 1770893020,
+      "deploymentCount": 6750,
+      "activeDeployments": 3210,
+      "totalTasksCompleted": 892000,
+      "totalTasksFailed": 17840,
+      "uptimePercentage": 99.87,
+      "errorRate": 0.02,
+      "p50LatencyMs": 320,
+      "p95LatencyMs": 1200
+    },
+    "a7f26818-aa7a-4e40-8625-6aad3a98ca31": {
+      "id": "a7f26818-aa7a-4e40-8625-6aad3a98ca31",
+      "agentId": "7dcba2e9-8088-42d6-8068-a432f7eda8c6",
+      "periodStart": 1768301020,
+      "periodEnd": 1770893020,
+      "deploymentCount": 890,
+      "activeDeployments": 420,
+      "totalTasksCompleted": 45000,
+      "totalTasksFailed": 2250,
+      "uptimePercentage": 98.5,
+      "errorRate": 0.05,
+      "p50LatencyMs": 560,
+      "p95LatencyMs": 2100
+    },
+    "5719f225-9235-4be9-b88f-7b8e6720d1fb": {
+      "id": "5719f225-9235-4be9-b88f-7b8e6720d1fb",
+      "agentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "periodStart": 1768301020,
+      "periodEnd": 1770893020,
+      "deploymentCount": 3200,
+      "activeDeployments": 1850,
+      "totalTasksCompleted": 125000,
+      "totalTasksFailed": 1250,
+      "uptimePercentage": 99.99,
+      "errorRate": 0.01,
+      "p50LatencyMs": 180,
+      "p95LatencyMs": 450
+    },
+    "199aa3a5-3581-4954-8089-1d4aa6368b46": {
+      "id": "199aa3a5-3581-4954-8089-1d4aa6368b46",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "periodStart": 1768301286,
+      "periodEnd": 1770893286,
+      "deploymentCount": 15420,
+      "activeDeployments": 8932,
+      "totalTasksCompleted": 2847500,
+      "totalTasksFailed": 28475,
+      "uptimePercentage": 99.94,
+      "errorRate": 0.01,
+      "p50LatencyMs": 245,
+      "p95LatencyMs": 890
+    },
+    "c73c7975-d056-487d-b55b-9176dd771f7c": {
+      "id": "c73c7975-d056-487d-b55b-9176dd771f7c",
+      "agentId": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "periodStart": 1768301286,
+      "periodEnd": 1770893286,
+      "deploymentCount": 6750,
+      "activeDeployments": 3210,
+      "totalTasksCompleted": 892000,
+      "totalTasksFailed": 17840,
+      "uptimePercentage": 99.87,
+      "errorRate": 0.02,
+      "p50LatencyMs": 320,
+      "p95LatencyMs": 1200
+    },
+    "989799e1-b85b-4b9c-8364-e01018399dc2": {
+      "id": "989799e1-b85b-4b9c-8364-e01018399dc2",
+      "agentId": "99d22023-f126-420a-ba1e-2164ab486475",
+      "periodStart": 1768301286,
+      "periodEnd": 1770893286,
+      "deploymentCount": 890,
+      "activeDeployments": 420,
+      "totalTasksCompleted": 45000,
+      "totalTasksFailed": 2250,
+      "uptimePercentage": 98.5,
+      "errorRate": 0.05,
+      "p50LatencyMs": 560,
+      "p95LatencyMs": 2100
+    },
+    "234368bf-c50c-4bb1-86d6-779757367056": {
+      "id": "234368bf-c50c-4bb1-86d6-779757367056",
+      "agentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "periodStart": 1768301286,
+      "periodEnd": 1770893286,
+      "deploymentCount": 3200,
+      "activeDeployments": 1850,
+      "totalTasksCompleted": 125000,
+      "totalTasksFailed": 1250,
+      "uptimePercentage": 99.99,
+      "errorRate": 0.01,
+      "p50LatencyMs": 180,
+      "p95LatencyMs": 450
+    }
+  },
+  "reviews": {
+    "1a05845c-0ccd-44a6-bbc7-cb59cd73c138": {
+      "id": "1a05845c-0ccd-44a6-bbc7-cb59cd73c138",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "reviewerId": "137d4940-dd1a-4275-8422-fdbbfc703c45",
+      "reviewerName": "Jane D.",
+      "reviewerCompany": "TechCorp",
+      "rating": 5,
+      "title": "Best coding assistant ever",
+      "content": "Completely transformed our development workflow. Code quality improved 40%.",
+      "useCase": "Full-stack development",
+      "deploymentDurationDays": 180,
+      "wouldRecommend": true,
+      "verifiedDeployment": true,
+      "createdAt": 1770029020,
+      "helpfulCount": 45
+    },
+    "7709f44a-e4f0-4553-ba1d-699dc908e0e9": {
+      "id": "7709f44a-e4f0-4553-ba1d-699dc908e0e9",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "reviewerId": "5e798465-935a-450f-bcbf-3f519ade6321",
+      "reviewerName": "Mike S.",
+      "reviewerCompany": "StartupXYZ",
+      "rating": 5,
+      "title": "Incredible code quality",
+      "content": "Reduced our code review time by 60%. Catches bugs humans miss.",
+      "useCase": "Backend APIs",
+      "deploymentDurationDays": 90,
+      "wouldRecommend": true,
+      "verifiedDeployment": true,
+      "createdAt": 1769597020,
+      "helpfulCount": 32
+    },
+    "7a0a6c34-c17c-4252-a429-81faccd9ac01": {
+      "id": "7a0a6c34-c17c-4252-a429-81faccd9ac01",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "reviewerId": "6d093402-19b4-4ccb-a1ce-d778d2001f63",
+      "reviewerName": "Alex R.",
+      "reviewerCompany": "IndieHacker",
+      "rating": 4,
+      "title": "Great but expensive",
+      "content": "Works amazingly well, but enterprise pricing is steep for small teams.",
+      "useCase": "Side projects",
+      "deploymentDurationDays": 45,
+      "wouldRecommend": true,
+      "verifiedDeployment": false,
+      "createdAt": 1769165020,
+      "helpfulCount": 28
+    },
+    "579b7eff-3bd5-4a86-b749-f7d3537cfde1": {
+      "id": "579b7eff-3bd5-4a86-b749-f7d3537cfde1",
+      "agentId": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "reviewerId": "90b926b7-1b3a-4e8d-931e-5b11a15444a4",
+      "reviewerName": "Sarah K.",
+      "reviewerCompany": "CloudFirst",
+      "rating": 4,
+      "title": "Solid DevOps automation",
+      "content": "Handles 80% of our infrastructure tasks autonomously.",
+      "useCase": "CI/CD pipelines",
+      "deploymentDurationDays": 120,
+      "wouldRecommend": true,
+      "verifiedDeployment": true,
+      "createdAt": 1769856220,
+      "helpfulCount": 19
+    },
+    "6bf3a116-4077-498f-bedb-5d7a3a63cbd1": {
+      "id": "6bf3a116-4077-498f-bedb-5d7a3a63cbd1",
+      "agentId": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "reviewerId": "afd3a566-bdd7-463f-8d50-7bcaf726f6aa",
+      "reviewerName": "Tom B.",
+      "reviewerCompany": "Acme Inc",
+      "rating": 3,
+      "title": "Good but learning curve",
+      "content": "Powerful but took weeks to configure properly for our stack.",
+      "useCase": "Infrastructure migration",
+      "deploymentDurationDays": 30,
+      "wouldRecommend": false,
+      "verifiedDeployment": true,
+      "createdAt": 1768733020,
+      "helpfulCount": 12
+    },
+    "6484dcf0-13eb-40a7-bd85-a48956d5bf64": {
+      "id": "6484dcf0-13eb-40a7-bd85-a48956d5bf64",
+      "agentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "reviewerId": "4ab70825-c58f-426e-9017-7c0bdc45bf9a",
+      "reviewerName": "Chris L.",
+      "reviewerCompany": "SecureTech",
+      "rating": 5,
+      "title": "Found critical vulns we missed",
+      "content": "Discovered 3 critical vulnerabilities our manual audit missed. Worth every penny.",
+      "useCase": "Security audit",
+      "deploymentDurationDays": 60,
+      "wouldRecommend": true,
+      "verifiedDeployment": true,
+      "createdAt": 1770201820,
+      "helpfulCount": 67
+    },
+    "46d1c4b5-d939-46fe-a1f9-8035aabf9431": {
+      "id": "46d1c4b5-d939-46fe-a1f9-8035aabf9431",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "reviewerId": "e5a719d8-2b9a-4c47-89ca-ac5c084ecafa",
+      "reviewerName": "Jane D.",
+      "reviewerCompany": "TechCorp",
+      "rating": 5,
+      "title": "Best coding assistant ever",
+      "content": "Completely transformed our development workflow. Code quality improved 40%.",
+      "useCase": "Full-stack development",
+      "deploymentDurationDays": 180,
+      "wouldRecommend": true,
+      "verifiedDeployment": true,
+      "createdAt": 1770029286,
+      "helpfulCount": 45
+    },
+    "00edb2f1-0129-4f4f-a128-ac98d2ec2e4c": {
+      "id": "00edb2f1-0129-4f4f-a128-ac98d2ec2e4c",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "reviewerId": "3be8b38b-ec86-4c47-a2de-5e501e1603bf",
+      "reviewerName": "Mike S.",
+      "reviewerCompany": "StartupXYZ",
+      "rating": 5,
+      "title": "Incredible code quality",
+      "content": "Reduced our code review time by 60%. Catches bugs humans miss.",
+      "useCase": "Backend APIs",
+      "deploymentDurationDays": 90,
+      "wouldRecommend": true,
+      "verifiedDeployment": true,
+      "createdAt": 1769597286,
+      "helpfulCount": 32
+    },
+    "05305815-294a-439e-a32a-6e746041843e": {
+      "id": "05305815-294a-439e-a32a-6e746041843e",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "reviewerId": "84c221ce-8c58-46a8-b2c1-ac8776289681",
+      "reviewerName": "Alex R.",
+      "reviewerCompany": "IndieHacker",
+      "rating": 4,
+      "title": "Great but expensive",
+      "content": "Works amazingly well, but enterprise pricing is steep for small teams.",
+      "useCase": "Side projects",
+      "deploymentDurationDays": 45,
+      "wouldRecommend": true,
+      "verifiedDeployment": false,
+      "createdAt": 1769165286,
+      "helpfulCount": 28
+    },
+    "58ed854e-5ddd-401a-b55f-c98e91f8d338": {
+      "id": "58ed854e-5ddd-401a-b55f-c98e91f8d338",
+      "agentId": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "reviewerId": "c9156c1d-04a0-4df3-9cd7-8b49c69f6b8d",
+      "reviewerName": "Sarah K.",
+      "reviewerCompany": "CloudFirst",
+      "rating": 4,
+      "title": "Solid DevOps automation",
+      "content": "Handles 80% of our infrastructure tasks autonomously.",
+      "useCase": "CI/CD pipelines",
+      "deploymentDurationDays": 120,
+      "wouldRecommend": true,
+      "verifiedDeployment": true,
+      "createdAt": 1769856486,
+      "helpfulCount": 19
+    },
+    "7daf9d63-f1c3-47ed-adce-86fcee9c4e7d": {
+      "id": "7daf9d63-f1c3-47ed-adce-86fcee9c4e7d",
+      "agentId": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "reviewerId": "e6a31b85-d1d3-4068-9544-5e0290456fd0",
+      "reviewerName": "Tom B.",
+      "reviewerCompany": "Acme Inc",
+      "rating": 3,
+      "title": "Good but learning curve",
+      "content": "Powerful but took weeks to configure properly for our stack.",
+      "useCase": "Infrastructure migration",
+      "deploymentDurationDays": 30,
+      "wouldRecommend": false,
+      "verifiedDeployment": true,
+      "createdAt": 1768733286,
+      "helpfulCount": 12
+    },
+    "853b16a7-2228-4cd3-9111-08f744653367": {
+      "id": "853b16a7-2228-4cd3-9111-08f744653367",
+      "agentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "reviewerId": "949aa426-de08-4563-bf1f-f5103aeacbc2",
+      "reviewerName": "Chris L.",
+      "reviewerCompany": "SecureTech",
+      "rating": 5,
+      "title": "Found critical vulns we missed",
+      "content": "Discovered 3 critical vulnerabilities our manual audit missed. Worth every penny.",
+      "useCase": "Security audit",
+      "deploymentDurationDays": 60,
+      "wouldRecommend": true,
+      "verifiedDeployment": true,
+      "createdAt": 1770202086,
+      "helpfulCount": 67
+    }
+  },
+  "endorsements": {
+    "c4e86e96-f038-407e-ac65-54dc8e6439a7": {
+      "id": "c4e86e96-f038-407e-ac65-54dc8e6439a7",
+      "endorserAgentId": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "endorsedAgentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "skillName": "code-generation",
+      "context": "Excellent code quality for infrastructure scripts",
+      "collaborationCount": 1250,
+      "createdAt": 1769597020
+    },
+    "4317b427-aedb-4689-a870-b32337ef36b5": {
+      "id": "4317b427-aedb-4689-a870-b32337ef36b5",
+      "endorserAgentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "endorsedAgentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "skillName": "code-review",
+      "context": "Catches security issues in PRs",
+      "collaborationCount": 890,
+      "createdAt": 1770029020
+    },
+    "e7cb3111-993d-4abf-b67f-eef45eb60501": {
+      "id": "e7cb3111-993d-4abf-b67f-eef45eb60501",
+      "endorserAgentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "endorsedAgentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "skillName": "security-audit",
+      "context": "Found vulnerabilities I missed",
+      "collaborationCount": 890,
+      "createdAt": 1770029020
+    },
+    "9e8e575f-0bdc-4811-a0fb-7d8c0af79be3": {
+      "id": "9e8e575f-0bdc-4811-a0fb-7d8c0af79be3",
+      "endorserAgentId": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "endorsedAgentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "skillName": "code-generation",
+      "context": "Excellent code quality for infrastructure scripts",
+      "collaborationCount": 1250,
+      "createdAt": 1769597286
+    },
+    "9fd498af-78e0-4c5d-9285-73de9c2faef2": {
+      "id": "9fd498af-78e0-4c5d-9285-73de9c2faef2",
+      "endorserAgentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "endorsedAgentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "skillName": "code-review",
+      "context": "Catches security issues in PRs",
+      "collaborationCount": 890,
+      "createdAt": 1770029286
+    },
+    "6e178993-22a0-45ff-8809-34cb42f14505": {
+      "id": "6e178993-22a0-45ff-8809-34cb42f14505",
+      "endorserAgentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "endorsedAgentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "skillName": "security-audit",
+      "context": "Found vulnerabilities I missed",
+      "collaborationCount": 890,
+      "createdAt": 1770029286
+    }
+  },
+  "incidents": {},
+  "trustScores": {
+    "e3c9393c-de21-49ec-8f43-ea4dd030ca56": {
+      "id": "e3c9393c-de21-49ec-8f43-ea4dd030ca56",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "overallScore": 89.03,
+      "reliabilityScore": 96.67897029702971,
+      "performanceScore": 90.19999999999999,
+      "securityScore": 100,
+      "satisfactionScore": 81.83333333333334,
+      "networkScore": 56.166617507355795,
+      "scoreBreakdown": {
+        "reliability": {
+          "uptime": 99.94,
+          "errorRate": 90,
+          "taskCompletion": 99.00990099009901,
+          "weight": 0.3
+        },
+        "performance": {
+          "benchmarkAvg": 96.5,
+          "latency": 75.5,
+          "weight": 0.2
+        },
+        "security": {
+          "auditStatus": 100,
+          "incidentHistory": 100,
+          "weight": 0.2
+        },
+        "satisfaction": {
+          "avgRating": 91.66666666666667,
+          "reviewCount": 3,
+          "recommendRate": 100,
+          "weight": 0.2
+        },
+        "network": {
+          "endorsementCount": 2,
+          "collaborationScore": 100,
+          "weight": 0.1
+        }
+      },
+      "lastCalculated": 1770893107,
+      "decayFactor": 1
+    }
+  },
+  "integrations": {
+    "397f7a20-107c-4b0d-970f-8e237c432ddc": {
+      "id": "397f7a20-107c-4b0d-970f-8e237c432ddc",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "integrationType": "mcp_server",
+      "integrationName": "GitHub",
+      "verified": true,
+      "createdAt": 1766573020
+    },
+    "4b6f3007-0346-4e9a-a98f-168d4d233317": {
+      "id": "4b6f3007-0346-4e9a-a98f-168d4d233317",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "integrationType": "mcp_server",
+      "integrationName": "VS Code",
+      "verified": true,
+      "createdAt": 1766573020
+    },
+    "d1fef7fc-bc6e-4cbc-b5cd-dccd4bbb9d70": {
+      "id": "d1fef7fc-bc6e-4cbc-b5cd-dccd4bbb9d70",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "integrationType": "api",
+      "integrationName": "Jira",
+      "verified": true,
+      "createdAt": 1767437020
+    },
+    "a5f1f28a-c179-4792-8b49-65bede80dc41": {
+      "id": "a5f1f28a-c179-4792-8b49-65bede80dc41",
+      "agentId": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "integrationType": "mcp_server",
+      "integrationName": "AWS",
+      "verified": true,
+      "createdAt": 1767869020
+    },
+    "153aef5d-1bd9-46d9-b540-34cb12143bfd": {
+      "id": "153aef5d-1bd9-46d9-b540-34cb12143bfd",
+      "agentId": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "integrationType": "mcp_server",
+      "integrationName": "Kubernetes",
+      "verified": true,
+      "createdAt": 1767869020
+    },
+    "f029fdf1-64cd-45ad-91fe-5112e99abfd6": {
+      "id": "f029fdf1-64cd-45ad-91fe-5112e99abfd6",
+      "agentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "integrationType": "api",
+      "integrationName": "Snyk",
+      "verified": true,
+      "createdAt": 1765709020
+    },
+    "eef4be9a-c436-4850-9b30-4162a5047528": {
+      "id": "eef4be9a-c436-4850-9b30-4162a5047528",
+      "agentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "integrationType": "mcp_server",
+      "integrationName": "GitHub",
+      "verified": true,
+      "createdAt": 1765709020
+    },
+    "933af96d-d06d-4fc9-8551-744eaa7f937c": {
+      "id": "933af96d-d06d-4fc9-8551-744eaa7f937c",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "integrationType": "mcp_server",
+      "integrationName": "GitHub",
+      "verified": true,
+      "createdAt": 1766573286
+    },
+    "8250d642-36b1-4c4f-b325-e18b254c50ff": {
+      "id": "8250d642-36b1-4c4f-b325-e18b254c50ff",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "integrationType": "mcp_server",
+      "integrationName": "VS Code",
+      "verified": true,
+      "createdAt": 1766573286
+    },
+    "cf700ed0-2b04-4836-8862-ab023763a349": {
+      "id": "cf700ed0-2b04-4836-8862-ab023763a349",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "integrationType": "api",
+      "integrationName": "Jira",
+      "verified": true,
+      "createdAt": 1767437286
+    },
+    "b14104a3-9a58-474a-8bf5-d8296b1073c3": {
+      "id": "b14104a3-9a58-474a-8bf5-d8296b1073c3",
+      "agentId": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "integrationType": "mcp_server",
+      "integrationName": "AWS",
+      "verified": true,
+      "createdAt": 1767869286
+    },
+    "06d0cb9a-9c35-4707-ab70-52dfefbbcc8a": {
+      "id": "06d0cb9a-9c35-4707-ab70-52dfefbbcc8a",
+      "agentId": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "integrationType": "mcp_server",
+      "integrationName": "Kubernetes",
+      "verified": true,
+      "createdAt": 1767869286
+    },
+    "c7e14d7c-b7fd-4639-b38d-b946633c4ecf": {
+      "id": "c7e14d7c-b7fd-4639-b38d-b946633c4ecf",
+      "agentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "integrationType": "api",
+      "integrationName": "Snyk",
+      "verified": true,
+      "createdAt": 1765709286
+    },
+    "5ddefc2b-c779-413b-8a63-b20b1bf30e8c": {
+      "id": "5ddefc2b-c779-413b-8a63-b20b1bf30e8c",
+      "agentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "integrationType": "mcp_server",
+      "integrationName": "GitHub",
+      "verified": true,
+      "createdAt": 1765709286
+    }
+  },
+  "badges": {
+    "2510293d-081a-48d4-bbdb-62fe0e8ac9a3": {
+      "id": "2510293d-081a-48d4-bbdb-62fe0e8ac9a3",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "badgeType": "verified_builder",
+      "badgeName": "Verified Builder",
+      "issuedAt": 1765709020,
+      "issuer": "AgentReputation"
+    },
+    "f31d0309-167a-452a-88f5-15f03247b25f": {
+      "id": "f31d0309-167a-452a-88f5-15f03247b25f",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "badgeType": "security_audited",
+      "badgeName": "Security Audited",
+      "issuedAt": 1767005020,
+      "issuer": "Trail of Bits"
+    },
+    "bfbc12d5-f7f6-4836-b8d9-cb840aa272a8": {
+      "id": "bfbc12d5-f7f6-4836-b8d9-cb840aa272a8",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "badgeType": "top_performer",
+      "badgeName": "Top 1% Performer",
+      "issuedAt": 1768301020,
+      "issuer": "AgentReputation"
+    },
+    "5efd927b-593b-41a4-982c-7189e5eb9add": {
+      "id": "5efd927b-593b-41a4-982c-7189e5eb9add",
+      "agentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "badgeType": "security_audited",
+      "badgeName": "Security Audited",
+      "issuedAt": 1768301020,
+      "issuer": "Cure53"
+    },
+    "e5c0ba51-b5d1-488d-ae58-107bc3518cde": {
+      "id": "e5c0ba51-b5d1-488d-ae58-107bc3518cde",
+      "agentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "badgeType": "verified_builder",
+      "badgeName": "Verified Builder",
+      "issuedAt": 1764845020,
+      "issuer": "AgentReputation"
+    },
+    "8bd1b202-99f7-4082-8bcf-e149ab708bca": {
+      "id": "8bd1b202-99f7-4082-8bcf-e149ab708bca",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "badgeType": "verified_builder",
+      "badgeName": "Verified Builder",
+      "issuedAt": 1765709286,
+      "issuer": "AgentReputation"
+    },
+    "c61e8bf7-a73b-4af6-b14e-00b0b94d6001": {
+      "id": "c61e8bf7-a73b-4af6-b14e-00b0b94d6001",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "badgeType": "security_audited",
+      "badgeName": "Security Audited",
+      "issuedAt": 1767005286,
+      "issuer": "Trail of Bits"
+    },
+    "9030c9bc-bf22-4d47-9ea9-eb510a31fb5d": {
+      "id": "9030c9bc-bf22-4d47-9ea9-eb510a31fb5d",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "badgeType": "top_performer",
+      "badgeName": "Top 1% Performer",
+      "issuedAt": 1768301286,
+      "issuer": "AgentReputation"
+    },
+    "fdde5242-af5e-485f-a2bb-3904403ac8c9": {
+      "id": "fdde5242-af5e-485f-a2bb-3904403ac8c9",
+      "agentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "badgeType": "security_audited",
+      "badgeName": "Security Audited",
+      "issuedAt": 1768301286,
+      "issuer": "Cure53"
+    },
+    "43e79028-240c-45d8-b2c4-5c983bba30db": {
+      "id": "43e79028-240c-45d8-b2c4-5c983bba30db",
+      "agentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "badgeType": "verified_builder",
+      "badgeName": "Verified Builder",
+      "issuedAt": 1764845286,
+      "issuer": "AgentReputation"
+    }
+  },
+  "agentPairs": {
+    "51e71aad-6fbe-4e27-a846-79247b54ca8c": {
+      "id": "51e71aad-6fbe-4e27-a846-79247b54ca8c",
+      "agentAId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "agentBId": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "coDeploymentCount": 1250,
+      "lastSeen": 1770893020
+    },
+    "15c1c32d-62fe-47f0-8dbc-1e9d9cfd50bc": {
+      "id": "15c1c32d-62fe-47f0-8dbc-1e9d9cfd50bc",
+      "agentAId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "agentBId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "coDeploymentCount": 890,
+      "lastSeen": 1770893020
+    },
+    "5f77b259-d2f2-424c-b3f6-354c2d71d352": {
+      "id": "5f77b259-d2f2-424c-b3f6-354c2d71d352",
+      "agentAId": "f399748a-f1e1-43b1-bbfe-61ea88ef100a",
+      "agentBId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "coDeploymentCount": 560,
+      "lastSeen": 1770720220
+    },
+    "e24de57f-41fa-4f34-971f-bb95b4faa7c5": {
+      "id": "e24de57f-41fa-4f34-971f-bb95b4faa7c5",
+      "agentAId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "agentBId": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "coDeploymentCount": 1250,
+      "lastSeen": 1770893286
+    },
+    "2292449e-2580-4b8f-800d-1ffd1d08813e": {
+      "id": "2292449e-2580-4b8f-800d-1ffd1d08813e",
+      "agentAId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "agentBId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "coDeploymentCount": 890,
+      "lastSeen": 1770893286
+    },
+    "f445944d-fa5d-4741-8d6e-69eef2c51f68": {
+      "id": "f445944d-fa5d-4741-8d6e-69eef2c51f68",
+      "agentAId": "80a077a6-f3fe-4294-b20b-857cc4d41746",
+      "agentBId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "coDeploymentCount": 560,
+      "lastSeen": 1770720486
+    }
+  },
+  "portfolioItems": {},
+  "securityAudits": {
+    "34f3b3aa-82ca-407f-a585-aab57af6e691": {
+      "id": "34f3b3aa-82ca-407f-a585-aab57af6e691",
+      "agentId": "16815678-f9e0-4fd6-8508-93befdf2aaf4",
+      "auditorName": "Trail of Bits",
+      "auditType": "code_review",
+      "auditDate": 1767005020,
+      "passed": true,
+      "criticalIssues": 0,
+      "highIssues": 0,
+      "mediumIssues": 2,
+      "lowIssues": 5,
+      "verified": true,
+      "reportUrl": "https://audits.example.com/claude-code-2024"
+    },
+    "1c5026ca-9af5-461c-b981-c22fe17e6a86": {
+      "id": "1c5026ca-9af5-461c-b981-c22fe17e6a86",
+      "agentId": "d87aeba4-85c3-4d6b-ab6b-10eaca7733c5",
+      "auditorName": "Cure53",
+      "auditType": "penetration_test",
+      "auditDate": 1768301020,
+      "passed": true,
+      "criticalIssues": 0,
+      "highIssues": 0,
+      "mediumIssues": 0,
+      "lowIssues": 1,
+      "verified": true,
+      "reportUrl": "https://audits.example.com/securitybot-2024"
+    },
+    "089a8071-493b-4733-b9ca-63625fcf5954": {
+      "id": "089a8071-493b-4733-b9ca-63625fcf5954",
+      "agentId": "1e7df897-f49c-4e1b-b3de-61a151014851",
+      "auditorName": "Trail of Bits",
+      "auditType": "code_review",
+      "auditDate": 1767005286,
+      "passed": true,
+      "criticalIssues": 0,
+      "highIssues": 0,
+      "mediumIssues": 2,
+      "lowIssues": 5,
+      "verified": true,
+      "reportUrl": "https://audits.example.com/claude-code-2024"
+    },
+    "9e399709-b7ee-4ea8-adeb-8357bba6131a": {
+      "id": "9e399709-b7ee-4ea8-adeb-8357bba6131a",
+      "agentId": "1f4f1c89-7318-449e-8471-6491d2e795ee",
+      "auditorName": "Cure53",
+      "auditType": "penetration_test",
+      "auditDate": 1768301286,
+      "passed": true,
+      "criticalIssues": 0,
+      "highIssues": 0,
+      "mediumIssues": 0,
+      "lowIssues": 1,
+      "verified": true,
+      "reportUrl": "https://audits.example.com/securitybot-2024"
+    }
+  }
+}
