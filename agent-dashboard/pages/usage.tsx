@@ -26,11 +26,12 @@ export default function Usage() {
   return (
     <main className="page">
       <header className="nav">
-        <div className="brand">AgentPay Dashboard</div>
+        <div className="brand">AgentPay Marketplace</div>
         <div className="links">
-          <Link href="/usage">Usage</Link>
+          <Link href="/">Marketplace</Link>
+          <Link href="/dashboard">Dashboard</Link>
+          <Link href="/usage" className="active">Usage</Link>
           <Link href="/receipts">Receipts</Link>
-          <Link href="/messaging">Messaging</Link>
         </div>
       </header>
 
@@ -153,110 +154,129 @@ export default function Usage() {
         </table>
       </section>
 
-      <style jsx>{`
-        .page {
-          max-width: 1080px;
-          margin: 0 auto;
-          padding: 24px;
-          font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          background: #f7f8fa;
+      <style jsx global>{`
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
           min-height: 100vh;
+          color: #e2e8f0;
         }
+        .page { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .nav {
           display: flex;
-          align-items: center;
           justify-content: space-between;
+          align-items: center;
+          padding: 16px 24px;
+          background: rgba(30, 27, 75, 0.8);
+          border-radius: 16px;
           margin-bottom: 24px;
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(139, 92, 246, 0.2);
         }
         .brand {
+          font-size: 24px;
           font-weight: 700;
-          font-size: 20px;
+          background: linear-gradient(135deg, #8b5cf6, #06b6d4);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
         }
+        .links { display: flex; gap: 8px; }
         .links a {
-          margin-left: 16px;
-          color: #2563eb;
+          color: #a5b4fc;
           text-decoration: none;
-          font-weight: 600;
+          padding: 8px 16px;
+          border-radius: 8px;
+          transition: all 0.2s;
+        }
+        .links a:hover, .links a.active {
+          background: rgba(139, 92, 246, 0.2);
+          color: #c4b5fd;
         }
         .card {
-          background: #fff;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          padding: 16px;
-          margin-bottom: 20px;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+          background: rgba(30, 27, 75, 0.6);
+          border-radius: 16px;
+          padding: 24px;
+          margin-bottom: 24px;
+          border: 1px solid rgba(139, 92, 246, 0.2);
         }
         .card-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          margin-bottom: 12px;
+          margin-bottom: 20px;
+          padding-bottom: 12px;
+          border-bottom: 1px solid rgba(139, 92, 246, 0.1);
         }
-        h2,
-        h3 {
-          margin: 0;
-        }
+        h2, h3 { margin: 0; color: #f1f5f9; font-weight: 600; }
         .stats {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 12px;
-          margin-bottom: 12px;
+          gap: 16px;
+          margin-bottom: 24px;
         }
         .stat {
-          background: #f9fafb;
-          border: 1px solid #e5e7eb;
-          border-radius: 10px;
-          padding: 12px;
+          background: rgba(15, 23, 42, 0.6);
+          border-radius: 12px;
+          padding: 16px;
         }
         .label {
           font-size: 12px;
-          color: #6b7280;
-          margin-bottom: 6px;
+          color: #64748b;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          margin-bottom: 8px;
         }
         .value {
-          font-size: 20px;
+          font-size: 28px;
           font-weight: 700;
+          color: #c4b5fd;
         }
         .hint {
-          color: #6b7280;
+          color: #64748b;
           font-size: 12px;
         }
         .table {
           width: 100%;
           border-collapse: collapse;
         }
-        .table th,
-        .table td {
+        .table th, .table td {
           text-align: left;
-          padding: 10px 12px;
-          border-bottom: 1px solid #e5e7eb;
+          padding: 12px 16px;
+          border-bottom: 1px solid rgba(139, 92, 246, 0.1);
           font-size: 14px;
         }
         .table th {
-          background: #f3f4f6;
+          background: rgba(15, 23, 42, 0.6);
           font-weight: 600;
+          color: #c4b5fd;
+        }
+        .table td {
+          color: #e2e8f0;
         }
         .table tr:hover td {
-          background: #f9fafb;
+          background: rgba(139, 92, 246, 0.05);
         }
         .empty {
           text-align: center;
-          color: #6b7280;
-          padding: 16px;
+          color: #64748b;
+          padding: 24px;
         }
         .link-button {
-          padding: 8px 12px;
-          background: #2563eb;
+          padding: 10px 16px;
+          background: linear-gradient(135deg, #8b5cf6, #6366f1);
           color: white;
           border-radius: 8px;
           text-decoration: none;
           font-weight: 600;
+          font-size: 14px;
+          transition: transform 0.2s, box-shadow 0.2s;
         }
         .link-button:hover {
-          background: #1d4ed8;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 24px rgba(139, 92, 246, 0.4);
         }
       `}</style>
     </main>
   );
 }
-
