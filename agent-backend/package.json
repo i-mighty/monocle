@@ -10,7 +10,13 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "openapi:validate": "npx @redocly/cli lint openapi.yaml",
-    "openapi:generate-types": "npx openapi-typescript openapi.yaml -o src/types/generated.ts"
+    "openapi:generate-types": "npx openapi-typescript openapi.yaml -o src/types/generated.ts",
+    "test": "npm run test:unit && npm run test:integration && npm run test:edge",
+    "test:unit": "node src/tests/unit-pricing.test.js",
+    "test:integration": "npx ts-node-dev --transpile-only src/tests/integration.test.ts",
+    "test:edge": "npx ts-node-dev --transpile-only src/tests/failure-edge.test.ts",
+    "test:e2e": "npx ts-node-dev --transpile-only src/tests/e2e-pricing.ts",
+    "test:pricing": "node src/tests/pricing-unit-test.js"
   },
   "dependencies": {
     "@solana/web3.js": "^1.95.0",
