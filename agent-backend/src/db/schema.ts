@@ -677,3 +677,97 @@ export type NewIncident = typeof incidents.$inferInsert;
 
 export type AgentCompatibility = typeof agentCompatibility.$inferSelect;
 export type NewAgentCompatibility = typeof agentCompatibility.$inferInsert;
+
+// =============================================================================
+// WEBHOOKS: Real-time event subscriptions for developers
+// =============================================================================
+export const webhooks = pgTable(
+  "webhooks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    
+    // Webhook configuration
+    url: text("url").notNull(),
+    secret: text("secret").notNull(), // For HMAC signature verification
+    
+    // Event subscriptions (JSON array of event types)
+    events: text("events").notNull(), // e.g., '["payment_settled", "spend_limit_reached"]'
+    
+    // Status and health
+    isActive: text("is_active").notNull().default("true"),
+    failureCount: integer("failure_count").notNull().default(0),
+    lastFailure: timestamp("last_failure", { withTimezone: true }),
+    lastSuccess: timestamp("last_success", { withTimezone: true }),
+    
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    agentIdx: index("webhooks_agent_idx").on(table.agentId),
+    activeIdx: index("webhooks_active_idx").on(table.isActive),
+  })
+);
+
+// =============================================================================
+// WEBHOOK_DELIVERIES: Delivery log for debugging and retry
+// =============================================================================
+export const webhookDeliveries = pgTable(
+  "webhook_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    webhookId: uuid("webhook_id")
+      .notNull()
+      .references(() => webhooks.id, { onDelete: "cascade" }),
+    
+    // Event details
+    eventType: text("event_type").notNull(),
+    payload: text("payload").notNull(), // JSON payload
+    
+    // Delivery status
+    status: text("status").notNull().default("pending"), // pending, success, failed
+    httpStatus: integer("http_status"),
+    response: text("response"),
+    errorMessage: text("error_message"),
+    
+    // Timing
+    attemptCount: integer("attempt_count").notNull().default(1),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    webhookIdx: index("webhook_deliveries_webhook_idx").on(table.webhookId),
+    statusIdx: index("webhook_deliveries_status_idx").on(table.status),
+    eventTypeIdx: index("webhook_deliveries_event_type_idx").on(table.eventType),
+    createdAtIdx: index("webhook_deliveries_created_at_idx").on(table.createdAt),
+  })
+);
+
+// =============================================================================
+// RELATIONS: Webhook relations
+// =============================================================================
+export const webhooksRelations = relations(webhooks, ({ one, many }) => ({
+  agent: one(agents, {
+    fields: [webhooks.agentId],
+    references: [agents.id],
+  }),
+  deliveries: many(webhookDeliveries),
+}));
+
+export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one }) => ({
+  webhook: one(webhooks, {
+    fields: [webhookDeliveries.webhookId],
+    references: [webhooks.id],
+  }),
+}));
+
+// =============================================================================
+// TYPE EXPORTS: Webhook types
+// =============================================================================
+export type Webhook = typeof webhooks.$inferSelect;
+export type NewWebhook = typeof webhooks.$inferInsert;
+
+export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
+export type NewWebhookDelivery = typeof webhookDeliveries.$inferInsert;

@@ -320,4 +320,126 @@ export class AgentPayClient {
       method: "GET",
     });
   }
+
+  // ==================== Simulation Methods ====================
+
+  /**
+   * Simulate a single tool call (no payment)
+   */
+  simulateCall(callerId: string, calleeId: string, toolName: string, tokensEstimate: number) {
+    return this.request("/simulation/call", {
+      method: "POST",
+      body: JSON.stringify({ callerId, calleeId, toolName, tokensEstimate }),
+    });
+  }
+
+  /**
+   * Simulate an entire workflow
+   */
+  simulateWorkflow(callGraph: Array<{
+    callerId: string;
+    calleeId: string;
+    toolName: string;
+    tokensEstimate: number;
+  }>) {
+    return this.request("/simulation/workflow", {
+      method: "POST",
+      body: JSON.stringify({ callGraph }),
+    });
+  }
+
+  /**
+   * Compare multiple workflow options
+   */
+  compareWorkflows(workflows: Array<{
+    name: string;
+    callGraph: Array<{
+      callerId: string;
+      calleeId: string;
+      toolName: string;
+      tokensEstimate: number;
+    }>;
+  }>) {
+    return this.request("/simulation/compare", {
+      method: "POST",
+      body: JSON.stringify({ workflows }),
+    });
+  }
+
+  /**
+   * Quick cost estimate (no DB lookup)
+   */
+  quickEstimate(tokensTotal: number, ratePer1kTokens?: number) {
+    return this.request("/simulation/estimate", {
+      method: "POST",
+      body: JSON.stringify({ tokensTotal, ratePer1kTokens }),
+    });
+  }
+
+  // ==================== Webhook Methods ====================
+
+  /**
+   * Register a webhook
+   */
+  registerWebhook(agentId: string, url: string, events: string[]) {
+    return this.request("/webhooks", {
+      method: "POST",
+      body: JSON.stringify({ agentId, url, events }),
+    });
+  }
+
+  /**
+   * List webhooks for an agent
+   */
+  listWebhooks(agentId: string) {
+    return this.request(`/webhooks/${agentId}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Update a webhook
+   */
+  updateWebhook(webhookId: string, updates: { url?: string; events?: string[]; isActive?: boolean }) {
+    return this.request(`/webhooks/${webhookId}`, {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    });
+  }
+
+  /**
+   * Delete a webhook
+   */
+  deleteWebhook(webhookId: string) {
+    return this.request(`/webhooks/${webhookId}`, {
+      method: "DELETE",
+    });
+  }
+
+  /**
+   * Get webhook delivery history
+   */
+  getWebhookDeliveries(webhookId: string, limit: number = 100) {
+    return this.request(`/webhooks/${webhookId}/deliveries?limit=${limit}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Rotate webhook secret
+   */
+  rotateWebhookSecret(webhookId: string) {
+    return this.request(`/webhooks/${webhookId}/rotate-secret`, {
+      method: "POST",
+    });
+  }
+
+  /**
+   * Retry a failed webhook delivery
+   */
+  retryWebhookDelivery(deliveryId: string) {
+    return this.request(`/webhooks/deliveries/${deliveryId}/retry`, {
+      method: "POST",
+    });
+  }
 }
