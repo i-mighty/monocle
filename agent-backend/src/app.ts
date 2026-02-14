@@ -18,8 +18,10 @@ import webhooks from "./routes/webhooks";
 import antiAbuse from "./routes/antiAbuse";
 import budget from "./routes/budget";
 import activity from "./routes/activity";
+import apiKeys from "./routes/apiKeys";
 import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 import { getDemoStatus } from "./middleware/demoOnly";
+import { rateLimit, ipRateLimit, slowDown } from "./middleware/rateLimit";
 
 const app = express();
 app.use(cors());
@@ -27,9 +29,22 @@ app.use(express.json());
 app.use(requestIdMiddleware);
 
 // =============================================================================
+// GLOBAL SECURITY MIDDLEWARE
+// =============================================================================
+
+// IP-based rate limiting for all requests (DoS protection)
+app.use(ipRateLimit({ maxRequests: 100, burstAllowance: 20, windowMs: 60000 }));
+
+// Slow down excessive requests instead of hard blocking
+app.use(slowDown(50, 200));
+
+// =============================================================================
 // API VERSION 1
 // =============================================================================
 const v1 = Router();
+
+// Apply per-key rate limiting to authenticated routes
+v1.use(rateLimit());
 
 v1.use("/identity", identity);
 v1.use("/meter", meter);
@@ -46,6 +61,7 @@ v1.use("/webhooks", webhooks);
 v1.use("/anti-abuse", antiAbuse);
 v1.use("/budget", budget);
 v1.use("/activity", activity);
+v1.use("/api-keys", apiKeys);
 
 // Mount v1 API
 app.use("/v1", v1);

@@ -159,13 +159,75 @@ create table if not exists agent_capabilities (
   unique(agent_id, capability)
 );
 
--- API Keys for authentication
+-- API Keys for authentication (Legacy - kept for backward compatibility)
 create table if not exists api_keys (
   id uuid primary key default gen_random_uuid(),
   developer_id text not null,
   key text not null unique,
   created_at timestamptz default now()
 );
+
+-- =============================================================================
+-- API_KEYS_V2: Enhanced API Keys with scopes, rate limits, and rotation
+-- =============================================================================
+create table if not exists api_keys_v2 (
+  id uuid primary key default gen_random_uuid(),
+  
+  -- Developer/owner identification
+  developer_id text not null,
+  name text not null,  -- Human-readable key name (e.g., "Production Server")
+  
+  -- Key identification (prefix for lookups, hash for verification)
+  key_prefix text not null,  -- First 8 chars for efficient lookup
+  key_hash text not null,  -- PBKDF2 hash: salt$hash
+  
+  -- Authorization scopes
+  scopes text not null default '["read:agents"]',  -- JSON array of scopes
+  
+  -- Rate limiting configuration
+  rate_limit integer not null default 60,  -- Requests per minute
+  rate_limit_burst integer not null default 10,  -- Burst allowance
+  
+  -- Expiration
+  expires_at timestamptz,  -- Null = never expires
+  
+  -- Usage tracking
+  last_used_at timestamptz,
+  last_used_ip text,
+  
+  -- Status
+  is_active boolean not null default true,
+  
+  -- Key rotation support
+  version integer not null default 1,
+  previous_key_hash text,  -- Previous hash for grace period
+  rotated_at timestamptz,  -- When key was rotated
+  
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- Index for fast key lookup by prefix
+create index idx_api_keys_v2_prefix on api_keys_v2(key_prefix);
+create index idx_api_keys_v2_developer on api_keys_v2(developer_id);
+create index idx_api_keys_v2_active on api_keys_v2(is_active) where is_active = true;
+
+-- =============================================================================
+-- RATE_LIMIT_BUCKETS: Persistent rate limit tracking (for Redis migration)
+-- =============================================================================
+create table if not exists rate_limit_buckets (
+  id text primary key,  -- key:keyId or ip:address
+  
+  request_count integer not null default 0,
+  burst_used integer not null default 0,
+  window_start timestamptz not null default now(),
+  window_end timestamptz not null,
+  
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index idx_rate_limit_window_end on rate_limit_buckets(window_end);
 
 -- =============================================================================
 -- TOOL_USAGE: Immutable execution ledger (append-only, auditable, replayable)
