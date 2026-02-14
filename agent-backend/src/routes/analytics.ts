@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { query } from "../db/client";
-import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
 import {
   getCostAnalytics,
   getAgentSpendReports,

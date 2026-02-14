@@ -16,7 +16,7 @@ import {
   revokeApiKey,
   ApiKeyScope,
 } from "../services/securityService";
-import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { apiKeyAuth, apiKeyAuthHardened } from "../middleware/apiKeyAuthHardened";
 import { requireScope } from "../middleware/apiKeyAuthHardened";
 import { logActivityAsync } from "../services/activityService";
 

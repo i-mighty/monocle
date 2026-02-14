@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
 import { verifyIdentity } from "../services/identityService";
 import { upsertAgent, registerTool, PRICING_CONSTANTS } from "../services/pricingService";
 import { logIdentityCreated } from "../services/activityService";

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
 import { 
   calculateCost, 
   PRICING_CONSTANTS, 

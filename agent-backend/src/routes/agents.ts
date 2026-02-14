@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
 import { query } from "../db/client";
 import { calculateCost, getAgentMetrics, PRICING_CONSTANTS } from "../services/pricingService";
 import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";

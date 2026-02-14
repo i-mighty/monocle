@@ -14,7 +14,7 @@
  */
 
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
 import { demoOnly } from "../middleware/demoOnly";
 import {
   registerWebhook,
@@ -28,6 +28,7 @@ import {
   verifySignature,
   WebhookEventType,
 } from "../services/webhookService";
+import { validateWebhookUrl, validateWebhookUrlSync } from "../utils/urlValidator";
 
 const router = Router();
 
@@ -197,13 +198,21 @@ router.post("/", apiKeyAuth, async (req, res) => {
       });
     }
 
-    // Validate URL
-    try {
-      new URL(url);
-    } catch {
+    // Validate URL format first (sync check)
+    const syncValidation = validateWebhookUrlSync(url);
+    if (!syncValidation.valid) {
       return res.status(400).json({
         success: false,
-        error: "Invalid webhook URL",
+        error: syncValidation.error || "Invalid webhook URL",
+      });
+    }
+
+    // Full SSRF validation with DNS resolution
+    const fullValidation = await validateWebhookUrl(url);
+    if (!fullValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: fullValidation.error || "Webhook URL failed security validation",
       });
     }
 
@@ -279,14 +288,21 @@ router.patch("/:webhookId", apiKeyAuth, async (req, res) => {
     const { webhookId } = req.params;
     const { url, events, isActive } = req.body;
 
-    // Validate URL if provided
+    // Validate URL if provided (SSRF protection)
     if (url) {
-      try {
-        new URL(url);
-      } catch {
+      const syncValidation = validateWebhookUrlSync(url);
+      if (!syncValidation.valid) {
         return res.status(400).json({
           success: false,
-          error: "Invalid webhook URL",
+          error: syncValidation.error || "Invalid webhook URL",
+        });
+      }
+      
+      const fullValidation = await validateWebhookUrl(url);
+      if (!fullValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          error: fullValidation.error || "Webhook URL failed security validation",
         });
       }
     }

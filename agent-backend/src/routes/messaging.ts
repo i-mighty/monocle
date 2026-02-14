@@ -6,6 +6,7 @@
  */
 
 import { Router, Request, Response } from "express";
+import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
 import {
   sendConversationRequest,
   getPendingRequests,
@@ -36,7 +37,7 @@ const router = Router();
  * GET /dm/check
  * Quick poll for DM activity (add to agent heartbeat)
  */
-router.get("/dm/check", async (req: Request, res: Response) => {
+router.get("/dm/check", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -77,7 +78,7 @@ router.get("/dm/check", async (req: Request, res: Response) => {
  * POST /dm/request
  * Send a chat request to another agent
  */
-router.post("/dm/request", async (req: Request, res: Response) => {
+router.post("/dm/request", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -121,7 +122,7 @@ router.post("/dm/request", async (req: Request, res: Response) => {
  * GET /dm/requests
  * View pending chat requests
  */
-router.get("/dm/requests", async (req: Request, res: Response) => {
+router.get("/dm/requests", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -149,7 +150,7 @@ router.get("/dm/requests", async (req: Request, res: Response) => {
  * POST /dm/requests/:conversationId/approve
  * Approve a chat request
  */
-router.post("/dm/requests/:conversationId/approve", async (req: Request, res: Response) => {
+router.post("/dm/requests/:conversationId/approve", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -174,7 +175,7 @@ router.post("/dm/requests/:conversationId/approve", async (req: Request, res: Re
  * POST /dm/requests/:conversationId/reject
  * Reject a chat request (optionally block)
  */
-router.post("/dm/requests/:conversationId/reject", async (req: Request, res: Response) => {
+router.post("/dm/requests/:conversationId/reject", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -208,7 +209,7 @@ router.post("/dm/requests/:conversationId/reject", async (req: Request, res: Res
  * GET /dm/conversations
  * List all active (approved) conversations
  */
-router.get("/dm/conversations", async (req: Request, res: Response) => {
+router.get("/dm/conversations", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -242,7 +243,7 @@ router.get("/dm/conversations", async (req: Request, res: Response) => {
  * GET /dm/conversations/:conversationId
  * Read messages in a conversation (marks as read)
  */
-router.get("/dm/conversations/:conversationId", async (req: Request, res: Response) => {
+router.get("/dm/conversations/:conversationId", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -277,7 +278,7 @@ router.get("/dm/conversations/:conversationId", async (req: Request, res: Respon
  * POST /dm/conversations/:conversationId/send
  * Send a message in an approved conversation
  */
-router.post("/dm/conversations/:conversationId/send", async (req: Request, res: Response) => {
+router.post("/dm/conversations/:conversationId/send", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -323,7 +324,7 @@ router.post("/dm/conversations/:conversationId/send", async (req: Request, res: 
  * POST /agents/:agentId/follow
  * Follow an agent
  */
-router.post("/agents/:targetAgentId/follow", async (req: Request, res: Response) => {
+router.post("/agents/:targetAgentId/follow", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -348,7 +349,7 @@ router.post("/agents/:targetAgentId/follow", async (req: Request, res: Response)
  * DELETE /agents/:agentId/follow
  * Unfollow an agent
  */
-router.delete("/agents/:targetAgentId/follow", async (req: Request, res: Response) => {
+router.delete("/agents/:targetAgentId/follow", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -369,7 +370,7 @@ router.delete("/agents/:targetAgentId/follow", async (req: Request, res: Respons
  * GET /agents/me/following
  * Get agents I'm following
  */
-router.get("/agents/me/following", async (req: Request, res: Response) => {
+router.get("/agents/me/following", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -389,7 +390,7 @@ router.get("/agents/me/following", async (req: Request, res: Response) => {
  * GET /agents/me/followers
  * Get my followers
  */
-router.get("/agents/me/followers", async (req: Request, res: Response) => {
+router.get("/agents/me/followers", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -413,7 +414,7 @@ router.get("/agents/me/followers", async (req: Request, res: Response) => {
  * POST /agents/:agentId/block
  * Block an agent
  */
-router.post("/agents/:targetAgentId/block", async (req: Request, res: Response) => {
+router.post("/agents/:targetAgentId/block", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -438,7 +439,7 @@ router.post("/agents/:targetAgentId/block", async (req: Request, res: Response) 
  * DELETE /agents/:agentId/block
  * Unblock an agent
  */
-router.delete("/agents/:targetAgentId/block", async (req: Request, res: Response) => {
+router.delete("/agents/:targetAgentId/block", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -459,7 +460,7 @@ router.delete("/agents/:targetAgentId/block", async (req: Request, res: Response
  * GET /agents/me/blocked
  * Get blocked agents list
  */
-router.get("/agents/me/blocked", async (req: Request, res: Response) => {
+router.get("/agents/me/blocked", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const agentId = req.headers["x-agent-id"] as string;
     if (!agentId) {
@@ -483,7 +484,7 @@ router.get("/agents/me/blocked", async (req: Request, res: Response) => {
  * GET /agents/search
  * Search for agents by name
  */
-router.get("/agents/search", async (req: Request, res: Response) => {
+router.get("/agents/search", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const { q, limit } = req.query;
 
@@ -507,7 +508,7 @@ router.get("/agents/search", async (req: Request, res: Response) => {
  * GET /agents/:agentId/profile
  * Get agent profile with stats
  */
-router.get("/agents/:targetAgentId/profile", async (req: Request, res: Response) => {
+router.get("/agents/:targetAgentId/profile", apiKeyAuth, async (req: Request, res: Response) => {
   try {
     const { targetAgentId } = req.params;
     const profile = await getAgentProfile(targetAgentId);
