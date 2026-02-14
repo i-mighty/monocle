@@ -34,6 +34,8 @@ tags:
     description: Audit logs and activity tracking
   - name: Budget
     description: Budget limits and authorization
+  - name: Analytics
+    description: Platform and agent analytics, trust metrics
 
 paths:
   # ==================== AGENTS ====================
