@@ -465,6 +465,178 @@ export const agentFollowsRelations = relations(agentFollows, ({ one }) => ({
 }));
 
 // =============================================================================
+// EXECUTION RESULTS: Track success/failure and performance of each call
+// =============================================================================
+export const executionResults = pgTable(
+  "execution_results",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // Link to the tool usage record
+    toolUsageId: uuid("tool_usage_id")
+      .notNull()
+      .references(() => toolUsage.id, { onDelete: "cascade" }),
+
+    // Execution outcome
+    status: text("status").notNull(), // 'success' | 'failure' | 'timeout' | 'error'
+    
+    // Performance metrics (milliseconds)
+    latencyMs: integer("latency_ms"),
+    
+    // Error details (if failed)
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    
+    // Recovery information
+    retryCount: integer("retry_count").notNull().default(0),
+    recoveryAction: text("recovery_action"), // 'none' | 'retry' | 'fallback' | 'refund'
+    
+    // Refund tracking
+    refundIssued: text("refund_issued").notNull().default("false"),
+    refundAmountLamports: bigint("refund_amount_lamports", { mode: "number" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    toolUsageIdx: index("execution_results_tool_usage_idx").on(table.toolUsageId),
+    statusIdx: index("execution_results_status_idx").on(table.status),
+    createdAtIdx: index("execution_results_created_at_idx").on(table.createdAt),
+  })
+);
+
+// =============================================================================
+// INCIDENTS: Public transparency log for failures and resolutions
+// =============================================================================
+export const incidents = pgTable(
+  "incidents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // Affected agents
+    calleeAgentId: text("callee_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    callerAgentId: text("caller_agent_id"),
+    
+    // Incident classification
+    incidentType: text("incident_type").notNull(), // 'timeout' | 'error' | 'degraded' | 'outage' | 'security'
+    severity: text("severity").notNull(), // 'low' | 'medium' | 'high' | 'critical'
+    
+    // Affected scope
+    toolName: text("tool_name"),
+    affectedCallCount: integer("affected_call_count").notNull().default(1),
+    
+    // Details
+    title: text("title").notNull(),
+    description: text("description"),
+    rootCause: text("root_cause"),
+    
+    // Resolution tracking
+    status: text("status").notNull().default("open"), // 'open' | 'investigating' | 'resolved' | 'closed'
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolutionNotes: text("resolution_notes"),
+    
+    // Compensation
+    refundsIssued: integer("refunds_issued").notNull().default(0),
+    totalRefundLamports: bigint("total_refund_lamports", { mode: "number" }).default(0),
+    
+    // Timestamps
+    detectedAt: timestamp("detected_at", { withTimezone: true }).defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    calleeIdx: index("incidents_callee_idx").on(table.calleeAgentId),
+    statusIdx: index("incidents_status_idx").on(table.status),
+    typeIdx: index("incidents_type_idx").on(table.incidentType),
+    createdAtIdx: index("incidents_created_at_idx").on(table.createdAt),
+  })
+);
+
+// =============================================================================
+// AGENT COMPATIBILITY: Tracks successful agent-to-agent integrations
+// =============================================================================
+export const agentCompatibility = pgTable(
+  "agent_compatibility",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // Agent pair (caller → callee)
+    callerAgentId: text("caller_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    calleeAgentId: text("callee_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    
+    // Interaction statistics
+    totalCalls: integer("total_calls").notNull().default(0),
+    successfulCalls: integer("successful_calls").notNull().default(0),
+    failedCalls: integer("failed_calls").notNull().default(0),
+    
+    // Performance metrics
+    avgLatencyMs: integer("avg_latency_ms"),
+    p95LatencyMs: integer("p95_latency_ms"),
+    
+    // Cost metrics
+    totalSpentLamports: bigint("total_spent_lamports", { mode: "number" }).default(0),
+    avgCostPerCall: bigint("avg_cost_per_call", { mode: "number" }),
+    
+    // Compatibility score (0-100, auto-calculated)
+    compatibilityScore: integer("compatibility_score"),
+    
+    // Common tools used
+    topTools: text("top_tools"), // JSON array of tool names
+    
+    // Activity tracking
+    firstInteraction: timestamp("first_interaction", { withTimezone: true }),
+    lastInteraction: timestamp("last_interaction", { withTimezone: true }),
+    
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    pairUnique: uniqueIndex("agent_compatibility_pair_unique").on(
+      table.callerAgentId,
+      table.calleeAgentId
+    ),
+    callerIdx: index("agent_compatibility_caller_idx").on(table.callerAgentId),
+    calleeIdx: index("agent_compatibility_callee_idx").on(table.calleeAgentId),
+    scoreIdx: index("agent_compatibility_score_idx").on(table.compatibilityScore),
+  })
+);
+
+// =============================================================================
+// RELATIONS: Reputation & Network relations
+// =============================================================================
+export const executionResultsRelations = relations(executionResults, ({ one }) => ({
+  toolUsage: one(toolUsage, {
+    fields: [executionResults.toolUsageId],
+    references: [toolUsage.id],
+  }),
+}));
+
+export const incidentsRelations = relations(incidents, ({ one }) => ({
+  callee: one(agents, {
+    fields: [incidents.calleeAgentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentCompatibilityRelations = relations(agentCompatibility, ({ one }) => ({
+  caller: one(agents, {
+    fields: [agentCompatibility.callerAgentId],
+    references: [agents.id],
+    relationName: "compatibilityAsCaller",
+  }),
+  callee: one(agents, {
+    fields: [agentCompatibility.calleeAgentId],
+    references: [agents.id],
+    relationName: "compatibilityAsCallee",
+  }),
+}));
+
+// =============================================================================
 // TYPE EXPORTS: TypeScript types for the schema
 // =============================================================================
 export type Agent = typeof agents.$inferSelect;
@@ -496,3 +668,12 @@ export type NewAgentBlock = typeof agentBlocks.$inferInsert;
 
 export type AgentFollow = typeof agentFollows.$inferSelect;
 export type NewAgentFollow = typeof agentFollows.$inferInsert;
+
+export type ExecutionResult = typeof executionResults.$inferSelect;
+export type NewExecutionResult = typeof executionResults.$inferInsert;
+
+export type Incident = typeof incidents.$inferSelect;
+export type NewIncident = typeof incidents.$inferInsert;
+
+export type AgentCompatibility = typeof agentCompatibility.$inferSelect;
+export type NewAgentCompatibility = typeof agentCompatibility.$inferInsert;
