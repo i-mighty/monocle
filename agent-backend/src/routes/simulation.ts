@@ -8,7 +8,7 @@
  */
 
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
 import { demoOnly } from "../middleware/demoOnly";
 import {
   simulateCall,

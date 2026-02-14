@@ -23,6 +23,9 @@ const SALT_LENGTH = 32;
 const HASH_ITERATIONS = 100000;
 const HASH_KEY_LENGTH = 64;
 
+// Track if we've warned about insecure configuration
+let insecureKeyWarningIssued = false;
+
 // Get encryption key from environment or generate deterministic fallback
 function getEncryptionKey(): Buffer {
   const envKey = process.env.LOG_ENCRYPTION_KEY;
@@ -30,8 +33,29 @@ function getEncryptionKey(): Buffer {
     // Use provided key (should be 32 bytes base64)
     return Buffer.from(envKey, "base64").subarray(0, KEY_LENGTH);
   }
-  // Fallback: derive from API key (not ideal but better than plaintext)
-  const apiKey = process.env.AGENTPAY_API_KEY || "default-insecure-key";
+  
+  // Check environment - in production, require explicit key
+  const nodeEnv = process.env.NODE_ENV || "development";
+  if (nodeEnv === "production") {
+    console.error("CRITICAL SECURITY ERROR: LOG_ENCRYPTION_KEY is required in production!");
+    console.error("Generate a secure key with: node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"");
+    throw new Error("Missing LOG_ENCRYPTION_KEY in production - aborting for security");
+  }
+  
+  // Development/test fallback: derive from API key with warning
+  const apiKey = process.env.AGENTPAY_API_KEY;
+  if (!apiKey) {
+    console.error("CRITICAL SECURITY ERROR: Neither LOG_ENCRYPTION_KEY nor AGENTPAY_API_KEY is set!");
+    throw new Error("Missing encryption keys - aborting for security");
+  }
+  
+  // Issue a warning once about insecure configuration
+  if (!insecureKeyWarningIssued) {
+    console.warn("[SECURITY WARNING] Using derived encryption key from AGENTPAY_API_KEY.");
+    console.warn("For production, set LOG_ENCRYPTION_KEY environment variable.");
+    insecureKeyWarningIssued = true;
+  }
+  
   return crypto.scryptSync(apiKey, "agentpay-log-salt", KEY_LENGTH);
 }
 
