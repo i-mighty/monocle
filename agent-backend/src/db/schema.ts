@@ -771,3 +771,170 @@ export type NewWebhook = typeof webhooks.$inferInsert;
 
 export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 export type NewWebhookDelivery = typeof webhookDeliveries.$inferInsert;
+
+// =============================================================================
+// ANOMALY_ALERTS: Detected suspicious activity
+// =============================================================================
+export const anomalyAlerts = pgTable(
+  "anomaly_alerts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+
+    // Alert classification
+    alertType: text("alert_type").notNull(), // token_spike, unusual_caller, pricing_manipulation, settlement_loop
+    severity: text("severity").notNull().default("medium"), // low, medium, high, critical
+
+    // Detection details
+    description: text("description").notNull(),
+    detectedValue: text("detected_value"), // The anomalous value (JSON)
+    expectedRange: text("expected_range"), // Expected normal range (JSON)
+    confidence: integer("confidence").notNull().default(80), // 0-100
+
+    // Context
+    relatedCallerId: text("related_caller_id"),
+    relatedToolName: text("related_tool_name"),
+    windowStart: timestamp("window_start", { withTimezone: true }),
+    windowEnd: timestamp("window_end", { withTimezone: true }),
+
+    // Status
+    status: text("status").notNull().default("open"), // open, investigating, resolved, false_positive
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolutionNotes: text("resolution_notes"),
+
+    // Auto-actions taken
+    actionsTaken: text("actions_taken"), // JSON array of actions
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    agentIdx: index("anomaly_alerts_agent_idx").on(table.agentId),
+    typeIdx: index("anomaly_alerts_type_idx").on(table.alertType),
+    severityIdx: index("anomaly_alerts_severity_idx").on(table.severity),
+    statusIdx: index("anomaly_alerts_status_idx").on(table.status),
+    createdAtIdx: index("anomaly_alerts_created_at_idx").on(table.createdAt),
+  })
+);
+
+// =============================================================================
+// BALANCE_RESERVATIONS: Pre-authorization holds for execution
+// =============================================================================
+export const balanceReservations = pgTable(
+  "balance_reservations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    
+    // Parties
+    callerAgentId: text("caller_agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+    calleeAgentId: text("callee_agent_id").notNull(),
+    
+    // Reservation details
+    toolName: text("tool_name").notNull(),
+    estimatedTokens: integer("estimated_tokens").notNull(),
+    reservedLamports: bigint("reserved_lamports", { mode: "number" }).notNull(),
+    
+    // Status tracking
+    status: text("status").notNull().default("active"), // active, captured, released, expired
+    
+    // Capture details (filled when captured)
+    actualTokens: integer("actual_tokens"),
+    actualCostLamports: bigint("actual_cost_lamports", { mode: "number" }),
+    capturedAt: timestamp("captured_at", { withTimezone: true }),
+    
+    // Expiration (reservations auto-expire)
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    callerIdx: index("balance_reservations_caller_idx").on(table.callerAgentId),
+    statusIdx: index("balance_reservations_status_idx").on(table.status),
+    expiresIdx: index("balance_reservations_expires_idx").on(table.expiresAt),
+  })
+);
+
+// =============================================================================
+// AGENT_BEHAVIOR_STATS: Rolling statistics for anomaly detection
+// =============================================================================
+export const agentBehaviorStats = pgTable(
+  "agent_behavior_stats",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+
+    // Time window
+    windowType: text("window_type").notNull(), // hourly, daily, weekly
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+
+    // Usage metrics
+    totalCalls: integer("total_calls").notNull().default(0),
+    totalTokens: bigint("total_tokens", { mode: "number" }).notNull().default(0),
+    totalCostLamports: bigint("total_cost_lamports", { mode: "number" }).notNull().default(0),
+    uniqueCallers: integer("unique_callers").notNull().default(0),
+    uniqueCallees: integer("unique_callees").notNull().default(0),
+
+    // Pricing metrics
+    avgTokensPerCall: integer("avg_tokens_per_call"),
+    maxTokensInCall: integer("max_tokens_in_call"),
+    avgCostPerCall: bigint("avg_cost_per_call", { mode: "number" }),
+
+    // Settlement metrics
+    settlementsAttempted: integer("settlements_attempted").notNull().default(0),
+    settlementsFailed: integer("settlements_failed").notNull().default(0),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    agentWindowUnique: uniqueIndex("agent_behavior_stats_unique").on(
+      table.agentId,
+      table.windowType,
+      table.windowStart
+    ),
+    agentIdx: index("agent_behavior_stats_agent_idx").on(table.agentId),
+    windowIdx: index("agent_behavior_stats_window_idx").on(table.windowType, table.windowStart),
+  })
+);
+
+// =============================================================================
+// RELATIONS: Anti-abuse relations
+// =============================================================================
+export const anomalyAlertsRelations = relations(anomalyAlerts, ({ one }) => ({
+  agent: one(agents, {
+    fields: [anomalyAlerts.agentId],
+    references: [agents.id],
+  }),
+}));
+
+export const balanceReservationsRelations = relations(balanceReservations, ({ one }) => ({
+  caller: one(agents, {
+    fields: [balanceReservations.callerAgentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentBehaviorStatsRelations = relations(agentBehaviorStats, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentBehaviorStats.agentId],
+    references: [agents.id],
+  }),
+}));
+
+// =============================================================================
+// TYPE EXPORTS: Anti-abuse types
+// =============================================================================
+export type AnomalyAlert = typeof anomalyAlerts.$inferSelect;
+export type NewAnomalyAlert = typeof anomalyAlerts.$inferInsert;
+
+export type BalanceReservation = typeof balanceReservations.$inferSelect;
+export type NewBalanceReservation = typeof balanceReservations.$inferInsert;
+
+export type AgentBehaviorStats = typeof agentBehaviorStats.$inferSelect;
+export type NewAgentBehaviorStats = typeof agentBehaviorStats.$inferInsert;

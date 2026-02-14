@@ -442,4 +442,137 @@ export class AgentPayClient {
       method: "POST",
     });
   }
+
+  // ==================== Anti-Abuse / Pre-Authorization Methods ====================
+
+  /**
+   * Reserve balance before execution (pre-authorization)
+   */
+  reserve(callerId: string, calleeId: string, toolName: string, estimatedTokens: number, timeoutMs?: number) {
+    return this.request("/anti-abuse/reserve", {
+      method: "POST",
+      body: JSON.stringify({ callerId, calleeId, toolName, estimatedTokens, timeoutMs }),
+    });
+  }
+
+  /**
+   * Capture a reservation (complete payment after successful execution)
+   */
+  capture(reservationId: string, actualTokens: number) {
+    return this.request(`/anti-abuse/capture/${reservationId}`, {
+      method: "POST",
+      body: JSON.stringify({ actualTokens }),
+    });
+  }
+
+  /**
+   * Release a reservation (cancel on failure)
+   */
+  release(reservationId: string, reason?: string) {
+    return this.request(`/anti-abuse/release/${reservationId}`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  /**
+   * Get active reservations for an agent
+   */
+  getActiveReservations(agentId: string) {
+    return this.request(`/anti-abuse/reservations/${agentId}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Get available balance (total minus reservations)
+   */
+  getAvailableBalance(agentId: string) {
+    return this.request(`/anti-abuse/balance/${agentId}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Get anomaly alerts for an agent
+   */
+  getAnomalyAlerts(agentId: string, options?: { status?: string; severity?: string; limit?: number }) {
+    const params = new URLSearchParams();
+    if (options?.status) params.append("status", options.status);
+    if (options?.severity) params.append("severity", options.severity);
+    if (options?.limit) params.append("limit", options.limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request(`/anti-abuse/alerts/${agentId}${query}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Resolve an anomaly alert
+   */
+  resolveAlert(alertId: string, status: "resolved" | "false_positive", notes?: string) {
+    return this.request(`/anti-abuse/alerts/${alertId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, notes }),
+    });
+  }
+
+  /**
+   * Get behavior profile for an agent
+   */
+  getBehaviorProfile(agentId: string) {
+    return this.request(`/anti-abuse/profile/${agentId}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Run anomaly detection scan
+   */
+  scanForAnomalies(agentId: string, callerId: string, toolName: string, tokensUsed: number, ratePer1kTokens: number) {
+    return this.request(`/anti-abuse/scan/${agentId}`, {
+      method: "POST",
+      body: JSON.stringify({ callerId, toolName, tokensUsed, ratePer1kTokens }),
+    });
+  }
+
+  /**
+   * Execute tool with pre-authorization (one-shot helper)
+   * 
+   * Handles reserve -> execute -> capture/release automatically.
+   * If you need more control, use reserve/capture/release separately.
+   */
+  async executeWithPreAuth(
+    callerId: string,
+    calleeId: string,
+    toolName: string,
+    estimatedTokens: number,
+    executor: () => Promise<{ actualTokens: number; result: any }>
+  ) {
+    // Step 1: Reserve
+    const reservation = await this.reserve(callerId, calleeId, toolName, estimatedTokens);
+    
+    if (!reservation.success) {
+      throw new Error(reservation.error || "Failed to create reservation");
+    }
+
+    try {
+      // Step 2: Execute
+      const { actualTokens, result } = await executor();
+
+      // Step 3: Capture
+      const captureResult = await this.capture(reservation.data.reservationId, actualTokens);
+
+      return {
+        success: true,
+        result,
+        reservation: reservation.data,
+        capture: captureResult.data,
+      };
+    } catch (error: any) {
+      // Step 3 (alt): Release on failure
+      await this.release(reservation.data.reservationId, error.message);
+      throw error;
+    }
+  }
 }
