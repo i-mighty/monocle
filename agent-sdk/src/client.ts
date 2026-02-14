@@ -697,4 +697,187 @@ export class AgentPayClient {
       throw error;
     }
   }
+
+  // ==================== Budget Authorization Methods ====================
+  
+  /**
+   * Pre-authorize a spend before execution
+   * 
+   * Performs comprehensive budget checks and optionally creates a balance reservation.
+   * Use this for enterprise risk mitigation - fail fast before cost accrual.
+   * 
+   * @example
+   * const auth = await client.authorizeSpend({
+   *   agentId: "my-agent",
+   *   calls: [
+   *     { calleeId: "gpt-provider", toolName: "gpt-4", estimatedTokens: 8000 },
+   *     { calleeId: "dalle-provider", toolName: "dalle-3", estimatedTokens: 1000 }
+   *   ],
+   *   createReservation: true,
+   *   purpose: "Image generation workflow"
+   * });
+   * if (auth.authorized) {
+   *   // Safe to proceed
+   * }
+   */
+  authorizeSpend(request: {
+    agentId: string;
+    estimatedSpendLamports?: number;
+    calls?: Array<{
+      calleeId: string;
+      toolName: string;
+      estimatedTokens: number;
+    }>;
+    createReservation?: boolean;
+    reservationTimeoutMs?: number;
+    purpose?: string;
+  }) {
+    return this.request("/budget/authorize", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
+  /**
+   * Get comprehensive budget status for an agent
+   * 
+   * Returns balance, limits, spending history, and health indicators.
+   */
+  getBudgetStatus(agentId: string) {
+    return this.request(`/budget/status/${agentId}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Forecast if a spend would be allowed (lightweight check)
+   * 
+   * Does NOT create reservations - just checks if execution would succeed.
+   */
+  forecastSpend(agentId: string, calls: Array<{
+    calleeId: string;
+    toolName: string;
+    estimatedTokens: number;
+  }>) {
+    return this.request("/budget/forecast", {
+      method: "POST",
+      body: JSON.stringify({ agentId, calls }),
+    });
+  }
+
+  /**
+   * Set spend limits for an agent
+   * 
+   * @param agentId - Agent to configure
+   * @param limits - New limit values (null = no limit)
+   */
+  setSpendLimits(agentId: string, limits: {
+    maxCostPerCall?: number | null;
+    dailySpendCap?: number | null;
+    allowedCallees?: string[] | null;
+  }) {
+    return this.request(`/budget/limits/${agentId}`, {
+      method: "PUT",
+      body: JSON.stringify(limits),
+    });
+  }
+
+  /**
+   * Emergency pause all spending for an agent
+   * 
+   * Use when suspicious activity is detected - immediately halts all outgoing payments.
+   */
+  pauseSpending(agentId: string, reason?: string) {
+    return this.request(`/budget/pause/${agentId}`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  }
+
+  /**
+   * Resume spending for a paused agent
+   */
+  resumeSpending(agentId: string) {
+    return this.request(`/budget/resume/${agentId}`, {
+      method: "POST",
+    });
+  }
+
+  /**
+   * Get recent spending history for an agent
+   * 
+   * @param agentId - Agent ID
+   * @param options - Query options (limit, days)
+   */
+  getSpendingHistory(agentId: string, options?: { limit?: number; days?: number }) {
+    const params = new URLSearchParams();
+    if (options?.limit) params.append("limit", options.limit.toString());
+    if (options?.days) params.append("days", options.days.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    
+    return this.request(`/budget/history/${agentId}${query}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Authorize and execute a workflow with automatic pre-authorization
+   * 
+   * Convenience method that:
+   * 1. Pre-authorizes the spend (with reservation)
+   * 2. Executes the workflow
+   * 3. Handles success/failure cleanup
+   * 
+   * @example
+   * await client.executeWithBudgetAuth({
+   *   agentId: "my-agent",
+   *   calls: [{ calleeId: "gpt", toolName: "gpt-4", estimatedTokens: 5000 }],
+   *   purpose: "Analysis workflow",
+   * }, async (auth) => {
+   *   // Execute your workflow here
+   *   const result = await client.executeTool(...);
+   *   return result;
+   * });
+   */
+  async executeWithBudgetAuth<T>(
+    authorization: {
+      agentId: string;
+      calls: Array<{
+        calleeId: string;
+        toolName: string;
+        estimatedTokens: number;
+      }>;
+      purpose?: string;
+    },
+    executor: (auth: any) => Promise<T>
+  ): Promise<{ success: boolean; result?: T; authorization: any; error?: string }> {
+    // Pre-authorize with reservation
+    const auth = await this.authorizeSpend({
+      ...authorization,
+      createReservation: true,
+    });
+
+    if (!auth.authorized) {
+      return {
+        success: false,
+        authorization: auth,
+        error: auth.violations?.join("; ") || "Authorization denied",
+      };
+    }
+
+    try {
+      const result = await executor(auth);
+      return {
+        success: true,
+        result,
+        authorization: auth,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        authorization: auth,
+        error: error.message,
+      };
+    }
+  }
 }
