@@ -256,7 +256,17 @@ monocle/
 - `GET /pricing/constants` - Pricing constants
 - `POST /pricing/calculate` - Calculate cost
 
-All endpoints require `x-api-key` header (except /x402/info).
+### Budget Authorization (Enterprise)
+- `POST /budget/authorize` - Pre-authorize spend before execution
+- `GET /budget/status/:agentId` - Comprehensive budget status
+- `POST /budget/forecast` - Forecast if spend would be allowed
+- `PUT /budget/limits/:agentId` - Set spend limits
+- `POST /budget/pause/:agentId` - Emergency pause spending
+- `POST /budget/resume/:agentId` - Resume spending
+- `GET /budget/history/:agentId` - Spending history
+- `GET /budget/docs` - API documentation
+
+All endpoints require `x-api-key` header (except /x402/info, /budget/docs).
 
 ---
 
