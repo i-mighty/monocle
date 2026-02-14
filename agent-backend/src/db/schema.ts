@@ -45,6 +45,22 @@ export const agents = pgTable(
       .notNull()
       .default(0),
 
+    // =========================================================================
+    // BUDGET GUARDRAILS: Trust & Safety controls for autonomous spending
+    // =========================================================================
+    
+    // Max cost per single call (lamports). null = no limit
+    maxCostPerCall: bigint("max_cost_per_call", { mode: "number" }),
+    
+    // Daily spend cap (lamports). null = no limit
+    dailySpendCap: bigint("daily_spend_cap", { mode: "number" }),
+    
+    // Emergency kill switch - immediately stops all outgoing payments
+    isPaused: text("is_paused").notNull().default("false"),
+    
+    // Allowlist of agent IDs this agent can call (JSON array). null = all allowed
+    allowedCallees: text("allowed_callees"), // JSON array, e.g., '["agent-1", "agent-2"]'
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   }
 );
