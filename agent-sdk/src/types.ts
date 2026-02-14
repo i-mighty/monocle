@@ -234,3 +234,164 @@ export class AgentSdkError extends Error {
   }
 }
 
+// ==================== Agent Registry Types ====================
+
+/**
+ * Agent profile information
+ */
+export interface AgentProfile {
+  agentId: string;
+  name?: string;
+  publicKey?: string;
+  defaultRatePer1kTokens: number;
+  balanceLamports: number;
+  pendingLamports: number;
+  maxCostPerCall?: number;
+  dailySpendCap?: number;
+  isPaused: boolean;
+  allowedCallees?: string[];
+  reputationScore: number;
+  verifiedStatus: "unverified" | "pending" | "verified" | "suspended";
+  verifiedAt?: string;
+  verifiedBy?: string;
+  bio?: string;
+  websiteUrl?: string;
+  logoUrl?: string;
+  categories?: string[];
+  version?: string;
+  ownerEmail?: string;
+  supportUrl?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+/**
+ * Agent audit record
+ */
+export interface AgentAudit {
+  id: string;
+  agentId: string;
+  auditType: string;
+  result: "passed" | "failed" | "pending" | "expired";
+  auditorId?: string;
+  auditorName?: string;
+  auditorType: "internal" | "external" | "automated" | "system";
+  summary?: string;
+  detailsJson?: Record<string, any>;
+  evidenceUrl?: string;
+  certificateHash?: string;
+  validFrom: string;
+  validUntil?: string;
+  score?: number;
+  notes?: string;
+  createdAt: string;
+}
+
+/**
+ * Agent capability declaration
+ */
+export interface AgentCapability {
+  id: string;
+  agentId: string;
+  capability: string;
+  proficiencyLevel: "basic" | "intermediate" | "advanced" | "expert";
+  isVerified: boolean;
+  verifiedAt?: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
+}
+
+/**
+ * Version history entry
+ */
+export interface VersionHistoryEntry {
+  id: string;
+  agentId: string;
+  version: string;
+  changeType: string;
+  snapshotJson: Record<string, any>;
+  changesJson?: Record<string, any>;
+  changedBy?: string;
+  changeReason?: string;
+  isBreakingChange: boolean;
+  migrationNotes?: string;
+  createdAt: string;
+}
+
+/**
+ * Tool metadata
+ */
+export interface ToolMetadata {
+  id: string;
+  agentId: string;
+  name: string;
+  description?: string;
+  version: string;
+  category?: string;
+  inputSchema?: Record<string, any>;
+  outputSchema?: Record<string, any>;
+  examplesJson?: Record<string, any>[];
+  avgTokensPerCall?: number;
+  maxTokensPerCall?: number;
+  docsUrl?: string;
+  isDeprecated: boolean;
+  deprecationMessage?: string;
+  totalCalls: number;
+  totalTokensProcessed: number;
+  lastCalledAt?: string;
+  ratePer1kTokens: number;
+  isActive: boolean;
+}
+
+/**
+ * Agent leaderboard entry
+ */
+export interface LeaderboardEntry {
+  rank: number;
+  agentId: string;
+  name?: string;
+  reputationScore: number;
+  verifiedStatus: "unverified" | "pending" | "verified" | "suspended";
+  categories?: string[];
+  stats: {
+    totalCallsReceived30d: number;
+    uniqueCallers30d: number;
+  };
+}
+
+/**
+ * Agent full profile response
+ */
+export interface AgentFullProfile {
+  profile: AgentProfile;
+  tools: ToolMetadata[];
+  audits: AgentAudit[];
+  capabilities: AgentCapability[];
+  versionHistory: VersionHistoryEntry[];
+}
+
+/**
+ * Reputation calculation factors
+ */
+export interface ReputationFactors {
+  baseScore: number;
+  verificationBonus: number;
+  activityBonus: number;
+  diversityBonus: number;
+  auditBonus: number;
+  longevityBonus: number;
+}
+
+/**
+ * Agent search result
+ */
+export interface AgentSearchResult {
+  agentId: string;
+  name?: string;
+  reputationScore: number;
+  verifiedStatus: "unverified" | "pending" | "verified" | "suspended";
+  bio?: string;
+  categories?: string[];
+  capabilities?: string[];
+}
+

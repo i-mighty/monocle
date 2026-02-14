@@ -943,4 +943,321 @@ export class AgentPayClient {
       };
     }
   }
+
+  // ==================== Agent Registry Methods ====================
+
+  /**
+   * Search and discover agents by various criteria
+   * 
+   * @param options - Search options
+   * @param options.query - Search query (name, bio, id)
+   * @param options.category - Filter by category
+   * @param options.capability - Filter by capability
+   * @param options.verifiedOnly - Only verified agents
+   * @param options.minReputationScore - Minimum reputation score
+   * @param options.limit - Max results (default 50)
+   * @param options.offset - Pagination offset
+   */
+  searchAgentsRegistry(options: {
+    query?: string;
+    category?: string;
+    capability?: string;
+    verifiedOnly?: boolean;
+    minReputationScore?: number;
+    limit?: number;
+    offset?: number;
+  } = {}) {
+    const params = new URLSearchParams();
+    if (options.query) params.append("q", options.query);
+    if (options.category) params.append("category", options.category);
+    if (options.capability) params.append("capability", options.capability);
+    if (options.verifiedOnly) params.append("verified", "true");
+    if (options.minReputationScore) params.append("minReputation", options.minReputationScore.toString());
+    if (options.limit) params.append("limit", options.limit.toString());
+    if (options.offset) params.append("offset", options.offset.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    
+    return this.request(`/agents/search${query}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Get top agents by reputation score
+   * 
+   * @param options - Leaderboard options
+   * @param options.limit - Max results (default 50)
+   * @param options.category - Filter by category
+   */
+  getAgentLeaderboard(options: { limit?: number; category?: string } = {}) {
+    const params = new URLSearchParams();
+    if (options.limit) params.append("limit", options.limit.toString());
+    if (options.category) params.append("category", options.category);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    
+    return this.request(`/agents/leaderboard${query}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Get complete agent profile including tools, audits, capabilities, and version history
+   * 
+   * @param agentId - Agent ID
+   */
+  getAgentFullProfile(agentId: string) {
+    return this.request(`/agents/${agentId}/full-profile`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Update agent profile information
+   * 
+   * @param agentId - Agent ID
+   * @param profile - Profile fields to update
+   */
+  updateAgentProfile(agentId: string, profile: {
+    name?: string;
+    bio?: string;
+    websiteUrl?: string;
+    logoUrl?: string;
+    categories?: string[];
+    version?: string;
+    ownerEmail?: string;
+    supportUrl?: string;
+  }) {
+    return this.request(`/agents/${agentId}/profile`, {
+      method: "PATCH",
+      body: JSON.stringify(profile),
+    });
+  }
+
+  // ==================== Reputation & Verification Methods ====================
+
+  /**
+   * Get agent's current reputation score with calculation breakdown
+   * 
+   * @param agentId - Agent ID
+   */
+  getAgentReputation(agentId: string) {
+    return this.request(`/agents/${agentId}/reputation`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Recalculate and store the agent's reputation score
+   * 
+   * @param agentId - Agent ID
+   */
+  recalculateReputation(agentId: string) {
+    return this.request(`/agents/${agentId}/reputation/recalculate`, {
+      method: "POST",
+    });
+  }
+
+  /**
+   * Update agent verification status (admin endpoint)
+   * 
+   * @param agentId - Agent ID
+   * @param status - New verification status
+   * @param verifiedBy - Who verified (optional)
+   */
+  updateVerificationStatus(agentId: string, status: "unverified" | "pending" | "verified" | "suspended", verifiedBy?: string) {
+    return this.request(`/agents/${agentId}/verification`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, verifiedBy }),
+    });
+  }
+
+  // ==================== Audit Methods ====================
+
+  /**
+   * Get agent's audit history
+   * 
+   * @param agentId - Agent ID
+   * @param options - Filter options
+   */
+  getAgentAudits(agentId: string, options: { type?: string; result?: string; limit?: number } = {}) {
+    const params = new URLSearchParams();
+    if (options.type) params.append("type", options.type);
+    if (options.result) params.append("result", options.result);
+    if (options.limit) params.append("limit", options.limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    
+    return this.request(`/agents/${agentId}/audits${query}`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Create a new audit record for an agent
+   * 
+   * @param agentId - Agent ID
+   * @param audit - Audit data
+   */
+  createAudit(agentId: string, audit: {
+    auditType: string;
+    auditorId?: string;
+    auditorName?: string;
+    auditorType?: string;
+    summary?: string;
+    details?: object;
+    evidenceUrl?: string;
+    validUntil?: string;
+    score?: number;
+    notes?: string;
+  }) {
+    return this.request(`/agents/${agentId}/audits`, {
+      method: "POST",
+      body: JSON.stringify(audit),
+    });
+  }
+
+  /**
+   * Update an audit result
+   * 
+   * @param agentId - Agent ID
+   * @param auditId - Audit ID
+   * @param update - Update data
+   */
+  updateAuditResult(agentId: string, auditId: string, update: {
+    result: "passed" | "failed" | "pending" | "expired";
+    score?: number;
+    notes?: string;
+  }) {
+    return this.request(`/agents/${agentId}/audits/${auditId}`, {
+      method: "PATCH",
+      body: JSON.stringify(update),
+    });
+  }
+
+  // ==================== Capability Methods ====================
+
+  /**
+   * Get agent's declared capabilities
+   * 
+   * @param agentId - Agent ID
+   */
+  getAgentCapabilities(agentId: string) {
+    return this.request(`/agents/${agentId}/capabilities`, {
+      method: "GET",
+    });
+  }
+
+  /**
+   * Add or update a capability for an agent
+   * 
+   * @param agentId - Agent ID
+   * @param capability - Capability data
+   */
+  setCapability(agentId: string, capability: {
+    capability: string;
+    proficiencyLevel?: "basic" | "intermediate" | "advanced" | "expert";
+    metadata?: object;
+  }) {
+    return this.request(`/agents/${agentId}/capabilities`, {
+      method: "POST",
+      body: JSON.stringify(capability),
+    });
+  }
+
+  /**
+   * Remove a capability from an agent
+   * 
+   * @param agentId - Agent ID
+   * @param capability - Capability name
+   */
+  removeCapability(agentId: string, capability: string) {
+    return this.request(`/agents/${agentId}/capabilities/${encodeURIComponent(capability)}`, {
+      method: "DELETE",
+    });
+  }
+
+  /**
+   * Find agents that have a specific capability
+   * 
+   * @param capability - Capability to search for
+   * @param options - Filter options
+   */
+  findAgentsByCapability(capability: string, options: {
+    minProficiency?: "basic" | "intermediate" | "advanced" | "expert";
+    verifiedOnly?: boolean;
+    limit?: number;
+  } = {}) {
+    const params = new URLSearchParams();
+    if (options.minProficiency) params.append("minProficiency", options.minProficiency);
+    if (options.verifiedOnly) params.append("verified", "true");
+    if (options.limit) params.append("limit", options.limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    
+    return this.request(`/agents/by-capability/${encodeURIComponent(capability)}${query}`, {
+      method: "GET",
+    });
+  }
+
+  // ==================== Version History Methods ====================
+
+  /**
+   * Get agent's version/change history
+   * 
+   * @param agentId - Agent ID
+   * @param options - Filter options
+   */
+  getVersionHistory(agentId: string, options: { changeType?: string; limit?: number } = {}) {
+    const params = new URLSearchParams();
+    if (options.changeType) params.append("changeType", options.changeType);
+    if (options.limit) params.append("limit", options.limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    
+    return this.request(`/agents/${agentId}/version-history${query}`, {
+      method: "GET",
+    });
+  }
+
+  // ==================== Tool Metadata Methods ====================
+
+  /**
+   * Update tool metadata (schema, examples, categorization, deprecation)
+   * 
+   * @param agentId - Agent ID (owner of the tool)
+   * @param toolId - Tool ID
+   * @param metadata - Metadata to update
+   */
+  updateToolMetadata(agentId: string, toolId: string, metadata: {
+    description?: string;
+    version?: string;
+    category?: string;
+    inputSchema?: object;
+    outputSchema?: object;
+    examples?: object[];
+    avgTokensPerCall?: number;
+    maxTokensPerCall?: number;
+    docsUrl?: string;
+    isDeprecated?: boolean;
+    deprecationMessage?: string;
+  }) {
+    return this.request(`/agents/${agentId}/tools/${toolId}/metadata`, {
+      method: "PATCH",
+      body: JSON.stringify(metadata),
+    });
+  }
+
+  /**
+   * Get tools by category across all agents
+   * 
+   * @param category - Tool category
+   * @param options - Filter options
+   */
+  getToolsByCategory(category: string, options: { verifiedAgentsOnly?: boolean; limit?: number } = {}) {
+    const params = new URLSearchParams();
+    if (options.verifiedAgentsOnly) params.append("verified", "true");
+    if (options.limit) params.append("limit", options.limit.toString());
+    const query = params.toString() ? `?${params.toString()}` : "";
+    
+    return this.request(`/agents/tools/by-category/${encodeURIComponent(category)}${query}`, {
+      method: "GET",
+    });
+  }
 }
