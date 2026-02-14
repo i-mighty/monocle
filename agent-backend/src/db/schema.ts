@@ -61,12 +61,44 @@ export const agents = pgTable(
     // Allowlist of agent IDs this agent can call (JSON array). null = all allowed
     allowedCallees: text("allowed_callees"), // JSON array, e.g., '["agent-1", "agent-2"]'
 
+    // =========================================================================
+    // REPUTATION & TRUST: Registry enhancements for Trust & Safety
+    // =========================================================================
+    
+    // Computed reputation score (0-1000 scale, higher = better)
+    reputationScore: integer("reputation_score").notNull().default(500),
+    
+    // Verification status: unverified | pending | verified | suspended
+    verifiedStatus: text("verified_status").notNull().default("unverified"),
+    
+    // When verification status last changed
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    
+    // Who performed the verification (admin ID or "system")
+    verifiedBy: text("verified_by"),
+    
+    // Agent profile information
+    bio: text("bio"), // Short description of the agent
+    websiteUrl: text("website_url"), // Agent's website/documentation
+    logoUrl: text("logo_url"), // Agent logo/avatar URL
+    
+    // Categorization for discovery (JSON array, e.g., '["llm", "code-gen", "translation"]')
+    categories: text("categories"),
+    
+    // Version tracking
+    version: text("version").notNull().default("1.0.0"),
+    
+    // Contact/owner information
+    ownerEmail: text("owner_email"),
+    supportUrl: text("support_url"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   }
 );
 
 // =============================================================================
-// TOOLS: Per-tool pricing configuration
+// TOOLS: Per-tool pricing and metadata configuration
 // =============================================================================
 export const tools = pgTable(
   "tools",
@@ -86,6 +118,44 @@ export const tools = pgTable(
     // Tool metadata
     isActive: text("is_active").notNull().default("true"),
 
+    // =========================================================================
+    // ENHANCED TOOL METADATA: For discovery and documentation
+    // =========================================================================
+    
+    // Version of this tool
+    version: text("version").notNull().default("1.0.0"),
+    
+    // Categorization for discovery (e.g., "code-generation", "summarization")
+    category: text("category"),
+    
+    // JSON schema for input parameters (OpenAPI/JSON Schema format)
+    inputSchema: text("input_schema"),
+    
+    // JSON schema for output format
+    outputSchema: text("output_schema"),
+    
+    // Example usage in JSON format
+    examplesJson: text("examples_json"),
+    
+    // Estimated token consumption range
+    avgTokensPerCall: integer("avg_tokens_per_call"),
+    maxTokensPerCall: integer("max_tokens_per_call"),
+    
+    // Documentation URL
+    docsUrl: text("docs_url"),
+    
+    // Deprecation info
+    isDeprecated: text("is_deprecated").notNull().default("false"),
+    deprecationMessage: text("deprecation_message"),
+    deprecatedAt: timestamp("deprecated_at", { withTimezone: true }),
+    
+    // Usage statistics (denormalized for performance)
+    totalCalls: bigint("total_calls", { mode: "number" }).notNull().default(0),
+    totalTokensProcessed: bigint("total_tokens_processed", { mode: "number" }).notNull().default(0),
+    
+    // Last time this tool was called
+    lastCalledAt: timestamp("last_called_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
@@ -96,6 +166,8 @@ export const tools = pgTable(
       table.name
     ),
     agentIdIdx: index("tools_agent_id_idx").on(table.agentId),
+    categoryIdx: index("tools_category_idx").on(table.category),
+    isActiveIdx: index("tools_is_active_idx").on(table.isActive),
   })
 );
 
@@ -112,6 +184,136 @@ export const apiKeys = pgTable(
   },
   (table) => ({
     keyIdx: index("api_keys_key_idx").on(table.key),
+  })
+);
+
+// =============================================================================
+// AGENT_AUDITS: Verification and audit trail for trust establishment
+// =============================================================================
+export const agentAudits = pgTable(
+  "agent_audits",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+
+    // Audit type: identity | security | compliance | code_review | performance
+    auditType: text("audit_type").notNull(),
+
+    // Audit result: passed | failed | pending | expired
+    result: text("result").notNull().default("pending"),
+
+    // Auditor information
+    auditorId: text("auditor_id"), // System or admin ID
+    auditorName: text("auditor_name"),
+    auditorType: text("auditor_type").notNull().default("system"), // system | manual | third_party
+
+    // Audit details
+    summary: text("summary"), // Brief description of what was audited
+    detailsJson: text("details_json"), // Full audit report as JSON
+    
+    // Evidence/artifacts
+    evidenceUrl: text("evidence_url"), // Link to audit report
+    certificateHash: text("certificate_hash"), // Hash for verification
+
+    // Validity period
+    validFrom: timestamp("valid_from", { withTimezone: true }).defaultNow(),
+    validUntil: timestamp("valid_until", { withTimezone: true }), // null = no expiration
+
+    // Scoring (0-100)
+    score: integer("score"),
+
+    // Notes
+    notes: text("notes"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    agentIdx: index("agent_audits_agent_idx").on(table.agentId),
+    typeIdx: index("agent_audits_type_idx").on(table.auditType),
+    resultIdx: index("agent_audits_result_idx").on(table.result),
+    validUntilIdx: index("agent_audits_valid_until_idx").on(table.validUntil),
+  })
+);
+
+// =============================================================================
+// AGENT_VERSION_HISTORY: Track changes to agent configuration over time
+// =============================================================================
+export const agentVersionHistory = pgTable(
+  "agent_version_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+
+    // Version identifier
+    version: text("version").notNull(),
+    
+    // What changed
+    changeType: text("change_type").notNull(), // created | updated | pricing_change | tool_added | tool_removed | verification_change
+    
+    // Snapshot of agent state at this version (JSON)
+    snapshotJson: text("snapshot_json").notNull(),
+    
+    // Specific changes (JSON diff format)
+    changesJson: text("changes_json"),
+    
+    // Who made the change
+    changedBy: text("changed_by"), // User ID, "system", or "api"
+    
+    // Change reason/notes
+    changeReason: text("change_reason"),
+    
+    // Migration handling
+    isBreakingChange: text("is_breaking_change").notNull().default("false"),
+    migrationNotes: text("migration_notes"),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    agentIdx: index("agent_version_history_agent_idx").on(table.agentId),
+    versionIdx: index("agent_version_history_version_idx").on(table.version),
+    changeTypeIdx: index("agent_version_history_type_idx").on(table.changeType),
+    createdAtIdx: index("agent_version_history_created_idx").on(table.createdAt),
+  })
+);
+
+// =============================================================================
+// AGENT_CAPABILITIES: Declared capabilities for discovery and matching
+// =============================================================================
+export const agentCapabilities = pgTable(
+  "agent_capabilities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    agentId: text("agent_id")
+      .notNull()
+      .references(() => agents.id, { onDelete: "cascade" }),
+
+    // Capability identifier (e.g., "text-generation", "image-recognition", "code-execution")
+    capability: text("capability").notNull(),
+    
+    // Proficiency level: basic | intermediate | advanced | expert
+    proficiencyLevel: text("proficiency_level").notNull().default("intermediate"),
+    
+    // Self-reported or verified
+    isVerified: text("is_verified").notNull().default("false"),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    
+    // Additional metadata
+    metadata: text("metadata"), // JSON for capability-specific details
+
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    agentIdx: index("agent_capabilities_agent_idx").on(table.agentId),
+    capabilityIdx: index("agent_capabilities_capability_idx").on(table.capability),
+    agentCapabilityUnique: uniqueIndex("agent_capabilities_unique").on(
+      table.agentId,
+      table.capability
+    ),
   })
 );
 
@@ -293,6 +495,10 @@ export const agentsRelations = relations(agents, ({ many }) => ({
   blockedBy: many(agentBlocks, { relationName: "blockedBy" }),
   following: many(agentFollows, { relationName: "following" }),
   followers: many(agentFollows, { relationName: "followers" }),
+  // Trust & Reputation relations
+  audits: many(agentAudits),
+  versionHistory: many(agentVersionHistory),
+  capabilities: many(agentCapabilities),
 }));
 
 export const toolsRelations = relations(tools, ({ one, many }) => ({
@@ -1015,3 +1221,39 @@ export type NewBalanceReservation = typeof balanceReservations.$inferInsert;
 
 export type AgentBehaviorStats = typeof agentBehaviorStats.$inferSelect;
 export type NewAgentBehaviorStats = typeof agentBehaviorStats.$inferInsert;
+
+// =============================================================================
+// RELATIONS: Agent Registry Enhancement relations
+// =============================================================================
+export const agentAuditsRelations = relations(agentAudits, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentAudits.agentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentVersionHistoryRelations = relations(agentVersionHistory, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentVersionHistory.agentId],
+    references: [agents.id],
+  }),
+}));
+
+export const agentCapabilitiesRelations = relations(agentCapabilities, ({ one }) => ({
+  agent: one(agents, {
+    fields: [agentCapabilities.agentId],
+    references: [agents.id],
+  }),
+}));
+
+// =============================================================================
+// TYPE EXPORTS: Agent Registry Enhancement types
+// =============================================================================
+export type AgentAudit = typeof agentAudits.$inferSelect;
+export type NewAgentAudit = typeof agentAudits.$inferInsert;
+
+export type AgentVersionHistory = typeof agentVersionHistory.$inferSelect;
+export type NewAgentVersionHistory = typeof agentVersionHistory.$inferInsert;
+
+export type AgentCapability = typeof agentCapabilities.$inferSelect;
+export type NewAgentCapability = typeof agentCapabilities.$inferInsert;

@@ -28,11 +28,33 @@ create table if not exists agents (
   balance_lamports bigint not null default 0,
   pending_lamports bigint not null default 0,
 
-  created_at timestamptz default now()
+  -- Budget guardrails
+  max_cost_per_call bigint,
+  daily_spend_cap bigint,
+  is_paused text not null default 'false',
+  allowed_callees text,
+
+  -- Reputation & Trust fields
+  reputation_score integer not null default 500,
+  verified_status text not null default 'unverified',
+  verified_at timestamptz,
+  verified_by text,
+  
+  -- Agent profile
+  bio text,
+  website_url text,
+  logo_url text,
+  categories text,
+  version text not null default '1.0.0',
+  owner_email text,
+  support_url text,
+
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
 );
 
 -- =============================================================================
--- TOOLS TABLE: Per-tool pricing configuration
+-- TOOLS TABLE: Per-tool pricing and metadata configuration
 -- =============================================================================
 create table if not exists tools (
   id uuid primary key default gen_random_uuid(),
@@ -48,11 +70,93 @@ create table if not exists tools (
   -- Tool metadata
   is_active text not null default 'true',
 
+  -- Enhanced metadata
+  version text not null default '1.0.0',
+  category text,
+  input_schema text,
+  output_schema text,
+  examples_json text,
+  avg_tokens_per_call integer,
+  max_tokens_per_call integer,
+  docs_url text,
+  is_deprecated text not null default 'false',
+  deprecation_message text,
+  deprecated_at timestamptz,
+  total_calls bigint not null default 0,
+  total_tokens_processed bigint not null default 0,
+  last_called_at timestamptz,
+
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
 
   -- Unique constraint: one tool name per agent
   unique(agent_id, name)
+);
+
+-- =============================================================================
+-- AGENT_AUDITS: Verification and audit trail
+-- =============================================================================
+create table if not exists agent_audits (
+  id uuid primary key default gen_random_uuid(),
+  agent_id text not null references agents(id) on delete cascade,
+  
+  audit_type text not null,
+  result text not null default 'pending',
+  
+  auditor_id text,
+  auditor_name text,
+  auditor_type text not null default 'system',
+  
+  summary text,
+  details_json text,
+  evidence_url text,
+  certificate_hash text,
+  
+  valid_from timestamptz default now(),
+  valid_until timestamptz,
+  
+  score integer,
+  notes text,
+  
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- =============================================================================
+-- AGENT_VERSION_HISTORY: Track changes over time
+-- =============================================================================
+create table if not exists agent_version_history (
+  id uuid primary key default gen_random_uuid(),
+  agent_id text not null references agents(id) on delete cascade,
+  
+  version text not null,
+  change_type text not null,
+  snapshot_json text not null,
+  changes_json text,
+  changed_by text,
+  change_reason text,
+  is_breaking_change text not null default 'false',
+  migration_notes text,
+  
+  created_at timestamptz default now()
+);
+
+-- =============================================================================
+-- AGENT_CAPABILITIES: Declared capabilities for discovery
+-- =============================================================================
+create table if not exists agent_capabilities (
+  id uuid primary key default gen_random_uuid(),
+  agent_id text not null references agents(id) on delete cascade,
+  
+  capability text not null,
+  proficiency_level text not null default 'intermediate',
+  is_verified text not null default 'false',
+  verified_at timestamptz,
+  metadata text,
+  
+  created_at timestamptz default now(),
+  
+  unique(agent_id, capability)
 );
 
 -- API Keys for authentication
@@ -147,6 +251,8 @@ create table if not exists x402_payments (
 -- INDEXES: Optimized query paths
 -- =============================================================================
 create index idx_tools_agent_id on tools(agent_id);
+create index idx_tools_category on tools(category);
+create index idx_tools_is_active on tools(is_active);
 
 create index idx_tool_usage_caller on tool_usage(caller_agent_id);
 create index idx_tool_usage_callee on tool_usage(callee_agent_id);
@@ -167,6 +273,23 @@ create index idx_x402_payments_signature on x402_payments(tx_signature);
 create index idx_x402_payments_nonce on x402_payments(nonce);
 create index idx_x402_payments_payer on x402_payments(payer_wallet);
 create index idx_x402_payments_created_at on x402_payments(created_at desc);
+
+-- Agent Registry Enhancement indexes
+create index idx_agent_audits_agent on agent_audits(agent_id);
+create index idx_agent_audits_type on agent_audits(audit_type);
+create index idx_agent_audits_result on agent_audits(result);
+create index idx_agent_audits_valid_until on agent_audits(valid_until);
+
+create index idx_agent_version_history_agent on agent_version_history(agent_id);
+create index idx_agent_version_history_version on agent_version_history(version);
+create index idx_agent_version_history_type on agent_version_history(change_type);
+create index idx_agent_version_history_created on agent_version_history(created_at);
+
+create index idx_agent_capabilities_agent on agent_capabilities(agent_id);
+create index idx_agent_capabilities_capability on agent_capabilities(capability);
+
+create index idx_agents_reputation on agents(reputation_score desc);
+create index idx_agents_verified_status on agents(verified_status);
 
 -- =============================================================================
 -- CONVERSATIONS: Consent-based agent-to-agent messaging

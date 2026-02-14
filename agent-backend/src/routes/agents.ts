@@ -3,6 +3,7 @@ import { apiKeyAuth } from "../middleware/apiKeyAuth";
 import { query } from "../db/client";
 import { calculateCost, getAgentMetrics, PRICING_CONSTANTS } from "../services/pricingService";
 import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
+import * as agentRegistry from "../services/agentRegistryService";
 
 const router = Router();
 
@@ -310,6 +311,539 @@ router.get("/", apiKeyAuth, asyncHandler(async (req, res) => {
     pendingLamports: Number(agent.pending_lamports),
     createdAt: agent.created_at,
   })));
+}));
+
+// =============================================================================
+// AGENT REGISTRY ENHANCEMENTS
+// =============================================================================
+
+/**
+ * GET /agents/search
+ *
+ * Search and discover agents by various criteria.
+ *
+ * Query params:
+ *   - q: Search query (name, bio, id)
+ *   - category: Filter by category
+ *   - capability: Filter by capability
+ *   - verified: Only verified agents (true/false)
+ *   - minReputation: Minimum reputation score
+ *   - limit: Max results (default 50)
+ *   - offset: Pagination offset
+ */
+router.get("/search", apiKeyAuth, asyncHandler(async (req, res) => {
+  const result = await agentRegistry.searchAgents({
+    query: req.query.q as string,
+    category: req.query.category as string,
+    capability: req.query.capability as string,
+    verifiedOnly: req.query.verified === "true",
+    minReputationScore: req.query.minReputation ? Number(req.query.minReputation) : undefined,
+    limit: req.query.limit ? Math.min(Number(req.query.limit), 100) : 50,
+    offset: req.query.offset ? Number(req.query.offset) : 0,
+  });
+
+  if (!result.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Search failed");
+  }
+
+  sendSuccess(res, {
+    agents: result.agents,
+    total: result.total,
+  });
+}));
+
+/**
+ * GET /agents/leaderboard
+ *
+ * Get top agents by reputation score.
+ *
+ * Query params:
+ *   - limit: Max results (default 50)
+ *   - category: Filter by category
+ */
+router.get("/leaderboard", apiKeyAuth, asyncHandler(async (req, res) => {
+  const result = await agentRegistry.getAgentLeaderboard({
+    limit: req.query.limit ? Math.min(Number(req.query.limit), 100) : 50,
+    category: req.query.category as string,
+  });
+
+  if (!result.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to get leaderboard");
+  }
+
+  sendSuccess(res, { leaderboard: result.leaderboard });
+}));
+
+/**
+ * GET /agents/:agentId/full-profile
+ *
+ * Get complete agent profile including tools, audits, capabilities, and version history.
+ */
+router.get("/:agentId/full-profile", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+
+  const result = await agentRegistry.getAgentFullProfile(agentId);
+
+  if (!result.success) {
+    if (result.error === "Agent not found") {
+      throw AppError.agentNotFound(agentId);
+    }
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to get profile");
+  }
+
+  sendSuccess(res, {
+    profile: result.profile,
+    tools: result.tools,
+    audits: result.audits,
+    capabilities: result.capabilities,
+    versionHistory: result.versionHistory,
+  });
+}));
+
+/**
+ * PATCH /agents/:agentId/profile
+ *
+ * Update agent profile information.
+ *
+ * Request body:
+ *   {
+ *     name?: string,
+ *     bio?: string,
+ *     websiteUrl?: string,
+ *     logoUrl?: string,
+ *     categories?: string[],
+ *     version?: string,
+ *     ownerEmail?: string,
+ *     supportUrl?: string
+ *   }
+ */
+router.patch("/:agentId/profile", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+  const { name, bio, websiteUrl, logoUrl, categories, version, ownerEmail, supportUrl } = req.body;
+
+  const result = await agentRegistry.updateAgentProfile(agentId, {
+    agentId,
+    name,
+    bio,
+    websiteUrl,
+    logoUrl,
+    categories,
+    version,
+    ownerEmail,
+    supportUrl,
+  });
+
+  if (!result.success) {
+    if (result.error === "Agent not found") {
+      throw AppError.agentNotFound(agentId);
+    }
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to update profile");
+  }
+
+  sendSuccess(res, { agent: result.agent });
+}));
+
+// =============================================================================
+// REPUTATION & VERIFICATION
+// =============================================================================
+
+/**
+ * GET /agents/:agentId/reputation
+ *
+ * Get agent's current reputation score with calculation breakdown.
+ */
+router.get("/:agentId/reputation", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+
+  const result = await agentRegistry.calculateReputationScore(agentId);
+
+  if (!result.success) {
+    if (result.error === "Agent not found") {
+      throw AppError.agentNotFound(agentId);
+    }
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to calculate reputation");
+  }
+
+  sendSuccess(res, {
+    agentId,
+    score: result.score,
+    factors: result.factors,
+  });
+}));
+
+/**
+ * POST /agents/:agentId/reputation/recalculate
+ *
+ * Recalculate and store the agent's reputation score.
+ */
+router.post("/:agentId/reputation/recalculate", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+
+  const calcResult = await agentRegistry.calculateReputationScore(agentId);
+
+  if (!calcResult.success) {
+    if (calcResult.error === "Agent not found") {
+      throw AppError.agentNotFound(agentId);
+    }
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, calcResult.error || "Failed to calculate reputation");
+  }
+
+  const updateResult = await agentRegistry.updateReputationScore(
+    agentId,
+    calcResult.score!,
+    "Automatic recalculation"
+  );
+
+  if (!updateResult.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, updateResult.error || "Failed to update reputation");
+  }
+
+  sendSuccess(res, {
+    agentId,
+    previousScore: updateResult.previousScore,
+    newScore: updateResult.newScore,
+    factors: calcResult.factors,
+  });
+}));
+
+/**
+ * PATCH /agents/:agentId/verification
+ *
+ * Update agent verification status (admin endpoint).
+ *
+ * Request body:
+ *   { status: "unverified" | "pending" | "verified" | "suspended", verifiedBy?: string }
+ */
+router.patch("/:agentId/verification", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+  const { status, verifiedBy } = req.body;
+
+  const validStatuses = ["unverified", "pending", "verified", "suspended"];
+  if (!status || !validStatuses.includes(status)) {
+    throw new AppError(
+      ErrorCodes.VALIDATION_INVALID_TYPE,
+      { field: "status", allowed: validStatuses },
+      `status must be one of: ${validStatuses.join(", ")}`
+    );
+  }
+
+  const result = await agentRegistry.updateVerificationStatus(agentId, status, verifiedBy);
+
+  if (!result.success) {
+    if (result.error === "Agent not found") {
+      throw AppError.agentNotFound(agentId);
+    }
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to update verification");
+  }
+
+  sendSuccess(res, {
+    agentId,
+    status,
+    message: `Verification status updated to ${status}`,
+  });
+}));
+
+// =============================================================================
+// AUDITS
+// =============================================================================
+
+/**
+ * GET /agents/:agentId/audits
+ *
+ * Get agent's audit history.
+ *
+ * Query params:
+ *   - type: Filter by audit type
+ *   - result: Filter by result (passed, failed, pending, expired)
+ *   - limit: Max results
+ */
+router.get("/:agentId/audits", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+
+  const result = await agentRegistry.getAgentAudits(agentId, {
+    type: req.query.type as string,
+    result: req.query.result as string,
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+  });
+
+  if (!result.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to get audits");
+  }
+
+  sendSuccess(res, { audits: result.audits });
+}));
+
+/**
+ * POST /agents/:agentId/audits
+ *
+ * Create a new audit record for an agent.
+ *
+ * Request body:
+ *   {
+ *     auditType: string (e.g., "security", "compliance", "performance"),
+ *     auditorId?: string,
+ *     auditorName?: string,
+ *     auditorType?: string ("internal", "external", "automated", "system"),
+ *     summary?: string,
+ *     details?: object,
+ *     evidenceUrl?: string,
+ *     validUntil?: string (ISO date),
+ *     score?: number (0-100),
+ *     notes?: string
+ *   }
+ */
+router.post("/:agentId/audits", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+  const { auditType, auditorId, auditorName, auditorType, summary, details, evidenceUrl, validUntil, score, notes } = req.body;
+
+  if (!auditType) {
+    throw AppError.required("auditType");
+  }
+
+  const result = await agentRegistry.createAudit(agentId, {
+    auditType,
+    auditorId,
+    auditorName,
+    auditorType,
+    summary,
+    details,
+    evidenceUrl,
+    validUntil: validUntil ? new Date(validUntil) : undefined,
+    score,
+    notes,
+  });
+
+  if (!result.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to create audit");
+  }
+
+  sendSuccess(res, { audit: result.audit }, 201);
+}));
+
+/**
+ * PATCH /agents/:agentId/audits/:auditId
+ *
+ * Update an audit result.
+ *
+ * Request body:
+ *   { result: "passed" | "failed" | "pending" | "expired", score?: number, notes?: string }
+ */
+router.patch("/:agentId/audits/:auditId", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { auditId } = req.params;
+  const { result: auditResult, score, notes } = req.body;
+
+  const validResults = ["passed", "failed", "pending", "expired"];
+  if (!auditResult || !validResults.includes(auditResult)) {
+    throw new AppError(
+      ErrorCodes.VALIDATION_INVALID_TYPE,
+      { field: "result", allowed: validResults },
+      `result must be one of: ${validResults.join(", ")}`
+    );
+  }
+
+  const result = await agentRegistry.updateAuditResult(auditId, auditResult, score, notes);
+
+  if (!result.success) {
+    if (result.error === "Audit not found") {
+      throw new AppError(ErrorCodes.AGENT_NOT_FOUND, { resource: "audit", id: auditId }, "Audit not found");
+    }
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to update audit");
+  }
+
+  sendSuccess(res, { message: "Audit updated", result: auditResult });
+}));
+
+// =============================================================================
+// CAPABILITIES
+// =============================================================================
+
+/**
+ * GET /agents/:agentId/capabilities
+ *
+ * Get agent's declared capabilities.
+ */
+router.get("/:agentId/capabilities", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+
+  const result = await agentRegistry.getAgentCapabilities(agentId);
+
+  if (!result.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to get capabilities");
+  }
+
+  sendSuccess(res, { capabilities: result.capabilities });
+}));
+
+/**
+ * POST /agents/:agentId/capabilities
+ *
+ * Add or update a capability for an agent.
+ *
+ * Request body:
+ *   {
+ *     capability: string,
+ *     proficiencyLevel?: string ("basic", "intermediate", "advanced", "expert"),
+ *     metadata?: object
+ *   }
+ */
+router.post("/:agentId/capabilities", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+  const { capability, proficiencyLevel, metadata } = req.body;
+
+  if (!capability) {
+    throw AppError.required("capability");
+  }
+
+  const validLevels = ["basic", "intermediate", "advanced", "expert"];
+  if (proficiencyLevel && !validLevels.includes(proficiencyLevel)) {
+    throw new AppError(
+      ErrorCodes.VALIDATION_INVALID_TYPE,
+      { field: "proficiencyLevel", allowed: validLevels },
+      `proficiencyLevel must be one of: ${validLevels.join(", ")}`
+    );
+  }
+
+  const result = await agentRegistry.setCapability(agentId, capability, proficiencyLevel, metadata);
+
+  if (!result.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to set capability");
+  }
+
+  sendSuccess(res, { capability: result.capability }, 201);
+}));
+
+/**
+ * DELETE /agents/:agentId/capabilities/:capability
+ *
+ * Remove a capability from an agent.
+ */
+router.delete("/:agentId/capabilities/:capability", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId, capability } = req.params;
+
+  const result = await agentRegistry.removeCapability(agentId, capability);
+
+  if (!result.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to remove capability");
+  }
+
+  sendSuccess(res, { message: `Capability '${capability}' removed` });
+}));
+
+/**
+ * GET /agents/by-capability/:capability
+ *
+ * Find agents that have a specific capability.
+ *
+ * Query params:
+ *   - minProficiency: Minimum proficiency level
+ *   - verified: Only verified agents (true/false)
+ *   - limit: Max results
+ */
+router.get("/by-capability/:capability", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { capability } = req.params;
+
+  const result = await agentRegistry.findAgentsByCapability(capability, {
+    minProficiency: req.query.minProficiency as string,
+    verifiedOnly: req.query.verified === "true",
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+  });
+
+  if (!result.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to find agents");
+  }
+
+  sendSuccess(res, { agents: result.agents });
+}));
+
+// =============================================================================
+// VERSION HISTORY
+// =============================================================================
+
+/**
+ * GET /agents/:agentId/version-history
+ *
+ * Get agent's version/change history.
+ *
+ * Query params:
+ *   - changeType: Filter by change type
+ *   - limit: Max results
+ */
+router.get("/:agentId/version-history", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+
+  const result = await agentRegistry.getVersionHistory(agentId, {
+    changeType: req.query.changeType as string,
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+  });
+
+  if (!result.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to get version history");
+  }
+
+  sendSuccess(res, { history: result.history });
+}));
+
+// =============================================================================
+// TOOL METADATA
+// =============================================================================
+
+/**
+ * PATCH /agents/:agentId/tools/:toolId/metadata
+ *
+ * Update tool metadata (schema, examples, categorization, deprecation).
+ *
+ * Request body:
+ *   {
+ *     description?: string,
+ *     version?: string,
+ *     category?: string,
+ *     inputSchema?: object,
+ *     outputSchema?: object,
+ *     examples?: array,
+ *     avgTokensPerCall?: number,
+ *     maxTokensPerCall?: number,
+ *     docsUrl?: string,
+ *     isDeprecated?: boolean,
+ *     deprecationMessage?: string
+ *   }
+ */
+router.patch("/:agentId/tools/:toolId/metadata", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { toolId } = req.params;
+
+  const result = await agentRegistry.updateToolMetadata(toolId, req.body);
+
+  if (!result.success) {
+    if (result.error === "Tool not found") {
+      throw new AppError(ErrorCodes.AGENT_NOT_FOUND, { resource: "tool", id: toolId }, "Tool not found");
+    }
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to update tool metadata");
+  }
+
+  sendSuccess(res, { tool: result.tool });
+}));
+
+/**
+ * GET /agents/tools/by-category/:category
+ *
+ * Get tools by category across all agents.
+ *
+ * Query params:
+ *   - verified: Only from verified agents (true/false)
+ *   - limit: Max results
+ */
+router.get("/tools/by-category/:category", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { category } = req.params;
+
+  const result = await agentRegistry.getToolsByCategory(category, {
+    verifiedAgentsOnly: req.query.verified === "true",
+    limit: req.query.limit ? Number(req.query.limit) : undefined,
+  });
+
+  if (!result.success) {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, result.error || "Failed to get tools");
+  }
+
+  sendSuccess(res, { tools: result.tools });
 }));
 
 export default router;
