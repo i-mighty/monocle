@@ -8,6 +8,7 @@ import {
   PRICING_CONSTANTS,
 } from "../services/pricingService";
 import { query } from "../db/client";
+import { logSettlementCompleted, logPaymentExecuted } from "../services/activityService";
 
 const router = Router();
 
@@ -57,6 +58,16 @@ router.post("/settle/:agentId", apiKeyAuth, async (req, res) => {
     const result = await settleAgent(agentId, async (recipientId, lamports) => {
       return await sendMicropayment(payerPublicKey, recipientId, lamports);
     });
+
+    // Log settlement completion
+    logSettlementCompleted(
+      agentId,
+      result.settlementId || "unknown",
+      result.grossLamports || 0,
+      result.platformFeeLamports || 0,
+      result.netLamports || 0,
+      result.txSignature || ""
+    );
 
     res.json(result);
   } catch (error) {
@@ -127,6 +138,11 @@ router.post("/topup", apiKeyAuth, async (req, res) => {
       balance_lamports: number;
       pending_lamports: number;
     };
+
+    // Log topup payment
+    logPaymentExecuted(agentId, "topup", amountLamports, {
+      newBalance: agent.balance_lamports,
+    });
 
     res.json({
       agentId: agent.id,

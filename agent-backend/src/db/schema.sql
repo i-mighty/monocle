@@ -385,3 +385,47 @@ create index idx_agent_blocks_blocked on agent_blocks(blocked_agent_id);
 
 create index idx_agent_follows_follower on agent_follows(follower_agent_id);
 create index idx_agent_follows_following on agent_follows(following_agent_id);
+
+-- =============================================================================
+-- ACTIVITY_LOGS: Structured audit trail for critical events
+-- =============================================================================
+create table if not exists activity_logs (
+  id uuid primary key default gen_random_uuid(),
+  
+  -- Event classification
+  event_type text not null,  -- identity_created, pricing_changed, tool_executed, etc.
+  severity text not null default 'info',  -- info, warning, error, critical
+  
+  -- Who/what is involved
+  agent_id text references agents(id),  -- Agent this event relates to
+  actor_id text,  -- Who performed the action
+  actor_type text not null default 'system',  -- agent, system, admin, api
+  
+  -- What was affected
+  resource_type text,  -- agent, tool, payment, settlement, etc.
+  resource_id text,  -- ID of the affected resource
+  
+  -- Action details
+  action text not null,  -- e.g., "pricing.update", "tool.execute"
+  description text not null,  -- Human-readable description
+  metadata text,  -- JSON with additional context
+  
+  -- Request context
+  ip_address text,
+  user_agent text,
+  request_id text,
+  duration_ms integer,
+  
+  created_at timestamptz default now()
+);
+
+-- =============================================================================
+-- ACTIVITY_LOGS INDEXES: Optimized for common queries
+-- =============================================================================
+create index idx_activity_logs_agent_id on activity_logs(agent_id);
+create index idx_activity_logs_event_type on activity_logs(event_type);
+create index idx_activity_logs_severity on activity_logs(severity);
+create index idx_activity_logs_created_at on activity_logs(created_at desc);
+create index idx_activity_logs_actor_id on activity_logs(actor_id);
+create index idx_activity_logs_resource_type on activity_logs(resource_type);
+create index idx_activity_logs_composite on activity_logs(agent_id, event_type, created_at desc);

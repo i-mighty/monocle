@@ -10,6 +10,7 @@ import {
 } from "../services/pricingService";
 import { db, toolUsage } from "../db/client";
 import { desc } from "drizzle-orm";
+import { logToolExecuted } from "../services/activityService";
 
 const router = Router();
 
@@ -58,6 +59,17 @@ router.post("/execute", apiKeyAuth, async (req, res) => {
       toolName, 
       Number(tokensUsed),
       quoteId // Pass optional quoteId
+    );
+
+    // Log tool execution for audit trail
+    logToolExecuted(
+      callerId,
+      calleeId,
+      toolName,
+      Number(tokensUsed),
+      result.costLamports,
+      result.pricingSource || "live",
+      { quoteId }
     );
     
     res.json({

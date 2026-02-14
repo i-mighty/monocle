@@ -1257,3 +1257,63 @@ export type NewAgentVersionHistory = typeof agentVersionHistory.$inferInsert;
 
 export type AgentCapability = typeof agentCapabilities.$inferSelect;
 export type NewAgentCapability = typeof agentCapabilities.$inferInsert;
+
+// =============================================================================
+// ACTIVITY LOGS: Structured audit trail for critical events
+// =============================================================================
+export const activityLogs = pgTable(
+  "activity_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    
+    // Event classification
+    eventType: text("event_type").notNull(), // identity_created, pricing_changed, tool_executed, etc.
+    severity: text("severity").notNull().default("info"), // info, warning, error, critical
+    
+    // Who/what is involved
+    agentId: text("agent_id").references(() => agents.id), // Agent this event relates to
+    actorId: text("actor_id"), // Who performed the action (agent ID, admin ID, etc.)
+    actorType: text("actor_type").notNull().default("system"), // agent, system, admin, api
+    
+    // What was affected
+    resourceType: text("resource_type"), // agent, tool, payment, settlement, etc.
+    resourceId: text("resource_id"), // ID of the affected resource
+    
+    // Action details
+    action: text("action").notNull(), // e.g., "pricing.update", "tool.execute"
+    description: text("description").notNull(), // Human-readable description
+    metadata: text("metadata"), // JSON with additional context
+    
+    // Request context
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    requestId: text("request_id"),
+    durationMs: integer("duration_ms"),
+    
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  },
+  (table) => ({
+    agentIdIdx: index("activity_logs_agent_id_idx").on(table.agentId),
+    eventTypeIdx: index("activity_logs_event_type_idx").on(table.eventType),
+    severityIdx: index("activity_logs_severity_idx").on(table.severity),
+    createdAtIdx: index("activity_logs_created_at_idx").on(table.createdAt),
+    actorIdIdx: index("activity_logs_actor_id_idx").on(table.actorId),
+    resourceTypeIdx: index("activity_logs_resource_type_idx").on(table.resourceType),
+  })
+);
+
+// =============================================================================
+// RELATIONS: Activity Logs
+// =============================================================================
+export const activityLogsRelations = relations(activityLogs, ({ one }) => ({
+  agent: one(agents, {
+    fields: [activityLogs.agentId],
+    references: [agents.id],
+  }),
+}));
+
+// =============================================================================
+// TYPE EXPORTS: Activity Logs
+// =============================================================================
+export type ActivityLog = typeof activityLogs.$inferSelect;
+export type NewActivityLog = typeof activityLogs.$inferInsert;
