@@ -2,7 +2,7 @@ import { AgentSdkOptions, AgentSdkError, ApiErrorResponse } from "./types";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const defaultBaseUrl = process.env.AGENT_BACKEND_URL || "http://localhost:3001";
+const defaultBaseUrl = process.env.AGENT_BACKEND_URL || "http://localhost:3001/v1";
 
 /**
  * Check if a response body looks like our standardized error format
