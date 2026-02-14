@@ -242,14 +242,15 @@ export async function updateToolPricing(
 // =============================================================================
 
 /**
- * onToolExecuted: Core pricing logic with per-tool pricing
+ * onToolExecuted: Core pricing logic with per-tool pricing and budget guardrails
  *
  * Workflow:
  *   1. Get tool-specific pricing (or agent default)
  *   2. Calculate cost deterministically
- *   3. Enforce balance constraint (no debt allowed)
- *   4. Deduct from caller, credit to callee (atomic transaction)
- *   5. Record immutable ledger entry
+ *   3. Enforce budget guardrails (kill switch, max per call, daily cap, allowlist)
+ *   4. Enforce balance constraint (no debt allowed)
+ *   5. Deduct from caller, credit to callee (atomic transaction)
+ *   6. Record immutable ledger entry
  *
  * @param callerId - Agent ID making the call
  * @param calleeId - Agent ID being called
@@ -283,8 +284,28 @@ export async function onToolExecuted(
   // Calculate cost deterministically
   const cost = calculateCost(tokensUsed, ratePer1kTokens);
 
-  // Fetch caller to check balance
+  // Fetch caller to check balance and budget limits
   const caller = await getAgent(callerId);
+
+  // ==========================================================================
+  // BUDGET GUARDRAILS ENFORCEMENT
+  // ==========================================================================
+
+  // Get daily spend for cap checking
+  const dailySpend = await getAgentDailySpend(callerId);
+
+  // Check all budget constraints
+  const budgetCheck = checkBudgetConstraints(caller, calleeId, cost, dailySpend);
+  
+  if (!budgetCheck.allowed) {
+    throw new Error(
+      `Budget guardrail violation: ${budgetCheck.violations.join("; ")}`
+    );
+  }
+
+  // ==========================================================================
+  // END BUDGET GUARDRAILS
+  // ==========================================================================
 
   // CONSTRAINT: No debt
   if (caller.balanceLamports < cost) {
@@ -555,3 +576,312 @@ export async function getSettlementHistory(
     .limit(limit);
 }
 
+// =============================================================================
+// BUDGET GUARDRAILS: Trust & Safety for Autonomous Spending
+// =============================================================================
+
+/**
+ * Get agent's daily spending (last 24 hours)
+ */
+export async function getAgentDailySpend(agentId: string): Promise<number> {
+  if (!db) throw new Error("Database not connected");
+
+  const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  const result = await db
+    .select({ totalSpend: sum(toolUsage.costLamports) })
+    .from(toolUsage)
+    .where(
+      and(
+        eq(toolUsage.callerAgentId, agentId),
+        sql`${toolUsage.createdAt} >= ${oneDayAgo}`
+      )
+    );
+
+  return Number(result[0]?.totalSpend || 0);
+}
+
+/**
+ * Get full budget status for an agent
+ */
+export async function getAgentBudgetStatus(agentId: string): Promise<{
+  agentId: string;
+  balance: number;
+  limits: {
+    maxCostPerCall: number | null;
+    dailySpendCap: number | null;
+    isPaused: boolean;
+    allowedCallees: string[] | null;
+  };
+  dailySpend: {
+    used: number;
+    remaining: number | null;
+    percentUsed: number | null;
+  };
+  warnings: string[];
+}> {
+  if (!db) throw new Error("Database not connected");
+
+  const agent = await getAgent(agentId);
+  const dailySpend = await getAgentDailySpend(agentId);
+
+  const isPaused = agent.isPaused === "true";
+  const dailySpendCap = agent.dailySpendCap;
+  const maxCostPerCall = agent.maxCostPerCall;
+  const allowedCallees = agent.allowedCallees 
+    ? JSON.parse(agent.allowedCallees) as string[]
+    : null;
+
+  const warnings: string[] = [];
+
+  // Check for warning conditions
+  if (isPaused) {
+    warnings.push("Agent spending is PAUSED - no outgoing payments will be processed");
+  }
+
+  if (agent.balanceLamports < PRICING_CONSTANTS.MIN_COST_LAMPORTS) {
+    warnings.push(`Balance (${agent.balanceLamports}) below minimum call cost (${PRICING_CONSTANTS.MIN_COST_LAMPORTS})`);
+  }
+
+  if (dailySpendCap !== null && dailySpend >= dailySpendCap * 0.9) {
+    const percentUsed = Math.round((dailySpend / dailySpendCap) * 100);
+    warnings.push(`Daily spend at ${percentUsed}% of cap (${dailySpend}/${dailySpendCap} lamports)`);
+  }
+
+  return {
+    agentId,
+    balance: agent.balanceLamports,
+    limits: {
+      maxCostPerCall: maxCostPerCall ?? null,
+      dailySpendCap: dailySpendCap ?? null,
+      isPaused,
+      allowedCallees,
+    },
+    dailySpend: {
+      used: dailySpend,
+      remaining: dailySpendCap !== null ? Math.max(0, dailySpendCap - dailySpend) : null,
+      percentUsed: dailySpendCap !== null ? Math.round((dailySpend / dailySpendCap) * 100) : null,
+    },
+    warnings,
+  };
+}
+
+/**
+ * Update agent budget guardrails
+ */
+export async function updateAgentBudget(
+  agentId: string,
+  config: {
+    maxCostPerCall?: number | null;
+    dailySpendCap?: number | null;
+    isPaused?: boolean;
+    allowedCallees?: string[] | null;
+  }
+): Promise<Agent> {
+  if (!db) throw new Error("Database not connected");
+
+  // Verify agent exists
+  await getAgent(agentId);
+
+  const updateData: Record<string, any> = {};
+
+  if (config.maxCostPerCall !== undefined) {
+    updateData.maxCostPerCall = config.maxCostPerCall;
+  }
+
+  if (config.dailySpendCap !== undefined) {
+    updateData.dailySpendCap = config.dailySpendCap;
+  }
+
+  if (config.isPaused !== undefined) {
+    updateData.isPaused = config.isPaused ? "true" : "false";
+  }
+
+  if (config.allowedCallees !== undefined) {
+    updateData.allowedCallees = config.allowedCallees 
+      ? JSON.stringify(config.allowedCallees)
+      : null;
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return getAgent(agentId);
+  }
+
+  const result = await db
+    .update(agents)
+    .set(updateData)
+    .where(eq(agents.id, agentId))
+    .returning();
+
+  return result[0];
+}
+
+/**
+ * Check if a call would violate budget guardrails
+ */
+export function checkBudgetConstraints(
+  agent: Agent,
+  calleeId: string,
+  costLamports: number,
+  dailySpendSoFar: number
+): { allowed: boolean; violations: string[] } {
+  const violations: string[] = [];
+
+  // Kill switch check
+  if (agent.isPaused === "true") {
+    violations.push("Agent spending is PAUSED");
+  }
+
+  // Max cost per call check
+  if (agent.maxCostPerCall !== null && costLamports > agent.maxCostPerCall) {
+    violations.push(
+      `Cost (${costLamports}) exceeds max per call limit (${agent.maxCostPerCall})`
+    );
+  }
+
+  // Daily spend cap check
+  if (agent.dailySpendCap !== null) {
+    const projectedDaily = dailySpendSoFar + costLamports;
+    if (projectedDaily > agent.dailySpendCap) {
+      violations.push(
+        `Would exceed daily cap: ${projectedDaily} > ${agent.dailySpendCap} (already spent: ${dailySpendSoFar})`
+      );
+    }
+  }
+
+  // Allowlist check
+  if (agent.allowedCallees !== null) {
+    const allowedList = JSON.parse(agent.allowedCallees) as string[];
+    if (!allowedList.includes(calleeId)) {
+      violations.push(`Callee "${calleeId}" not in allowlist: [${allowedList.join(", ")}]`);
+    }
+  }
+
+  return {
+    allowed: violations.length === 0,
+    violations,
+  };
+}
+
+// =============================================================================
+// DETERMINISTIC COST PREVIEW API
+// =============================================================================
+
+/**
+ * previewToolCall: Simulate a call and return exact cost + budget status
+ * 
+ * This is the core of the Cost Preview API - it returns everything an agent
+ * needs to make an informed decision before executing a call:
+ * - Exact cost
+ * - Whether it can execute
+ * - Budget status and warnings
+ * - Full breakdown for transparency
+ */
+export async function previewToolCall(
+  callerId: string,
+  calleeId: string,
+  toolName: string,
+  tokensEstimate: number
+): Promise<{
+  canExecute: boolean;
+  costLamports: number;
+  breakdown: {
+    tokensEstimate: number;
+    tokenBlocks: number;
+    ratePer1kTokens: number;
+    toolId: string | null;
+    rawCost: number;
+    minimumApplied: boolean;
+    platformFee: number;
+    netToCallee: number;
+  };
+  budgetStatus: {
+    callerBalance: number;
+    balanceAfter: number;
+    dailySpendBefore: number;
+    dailySpendAfter: number;
+    dailyCapRemaining: number | null;
+    isPaused: boolean;
+  };
+  warnings: string[];
+  violations: string[];
+}> {
+  if (!db) throw new Error("Database not connected");
+
+  // Get caller and validate
+  const caller = await getAgent(callerId);
+  
+  // Get tool pricing
+  const { toolId, ratePer1kTokens } = await getToolPricing(calleeId, toolName);
+  
+  // Calculate cost
+  const tokenBlocks = Math.ceil(tokensEstimate / 1000);
+  const rawCost = tokenBlocks * ratePer1kTokens;
+  const costLamports = calculateCost(tokensEstimate, ratePer1kTokens);
+  const platformFee = calculatePlatformFee(costLamports);
+  const netToCallee = costLamports - platformFee;
+
+  // Get daily spend
+  const dailySpend = await getAgentDailySpend(callerId);
+
+  // Check budget constraints
+  const budgetCheck = checkBudgetConstraints(caller, calleeId, costLamports, dailySpend);
+
+  // Collect warnings
+  const warnings: string[] = [];
+
+  // Balance warning
+  if (caller.balanceLamports < costLamports) {
+    warnings.push(
+      `Insufficient balance: ${caller.balanceLamports} < ${costLamports} lamports needed`
+    );
+  }
+
+  // Near daily cap warning (if applicable)
+  if (caller.dailySpendCap !== null) {
+    const projectedDaily = dailySpend + costLamports;
+    const percentOfCap = Math.round((projectedDaily / caller.dailySpendCap) * 100);
+    if (percentOfCap >= 80 && budgetCheck.allowed) {
+      warnings.push(`This call would use ${percentOfCap}% of daily cap`);
+    }
+  }
+
+  // Near max per call warning
+  if (caller.maxCostPerCall !== null) {
+    const percentOfMax = Math.round((costLamports / caller.maxCostPerCall) * 100);
+    if (percentOfMax >= 80 && budgetCheck.allowed) {
+      warnings.push(`Cost is ${percentOfMax}% of max-per-call limit`);
+    }
+  }
+
+  // Determine if execution is possible
+  const hasBalance = caller.balanceLamports >= costLamports;
+  const canExecute = hasBalance && budgetCheck.allowed;
+
+  return {
+    canExecute,
+    costLamports,
+    breakdown: {
+      tokensEstimate,
+      tokenBlocks,
+      ratePer1kTokens,
+      toolId,
+      rawCost,
+      minimumApplied: rawCost < PRICING_CONSTANTS.MIN_COST_LAMPORTS,
+      platformFee,
+      netToCallee,
+    },
+    budgetStatus: {
+      callerBalance: caller.balanceLamports,
+      balanceAfter: caller.balanceLamports - costLamports,
+      dailySpendBefore: dailySpend,
+      dailySpendAfter: dailySpend + costLamports,
+      dailyCapRemaining: caller.dailySpendCap !== null 
+        ? Math.max(0, caller.dailySpendCap - dailySpend - costLamports)
+        : null,
+      isPaused: caller.isPaused === "true",
+    },
+    warnings,
+    violations: budgetCheck.violations,
+  };
+}

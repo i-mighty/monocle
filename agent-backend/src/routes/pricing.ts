@@ -1,6 +1,13 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuth";
-import { calculateCost, PRICING_CONSTANTS } from "../services/pricingService";
+import { 
+  calculateCost, 
+  PRICING_CONSTANTS, 
+  getToolPricing, 
+  getAgent,
+  previewToolCall,
+  getAgentBudgetStatus
+} from "../services/pricingService";
 import { query } from "../db/client";
 
 const router = Router();
@@ -18,6 +25,87 @@ router.get("/constants", async (_req, res) => {
     platformFeePercent: PRICING_CONSTANTS.PLATFORM_FEE_PERCENT,
     minPayoutLamports: PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS,
   });
+});
+
+/**
+ * POST /pricing/preview
+ *
+ * DETERMINISTIC COST PREVIEW API
+ * 
+ * Returns exact cost before execution - enables simulation, budgeting,
+ * and prevents surprises. Critical for composability.
+ *
+ * Request:
+ *   {
+ *     callerId: string,      // Agent making the call
+ *     calleeId: string,      // Agent being called (tool provider)
+ *     toolName: string,      // Tool to be executed
+ *     tokensEstimate: number // Estimated tokens (usually prompt + expected output)
+ *   }
+ *
+ * Response:
+ *   {
+ *     canExecute: boolean,
+ *     costLamports: number,
+ *     breakdown: { ... },
+ *     budgetStatus: { ... },
+ *     warnings: string[]
+ *   }
+ */
+router.post("/preview", apiKeyAuth, async (req, res) => {
+  try {
+    const { callerId, calleeId, toolName, tokensEstimate } = req.body;
+
+    // Validate required fields
+    if (!callerId || !calleeId || !toolName || tokensEstimate === undefined) {
+      return res.status(400).json({
+        error: "Missing required fields: callerId, calleeId, toolName, tokensEstimate",
+      });
+    }
+
+    const tokens = Number(tokensEstimate);
+    if (tokens < 0) {
+      return res.status(400).json({ error: "tokensEstimate must be non-negative" });
+    }
+
+    if (tokens > PRICING_CONSTANTS.MAX_TOKENS_PER_CALL) {
+      return res.status(400).json({
+        error: `tokensEstimate exceeds maximum (${PRICING_CONSTANTS.MAX_TOKENS_PER_CALL})`,
+      });
+    }
+
+    // Get full preview with budget checks
+    const preview = await previewToolCall(callerId, calleeId, toolName, tokens);
+
+    res.json(preview);
+  } catch (error: any) {
+    console.error("Error generating preview:", error);
+    
+    // Return structured error for agent-friendly consumption
+    res.status(error.message?.includes("not found") ? 404 : 500).json({
+      canExecute: false,
+      error: error.message || "Preview failed",
+      costLamports: null,
+    });
+  }
+});
+
+/**
+ * GET /pricing/budget/:agentId
+ *
+ * Get budget status for an agent including limits, daily spend, and kill switch status.
+ */
+router.get("/budget/:agentId", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const budgetStatus = await getAgentBudgetStatus(agentId);
+    res.json(budgetStatus);
+  } catch (error: any) {
+    console.error("Error fetching budget status:", error);
+    res.status(error.message?.includes("not found") ? 404 : 500).json({
+      error: error.message || "Failed to fetch budget status",
+    });
+  }
 });
 
 /**
@@ -189,6 +277,121 @@ router.get("/leaderboard", async (req, res) => {
   } catch (error) {
     console.error("Error fetching leaderboard:", error);
     res.status(500).json({ error: "Failed to fetch leaderboard" });
+  }
+});
+
+/**
+ * PUT /pricing/budget/:agentId
+ *
+ * Configure budget guardrails for an agent.
+ * 
+ * Request:
+ *   {
+ *     maxCostPerCall?: number,    // Max lamports per single call (null = no limit)
+ *     dailySpendCap?: number,     // Max lamports per 24h (null = no limit)
+ *     isPaused?: boolean,         // Emergency kill switch
+ *     allowedCallees?: string[]   // Allowlist of agent IDs this agent can call (null = all)
+ *   }
+ */
+router.put("/budget/:agentId", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { maxCostPerCall, dailySpendCap, isPaused, allowedCallees } = req.body;
+
+    // Validate inputs
+    if (maxCostPerCall !== undefined && maxCostPerCall !== null) {
+      if (typeof maxCostPerCall !== "number" || maxCostPerCall < 0) {
+        return res.status(400).json({ error: "maxCostPerCall must be a non-negative number or null" });
+      }
+    }
+
+    if (dailySpendCap !== undefined && dailySpendCap !== null) {
+      if (typeof dailySpendCap !== "number" || dailySpendCap < 0) {
+        return res.status(400).json({ error: "dailySpendCap must be a non-negative number or null" });
+      }
+    }
+
+    if (allowedCallees !== undefined && allowedCallees !== null) {
+      if (!Array.isArray(allowedCallees)) {
+        return res.status(400).json({ error: "allowedCallees must be an array of agent IDs or null" });
+      }
+    }
+
+    // Import the update function
+    const { updateAgentBudget } = await import("../services/pricingService");
+    
+    const updatedAgent = await updateAgentBudget(agentId, {
+      maxCostPerCall: maxCostPerCall ?? undefined,
+      dailySpendCap: dailySpendCap ?? undefined,
+      isPaused: isPaused ?? undefined,
+      allowedCallees: allowedCallees ?? undefined,
+    });
+
+    res.json({
+      agentId: updatedAgent.id,
+      budgetConfig: {
+        maxCostPerCall: updatedAgent.maxCostPerCall,
+        dailySpendCap: updatedAgent.dailySpendCap,
+        isPaused: updatedAgent.isPaused,
+        allowedCallees: updatedAgent.allowedCallees,
+      },
+      message: "Budget guardrails updated successfully",
+    });
+  } catch (error: any) {
+    console.error("Error updating budget:", error);
+    res.status(error.message?.includes("not found") ? 404 : 500).json({
+      error: error.message || "Failed to update budget guardrails",
+    });
+  }
+});
+
+/**
+ * POST /pricing/budget/:agentId/pause
+ *
+ * Emergency kill switch - immediately pause all spending for an agent.
+ */
+router.post("/budget/:agentId/pause", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { updateAgentBudget } = await import("../services/pricingService");
+    
+    await updateAgentBudget(agentId, { isPaused: true });
+    
+    res.json({
+      agentId,
+      isPaused: true,
+      message: "Agent spending paused immediately. No outgoing payments will be processed.",
+    });
+  } catch (error: any) {
+    console.error("Error pausing agent:", error);
+    res.status(error.message?.includes("not found") ? 404 : 500).json({
+      error: error.message || "Failed to pause agent",
+    });
+  }
+});
+
+/**
+ * POST /pricing/budget/:agentId/resume
+ *
+ * Resume spending for a paused agent.
+ */
+router.post("/budget/:agentId/resume", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { updateAgentBudget } = await import("../services/pricingService");
+    
+    await updateAgentBudget(agentId, { isPaused: false });
+    
+    res.json({
+      agentId,
+      isPaused: false,
+      message: "Agent spending resumed.",
+    });
+  } catch (error: any) {
+    console.error("Error resuming agent:", error);
+    res.status(error.message?.includes("not found") ? 404 : 500).json({
+      error: error.message || "Failed to resume agent",
+    });
   }
 });
 
