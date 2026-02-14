@@ -1,8 +1,19 @@
-import { AgentSdkOptions, AgentSdkError } from "./types";
+import { AgentSdkOptions, AgentSdkError, ApiErrorResponse } from "./types";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const defaultBaseUrl = process.env.AGENT_BACKEND_URL || "http://localhost:3001";
+
+/**
+ * Check if a response body looks like our standardized error format
+ */
+function isApiErrorResponse(body: any): body is ApiErrorResponse {
+  return body && 
+         body.success === false && 
+         body.error && 
+         typeof body.error.code === "string" &&
+         typeof body.error.message === "string";
+}
 
 export class AgentPayClient {
   private baseUrl: string;
@@ -20,9 +31,11 @@ export class AgentPayClient {
   private async request(path: string, init: RequestInit): Promise<any> {
     const url = `${this.baseUrl}${path}`;
     let lastErr: unknown;
+    
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       const ctrl = new AbortController();
       const to = setTimeout(() => ctrl.abort(), this.timeoutMs);
+      
       try {
         const res = await fetch(url, {
           ...init,
@@ -34,11 +47,61 @@ export class AgentPayClient {
           signal: ctrl.signal
         });
         clearTimeout(to);
-        if (!res.ok) throw new AgentSdkError(`HTTP ${res.status}`, `${res.status}`);
-        return await res.json();
+        
+        // Parse response body
+        let body: any;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        
+        // Handle errors
+        if (!res.ok) {
+          // Check if it's a standardized error response
+          if (isApiErrorResponse(body)) {
+            const error = AgentSdkError.fromResponse(body, res.status);
+            
+            // Only retry on retryable errors
+            if (error.isRetryable() && attempt < this.maxRetries) {
+              lastErr = error;
+              const delay = error.getRetryDelay() || (2 ** attempt * 200);
+              await sleep(delay);
+              continue;
+            }
+            
+            throw error;
+          }
+          
+          // Legacy error format or unknown error
+          const message = body?.error || body?.message || `HTTP ${res.status}`;
+          throw new AgentSdkError(message, `HTTP_${res.status}`, res.status, body);
+        }
+        
+        // Success - return data (unwrap if wrapped in success envelope)
+        if (body && body.success === true && body.data !== undefined) {
+          return body.data;
+        }
+        return body;
+        
       } catch (err) {
+        clearTimeout(to);
         lastErr = err;
-        if (attempt === this.maxRetries) throw err;
+        
+        // Don't retry AgentSdkErrors unless they're retryable
+        if (err instanceof AgentSdkError) {
+          if (!err.isRetryable() || attempt === this.maxRetries) {
+            throw err;
+          }
+          const delay = err.getRetryDelay() || (2 ** attempt * 200);
+          await sleep(delay);
+          continue;
+        }
+        
+        // Retry on network errors
+        if (attempt === this.maxRetries) {
+          throw AgentSdkError.fromFetchError(err, url);
+        }
         await sleep(2 ** attempt * 200);
       } finally {
         clearTimeout(to);

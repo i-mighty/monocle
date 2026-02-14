@@ -15,10 +15,12 @@ import simulation from "./routes/simulation";
 import webhooks from "./routes/webhooks";
 import antiAbuse from "./routes/antiAbuse";
 import budget from "./routes/budget";
+import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(requestIdMiddleware);
 
 app.use("/", identity);
 app.use("/meter", meter);
@@ -34,6 +36,10 @@ app.use("/simulation", simulation);
 app.use("/webhooks", webhooks);
 app.use("/anti-abuse", antiAbuse);
 app.use("/budget", budget);
+
+// Error handling (must be last)
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
