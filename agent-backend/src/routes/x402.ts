@@ -13,6 +13,7 @@ import {
   x402OptionalMiddleware,
   generatePaymentNonce,
   sendPaymentRequired,
+  setPaymentRequiredHeaders,
   verifyPaymentProof,
   parsePaymentProof,
   PaymentRequirement,
@@ -88,12 +89,13 @@ router.get("/info", (_req: Request, res: Response) => {
  * POST /x402/quote
  * 
  * Get a payment quote for a tool execution.
- * Returns 402 with payment requirements.
+ * Returns 402 with payment requirements AND issues a pricing quote.
+ * The quote locks in pricing for the validity period.
  * 
- * Body: { agentId: string, toolName: string, estimatedTokens: number }
+ * Body: { agentId: string, toolName: string, estimatedTokens: number, callerAgentId?: string }
  */
 router.post("/quote", async (req: Request, res: Response) => {
-  const { agentId, toolName, estimatedTokens } = req.body;
+  const { agentId, toolName, estimatedTokens, callerAgentId } = req.body;
 
   if (!agentId || !toolName || !estimatedTokens) {
     return res.status(400).json({
@@ -105,11 +107,11 @@ router.post("/quote", async (req: Request, res: Response) => {
   let ratePer1kTokens = PRICING_CONSTANTS.DEFAULT_RATE_PER_1K_TOKENS;
   try {
     const result = await query(
-      "SELECT rate_per_1k_tokens FROM agents WHERE id = $1",
+      "SELECT default_rate_per_1k_tokens FROM agents WHERE id = $1",
       [agentId]
     );
     if (result.rows.length > 0) {
-      ratePer1kTokens = result.rows[0].rate_per_1k_tokens;
+      ratePer1kTokens = result.rows[0].default_rate_per_1k_tokens || ratePer1kTokens;
     }
   } catch {
     // Use default rate if DB unavailable
@@ -117,18 +119,75 @@ router.post("/quote", async (req: Request, res: Response) => {
 
   const cost = calculateCost(estimatedTokens, ratePer1kTokens);
   const nonce = generatePaymentNonce();
+  const issuedAt = new Date();
+  const expiresAt = new Date(issuedAt.getTime() + x402Config.priceQuoteValidityMs);
+
+  // If caller is provided, create a database quote for auditability
+  let quoteId: string | undefined;
+  if (callerAgentId) {
+    try {
+      const { issueQuote } = await import("../services/quoteService");
+      const quote = await issueQuote({
+        callerAgentId,
+        calleeAgentId: agentId,
+        toolName,
+        estimatedTokens,
+        validityMs: x402Config.priceQuoteValidityMs,
+      });
+      quoteId = quote.quoteId;
+    } catch (err) {
+      console.warn("Failed to create quote record:", (err as Error).message);
+    }
+  }
 
   const requirement: PaymentRequirement = {
     amountLamports: cost,
     recipientWallet: x402Config.recipientWallet,
     network: x402Config.network,
-    expiresAt: new Date(Date.now() + x402Config.priceQuoteValidityMs),
+    expiresAt,
     nonce,
     description: `Tool execution: ${toolName} (~${estimatedTokens} tokens)`,
     resourceId: `agent:${agentId}:tool:${toolName}`,
   };
 
-  return sendPaymentRequired(res, requirement);
+  // Return quote information with frozen pricing
+  // This includes both x402 payment requirements AND the pricing quote
+  setPaymentRequiredHeaders(res, requirement);
+  return res.status(402).json({
+    error: "Payment Required",
+    code: "PAYMENT_REQUIRED",
+    // Pricing quote with timestamp
+    quote: {
+      quoteId: quoteId || null,
+      issuedAt: issuedAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      validityMs: x402Config.priceQuoteValidityMs,
+      // Frozen pricing
+      estimatedTokens,
+      ratePer1kTokens,
+      quotedCostLamports: cost,
+    },
+    payment: {
+      amount: cost,
+      currency: "lamports",
+      recipient: x402Config.recipientWallet,
+      network: x402Config.network,
+      expires: expiresAt.toISOString(),
+      nonce,
+      description: requirement.description,
+    },
+    instructions: {
+      step1: "Make a Solana transfer of the specified amount to the recipient wallet",
+      step2: "Retry /x402/execute with payment proof headers",
+      step3: quoteId ? `Include quoteId '${quoteId}' in the execute request body` : "Request a new quote with callerAgentId to get a quoteId",
+      headers: {
+        "X-Payment-Signature": "The transaction signature (base58)",
+        "X-Payment-Payer": "Your wallet address",
+        "X-Payment-Amount": "Amount paid in lamports",
+        "X-Payment-Nonce": nonce,
+      },
+    },
+  });
 });
 
 /**

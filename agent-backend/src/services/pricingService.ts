@@ -242,32 +242,47 @@ export async function updateToolPricing(
 // =============================================================================
 
 /**
+ * Quote info for execution with frozen pricing
+ */
+export interface QuoteInfo {
+  quoteId: string;
+  quotedAt: Date;
+  quoteExpiresAt: Date;
+  frozenRate: number;
+  frozenCost: number;
+}
+
+/**
  * onToolExecuted: Core pricing logic with per-tool pricing and budget guardrails
  *
  * Workflow:
- *   1. Get tool-specific pricing (or agent default)
+ *   1. Get tool-specific pricing (or use frozen quote price if provided)
  *   2. Calculate cost deterministically
  *   3. Enforce budget guardrails (kill switch, max per call, daily cap, allowlist)
  *   4. Enforce balance constraint (no debt allowed)
  *   5. Deduct from caller, credit to callee (atomic transaction)
- *   6. Record immutable ledger entry
+ *   6. Record immutable ledger entry with quote reference
  *
  * @param callerId - Agent ID making the call
  * @param calleeId - Agent ID being called
  * @param toolName - Name of the tool executed
  * @param tokensUsed - Number of tokens consumed
+ * @param quoteInfo - Optional quote info for frozen pricing
  * @returns Execution result with cost details
  */
 export async function onToolExecuted(
   callerId: string,
   calleeId: string,
   toolName: string,
-  tokensUsed: number
+  tokensUsed: number,
+  quoteInfo?: QuoteInfo
 ): Promise<{
   costLamports: number;
   ratePer1kTokens: number;
   toolId: string | null;
   tokensUsed: number;
+  usageId: string;
+  quoteId?: string;
 }> {
   if (!db || !pool) throw new Error("Database not connected");
 
@@ -278,11 +293,12 @@ export async function onToolExecuted(
     );
   }
 
-  // Get tool-specific pricing (or agent default)
-  const { toolId, ratePer1kTokens } = await getToolPricing(calleeId, toolName);
-
-  // Calculate cost deterministically
-  const cost = calculateCost(tokensUsed, ratePer1kTokens);
+  // Get tool-specific pricing (or use frozen quote pricing if provided)
+  const { toolId, ratePer1kTokens: currentRate } = await getToolPricing(calleeId, toolName);
+  
+  // Use quote pricing if provided, otherwise use current pricing
+  const ratePer1kTokens = quoteInfo ? quoteInfo.frozenRate : currentRate;
+  const cost = quoteInfo ? quoteInfo.frozenCost : calculateCost(tokensUsed, ratePer1kTokens);
 
   // Fetch caller to check balance and budget limits
   const caller = await getAgent(callerId);
@@ -317,16 +333,30 @@ export async function onToolExecuted(
 
   // ATOMIC TRANSACTION using raw SQL for transaction control
   const client = await pool.connect();
+  let usageId: string;
   try {
     await client.query("BEGIN");
 
-    // 1. Insert tool usage record
-    await client.query(
+    // 1. Insert tool usage record with quote reference if available
+    const usageResult = await client.query(
       `INSERT INTO tool_usage 
-       (caller_agent_id, callee_agent_id, tool_id, tool_name, tokens_used, rate_per_1k_tokens, cost_lamports)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [callerId, calleeId, toolId, toolName, tokensUsed, ratePer1kTokens, cost]
+       (caller_agent_id, callee_agent_id, tool_id, tool_name, tokens_used, rate_per_1k_tokens, cost_lamports, quote_id, quoted_at, quote_expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id`,
+      [
+        callerId, 
+        calleeId, 
+        toolId, 
+        toolName, 
+        tokensUsed, 
+        ratePer1kTokens, 
+        cost,
+        quoteInfo?.quoteId || null,
+        quoteInfo?.quotedAt || null,
+        quoteInfo?.quoteExpiresAt || null
+      ]
     );
+    usageId = usageResult.rows[0].id;
 
     // 2. Deduct from caller's balance
     await client.query(
@@ -353,6 +383,8 @@ export async function onToolExecuted(
     ratePer1kTokens,
     toolId,
     tokensUsed,
+    usageId,
+    quoteId: quoteInfo?.quoteId,
   };
 }
 

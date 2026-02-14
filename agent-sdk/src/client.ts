@@ -63,10 +63,24 @@ export class AgentPayClient {
   }
 
   // Execute tool call with pricing enforcement (REPLACES logToolCall)
-  executeTool(callerId: string, calleeId: string, toolName: string, tokensUsed: number, payload?: object) {
+  // Now supports optional quoteId for frozen pricing
+  executeTool(
+    callerId: string, 
+    calleeId: string, 
+    toolName: string, 
+    tokensUsed: number, 
+    options?: { quoteId?: string; payload?: object }
+  ) {
     return this.request("/meter/execute", {
       method: "POST",
-      body: JSON.stringify({ callerId, calleeId, toolName, tokensUsed, payload }),
+      body: JSON.stringify({ 
+        callerId, 
+        calleeId, 
+        toolName, 
+        tokensUsed, 
+        quoteId: options?.quoteId,
+        payload: options?.payload 
+      }),
     });
   }
 
@@ -102,6 +116,108 @@ export class AgentPayClient {
     });
   }
 
+  // ==================== Pricing Quotes (Price Freeze) ====================
+
+  /**
+   * Issue a pricing quote with frozen pricing and expiry
+   * 
+   * The quote locks in the current price for a specified validity period.
+   * Use the returned quoteId when executing to guarantee the quoted price.
+   * 
+   * @param callerAgentId - Agent making the call
+   * @param calleeAgentId - Agent being called (tool provider)
+   * @param toolName - Name of the tool
+   * @param estimatedTokens - Expected token usage
+   * @param validityMs - Optional validity period (default 5 min, max 30 min)
+   */
+  getPricingQuote(
+    callerAgentId: string,
+    calleeAgentId: string,
+    toolName: string,
+    estimatedTokens: number,
+    validityMs?: number
+  ) {
+    return this.request("/pricing/quote", {
+      method: "POST",
+      body: JSON.stringify({ 
+        callerAgentId, 
+        calleeAgentId, 
+        toolName, 
+        estimatedTokens,
+        validityMs 
+      }),
+    });
+  }
+
+  /**
+   * Get details of an existing pricing quote
+   */
+  getQuoteDetails(quoteId: string) {
+    return this.request(`/pricing/quote/${quoteId}`, { method: "GET" });
+  }
+
+  /**
+   * Validate a quote before execution (pre-flight check)
+   */
+  validateQuote(
+    quoteId: string,
+    callerAgentId: string,
+    calleeAgentId: string,
+    toolName: string,
+    actualTokens: number
+  ) {
+    return this.request(`/pricing/quote/${quoteId}/validate`, {
+      method: "POST",
+      body: JSON.stringify({ 
+        callerAgentId, 
+        calleeAgentId, 
+        toolName, 
+        actualTokens 
+      }),
+    });
+  }
+
+  /**
+   * Cancel an active pricing quote
+   */
+  cancelQuote(quoteId: string) {
+    return this.request(`/pricing/quote/${quoteId}`, { method: "DELETE" });
+  }
+
+  /**
+   * List all active quotes for an agent
+   */
+  listActiveQuotes(agentId: string) {
+    return this.request(`/pricing/quotes/${agentId}`, { method: "GET" });
+  }
+
+  /**
+   * Get quote statistics for an agent
+   */
+  getQuoteStats(agentId: string) {
+    return this.request(`/pricing/quotes/${agentId}/stats`, { method: "GET" });
+  }
+
+  /**
+   * Execute a tool call with a pre-obtained quote
+   * This is a convenience method that validates the quote and executes in one step.
+   * 
+   * @example
+   * // Get quote first
+   * const quote = await client.getPricingQuote(callerId, calleeId, "gpt-4", 5000);
+   * // Execute with quote (price locked)
+   * const result = await client.executeWithQuote(quote.quote.quoteId, callerId, calleeId, "gpt-4", 4500);
+   */
+  executeWithQuote(
+    quoteId: string,
+    callerId: string,
+    calleeId: string,
+    toolName: string,
+    tokensUsed: number
+  ) {
+    return this.executeTool(callerId, calleeId, toolName, tokensUsed, { quoteId });
+  }
+
   // ==================== x402 Protocol Methods ====================
 
   /**
@@ -120,11 +236,17 @@ export class AgentPayClient {
 
   /**
    * Get a payment quote for a tool execution (returns 402 with requirements)
+   * Include callerAgentId to get a quoteId for price-locked execution
    */
-  getX402Quote(agentId: string, toolName: string, estimatedTokens: number) {
+  getX402Quote(
+    agentId: string, 
+    toolName: string, 
+    estimatedTokens: number,
+    callerAgentId?: string
+  ) {
     return this.request("/x402/quote", {
       method: "POST",
-      body: JSON.stringify({ agentId, toolName, estimatedTokens }),
+      body: JSON.stringify({ agentId, toolName, estimatedTokens, callerAgentId }),
     });
   }
 

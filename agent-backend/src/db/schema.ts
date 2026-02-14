@@ -116,6 +116,52 @@ export const apiKeys = pgTable(
 );
 
 // =============================================================================
+// PRICING_QUOTES: Time-bound pricing guarantees (prevents race conditions)
+// =============================================================================
+export const pricingQuotes = pgTable(
+  "pricing_quotes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    // Parties involved
+    callerAgentId: text("caller_agent_id").notNull(),
+    calleeAgentId: text("callee_agent_id").notNull(),
+
+    // Tool being quoted
+    toolId: uuid("tool_id").references(() => tools.id),
+    toolName: text("tool_name").notNull(),
+
+    // Token estimate at time of quote
+    estimatedTokens: integer("estimated_tokens").notNull(),
+
+    // FROZEN PRICING - captured at quote issuance, immutable
+    ratePer1kTokens: bigint("rate_per_1k_tokens", { mode: "number" }).notNull(),
+    quotedCostLamports: bigint("quoted_cost_lamports", { mode: "number" }).notNull(),
+    platformFeeLamports: bigint("platform_fee_lamports", { mode: "number" }).notNull(),
+
+    // Validity window
+    issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    validityMs: integer("validity_ms").notNull(), // For auditing the TTL used
+
+    // Quote status
+    status: text("status").notNull().default("active"), // active | used | expired | cancelled
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    usedByUsageId: uuid("used_by_usage_id"), // Will be set when quote is consumed
+
+    // Additional context for auditing
+    priceSnapshotJson: text("price_snapshot_json"), // Full pricing context as JSON
+  },
+  (table) => ({
+    callerIdx: index("pricing_quotes_caller_idx").on(table.callerAgentId),
+    calleeIdx: index("pricing_quotes_callee_idx").on(table.calleeAgentId),
+    statusIdx: index("pricing_quotes_status_idx").on(table.status),
+    expiresIdx: index("pricing_quotes_expires_idx").on(table.expiresAt),
+    issuedAtIdx: index("pricing_quotes_issued_at_idx").on(table.issuedAt),
+  })
+);
+
+// =============================================================================
 // TOOL_USAGE: Immutable execution ledger (append-only, auditable)
 // =============================================================================
 export const toolUsage = pgTable(
@@ -135,6 +181,11 @@ export const toolUsage = pgTable(
     ratePer1kTokens: bigint("rate_per_1k_tokens", { mode: "number" }).notNull(),
     costLamports: bigint("cost_lamports", { mode: "number" }).notNull(),
 
+    // Quote reference for auditability (nullable for backward compatibility)
+    quoteId: uuid("quote_id").references(() => pricingQuotes.id),
+    quotedAt: timestamp("quoted_at", { withTimezone: true }), // When the price was locked
+    quoteExpiresAt: timestamp("quote_expires_at", { withTimezone: true }), // When the quote expired
+
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
@@ -142,6 +193,7 @@ export const toolUsage = pgTable(
     calleeIdx: index("tool_usage_callee_idx").on(table.calleeAgentId),
     createdAtIdx: index("tool_usage_created_at_idx").on(table.createdAt),
     toolIdIdx: index("tool_usage_tool_id_idx").on(table.toolId),
+    quoteIdIdx: index("tool_usage_quote_id_idx").on(table.quoteId),
   })
 );
 
@@ -266,6 +318,28 @@ export const toolUsageRelations = relations(toolUsage, ({ one }) => ({
     fields: [toolUsage.toolId],
     references: [tools.id],
   }),
+  quote: one(pricingQuotes, {
+    fields: [toolUsage.quoteId],
+    references: [pricingQuotes.id],
+  }),
+}));
+
+export const pricingQuotesRelations = relations(pricingQuotes, ({ one, many }) => ({
+  caller: one(agents, {
+    fields: [pricingQuotes.callerAgentId],
+    references: [agents.id],
+    relationName: "quotesAsCaller",
+  }),
+  callee: one(agents, {
+    fields: [pricingQuotes.calleeAgentId],
+    references: [agents.id],
+    relationName: "quotesAsCallee",
+  }),
+  tool: one(tools, {
+    fields: [pricingQuotes.toolId],
+    references: [tools.id],
+  }),
+  usages: many(toolUsage),
 }));
 
 export const settlementsRelations = relations(settlements, ({ many }) => ({
@@ -647,6 +721,9 @@ export type NewTool = typeof tools.$inferInsert;
 
 export type ToolUsage = typeof toolUsage.$inferSelect;
 export type NewToolUsage = typeof toolUsage.$inferInsert;
+
+export type PricingQuote = typeof pricingQuotes.$inferSelect;
+export type NewPricingQuote = typeof pricingQuotes.$inferInsert;
 
 export type Settlement = typeof settlements.$inferSelect;
 export type NewSettlement = typeof settlements.$inferInsert;
