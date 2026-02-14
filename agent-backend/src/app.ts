@@ -9,6 +9,7 @@ import agents from "./routes/agents";
 import pricing from "./routes/pricing";
 import x402 from "./routes/x402";
 import messaging from "./routes/messaging";
+import economics from "./routes/economics";
 
 const app = express();
 app.use(cors());
@@ -22,6 +23,7 @@ app.use("/agents", agents);
 app.use("/pricing", pricing);
 app.use("/x402", x402);
 app.use("/messaging", messaging);
+app.use("/economics", economics);
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
