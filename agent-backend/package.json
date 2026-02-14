@@ -8,7 +8,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "openapi:validate": "npx @redocly/cli lint openapi.yaml",
+    "openapi:generate-types": "npx openapi-typescript openapi.yaml -o src/types/generated.ts"
   },
   "dependencies": {
     "@solana/web3.js": "^1.95.0",

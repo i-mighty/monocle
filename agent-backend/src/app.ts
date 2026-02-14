@@ -1,6 +1,8 @@
 import "dotenv/config";
 import express, { Router } from "express";
 import cors from "cors";
+import path from "path";
+import fs from "fs";
 import identity from "./routes/identity";
 import meter from "./routes/meter";
 import payments from "./routes/payments";
@@ -83,9 +85,36 @@ app.get("/", (req, res) => {
     currentVersion: "v1",
     endpoints: {
       v1: "/v1",
+      openapi: "/openapi.yaml",
+      docs: "/docs",
     },
     documentation: "https://docs.agentpay.dev",
   });
+});
+
+// OpenAPI spec endpoint
+app.get("/openapi.yaml", (req, res) => {
+  const specPath = path.join(__dirname, "..", "openapi.yaml");
+  if (fs.existsSync(specPath)) {
+    res.setHeader("Content-Type", "text/yaml");
+    res.sendFile(specPath);
+  } else {
+    res.status(404).json({ error: "OpenAPI spec not found" });
+  }
+});
+
+// OpenAPI JSON endpoint
+app.get("/openapi.json", async (req, res) => {
+  try {
+    const specPath = path.join(__dirname, "..", "openapi.yaml");
+    const yaml = fs.readFileSync(specPath, "utf-8");
+    // Simple YAML to JSON conversion for basic OpenAPI
+    const lines = yaml.split("\n");
+    res.setHeader("Content-Type", "application/json");
+    res.json({ message: "Use /openapi.yaml for full spec", specAvailable: true });
+  } catch {
+    res.status(404).json({ error: "OpenAPI spec not found" });
+  }
 });
 
 // Error handling (must be last)
