@@ -12,10 +12,20 @@
  * - Audit trails for compliance
  * - Analytics and insights
  * - Compliance exports (SOC2, etc.)
+ *
+ * Security Features:
+ * - Sensitive field encryption (credit card, keys, etc.)
+ * - PII redaction
+ * - Secure audit trail
  */
 
 import { query } from "../db/client";
 import { v4 as uuidv4 } from "uuid";
+import {
+  encryptSensitiveData,
+  decryptSensitiveData,
+  redactSensitiveFields,
+} from "./securityService";
 
 // =============================================================================
 // TYPES
@@ -77,17 +87,143 @@ export interface LogActivityInput {
 }
 
 // =============================================================================
+// SENSITIVE DATA HANDLING
+// =============================================================================
+
+// Fields that should be encrypted in logs
+const SENSITIVE_FIELDS = [
+  "password",
+  "secret",
+  "key",
+  "token",
+  "apiKey",
+  "api_key",
+  "authorization",
+  "credit_card",
+  "ssn",
+  "private_key",
+  "privateKey",
+  "wallet_address",
+  "signature",
+];
+
+// Fields that should be redacted (not stored at all)
+const REDACT_FIELDS = [
+  "password",
+  "secret",
+  "privateKey",
+  "private_key",
+  "ssn",
+  "credit_card_number",
+];
+
+/**
+ * Process metadata to encrypt/redact sensitive fields
+ */
+function processMetadataForStorage(metadata: Record<string, any>): {
+  processed: Record<string, any>;
+  encryptedFields: string[];
+} {
+  const processed = { ...metadata };
+  const encryptedFields: string[] = [];
+
+  function processObject(obj: Record<string, any>, path: string = ""): Record<string, any> {
+    const result: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(obj)) {
+      const fullPath = path ? `${path}.${key}` : key;
+      const lowerKey = key.toLowerCase();
+
+      // Check if field should be redacted entirely
+      if (REDACT_FIELDS.some((f) => lowerKey.includes(f.toLowerCase()))) {
+        result[key] = "[REDACTED]";
+        continue;
+      }
+
+      // Check if field should be encrypted
+      if (SENSITIVE_FIELDS.some((f) => lowerKey.includes(f.toLowerCase()))) {
+        if (typeof value === "string" && value.length > 0) {
+          try {
+            result[key] = encryptSensitiveData(value);
+            encryptedFields.push(fullPath);
+          } catch {
+            result[key] = "[ENCRYPTION_FAILED]";
+          }
+        } else {
+          result[key] = "[REDACTED]";
+        }
+        continue;
+      }
+
+      // Recursively process nested objects
+      if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        result[key] = processObject(value, fullPath);
+      } else {
+        result[key] = value;
+      }
+    }
+
+    return result;
+  }
+
+  return {
+    processed: processObject(processed),
+    encryptedFields,
+  };
+}
+
+/**
+ * Decrypt sensitive fields in metadata for authorized viewing
+ */
+export function decryptMetadata(
+  metadata: Record<string, any>,
+  encryptedFields: string[]
+): Record<string, any> {
+  const decrypted = { ...metadata };
+
+  function decryptAtPath(obj: Record<string, any>, pathParts: string[]): void {
+    if (pathParts.length === 0) return;
+
+    const [current, ...rest] = pathParts;
+
+    if (rest.length === 0) {
+      // At the target field
+      if (typeof obj[current] === "string") {
+        const decryptedValue = decryptSensitiveData(obj[current]);
+        obj[current] = decryptedValue || "[DECRYPTION_FAILED]";
+      }
+    } else if (typeof obj[current] === "object" && obj[current] !== null) {
+      decryptAtPath(obj[current], rest);
+    }
+  }
+
+  for (const fieldPath of encryptedFields) {
+    decryptAtPath(decrypted, fieldPath.split("."));
+  }
+
+  return decrypted;
+}
+
+// =============================================================================
 // CORE LOGGING FUNCTION
 // =============================================================================
 
 /**
- * Log an activity event to the database
+ * Log an activity event to the database with automatic encryption of sensitive data
  */
 export async function logActivity(input: LogActivityInput): Promise<ActivityLogEntry> {
   const id = uuidv4();
   const severity = input.severity || "info";
   const actorType = input.actorType || "system";
-  const metadata = input.metadata || {};
+  const rawMetadata = input.metadata || {};
+
+  // Process metadata to encrypt/redact sensitive fields
+  const { processed: metadata, encryptedFields } = processMetadataForStorage(rawMetadata);
+
+  // Add encryption metadata if any fields were encrypted
+  if (encryptedFields.length > 0) {
+    metadata.__encrypted_fields = encryptedFields;
+  }
 
   try {
     const result = await query(
