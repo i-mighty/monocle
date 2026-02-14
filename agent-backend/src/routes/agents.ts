@@ -4,6 +4,7 @@ import { query } from "../db/client";
 import { calculateCost, getAgentMetrics, PRICING_CONSTANTS } from "../services/pricingService";
 import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
 import * as agentRegistry from "../services/agentRegistryService";
+import { logAgentRegistered, logPricingChanged } from "../services/activityService";
 
 const router = Router();
 
@@ -120,6 +121,16 @@ router.patch("/:agentId/pricing", apiKeyAuth, asyncHandler(async (req, res) => {
   }
 
   const agent = result.rows[0];
+
+  // Log pricing change
+  logPricingChanged(
+    agentId,
+    "agent",
+    agentId,
+    0, // We don't have old rate in this query, could enhance
+    Number(agent.rate_per_1k_tokens)
+  );
+
   sendSuccess(res, {
     agentId: agent.id,
     ratePer1kTokens: Number(agent.rate_per_1k_tokens),

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuth";
 import { verifyIdentity } from "../services/identityService";
 import { upsertAgent, registerTool, PRICING_CONSTANTS } from "../services/pricingService";
+import { logIdentityCreated } from "../services/activityService";
 
 const router = Router();
 
@@ -84,6 +85,13 @@ router.post("/verify-identity", apiKeyAuth, async (req, res) => {
           }
         }
       }
+
+      // Log identity creation
+      logIdentityCreated(agentId, agent.name || agentId, "verified", {
+        ratePer1kTokens: rate,
+        initialBalance,
+        toolsRegistered: registeredTools.length,
+      });
 
       res.json({
         status: "verified",

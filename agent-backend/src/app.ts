@@ -15,6 +15,7 @@ import simulation from "./routes/simulation";
 import webhooks from "./routes/webhooks";
 import antiAbuse from "./routes/antiAbuse";
 import budget from "./routes/budget";
+import activity from "./routes/activity";
 import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 
 const app = express();
@@ -41,6 +42,7 @@ v1.use("/simulation", simulation);
 v1.use("/webhooks", webhooks);
 v1.use("/anti-abuse", antiAbuse);
 v1.use("/budget", budget);
+v1.use("/activity", activity);
 
 // Mount v1 API
 app.use("/v1", v1);
@@ -69,6 +71,7 @@ app.use("/simulation", deprecationWarning, simulation);
 app.use("/webhooks", deprecationWarning, webhooks);
 app.use("/anti-abuse", deprecationWarning, antiAbuse);
 app.use("/budget", deprecationWarning, budget);
+app.use("/activity", deprecationWarning, activity);
 
 // =============================================================================
 // API INFO
