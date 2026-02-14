@@ -17,6 +17,7 @@ const router = Router();
  * POST /meter/execute
  *
  * Execute a tool call with pricing enforcement.
+ * Supports optional quoteId for frozen pricing.
  *
  * Request:
  *   {
@@ -24,21 +25,26 @@ const router = Router();
  *     calleeId: string (agent being called)
  *     toolName: string
  *     tokensUsed: number
+ *     quoteId?: string (optional - locks in quoted price)
  *   }
  *
  * Response (200):
  *   {
- *     callerId, calleeId, toolName, tokensUsed, costLamports
+ *     callerId, calleeId, toolName, tokensUsed, costLamports,
+ *     pricingSource: "quote" | "live",
+ *     quoteId?: string,
+ *     pricingFrozenAt?: string
  *   }
  *
- * Error (400/500):
- *   - Insufficient balance
+ * Error (400/402/500):
+ *   - Insufficient balance (402)
+ *   - Quote expired/invalid (400)
  *   - Agent not found
  *   - Transaction failed
  */
 router.post("/execute", apiKeyAuth, async (req, res) => {
   try {
-    const { callerId, calleeId, toolName, tokensUsed } = req.body;
+    const { callerId, calleeId, toolName, tokensUsed, quoteId } = req.body;
 
     if (!callerId || !calleeId || !toolName || tokensUsed === undefined) {
       return res.status(400).json({
@@ -46,11 +52,24 @@ router.post("/execute", apiKeyAuth, async (req, res) => {
       });
     }
 
-    const result = await logToolCall(callerId, calleeId, toolName, Number(tokensUsed));
-    res.json(result);
+    const result = await logToolCall(
+      callerId, 
+      calleeId, 
+      toolName, 
+      Number(tokensUsed),
+      quoteId // Pass optional quoteId
+    );
+    
+    res.json({
+      ...result,
+      // Format dates if present
+      pricingFrozenAt: result.pricingFrozenAt?.toISOString?.() || result.pricingFrozenAt,
+    });
   } catch (error) {
     const message = (error as Error).message;
-    const statusCode = message.includes("Insufficient balance") ? 402 : 500;
+    let statusCode = 500;
+    if (message.includes("Insufficient balance")) statusCode = 402;
+    if (message.includes("Quote")) statusCode = 400;
     res.status(statusCode).json({ error: message });
   }
 });

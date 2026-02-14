@@ -5,33 +5,39 @@ import {
   checkSettlementEligibility, 
   settleAgent,
   getAgent,
-  getToolUsageHistory 
+  getToolUsageHistory,
+  QuoteInfo 
 } from "./pricingService";
 import { sendMicropayment } from "./solanaService";
+import { executeWithQuote, consumeQuote } from "./quoteService";
 
 /**
  * logToolCall: Execute tool with per-tool pricing enforcement
  *
  * This is the **new** metering function that integrates AgentPay pricing.
  * Now supports per-tool pricing - each tool can have its own rate.
+ * Also supports quote-based execution for price freezing.
  *
  * Workflow:
- *   1. Call onToolExecuted (gets tool-specific rate, enforces balance, records ledger)
- *   2. Returns actual cost in lamports + rate used
- *   3. Fails atomically if balance insufficient
+ *   1. If quoteId provided, validate and use frozen pricing
+ *   2. Call onToolExecuted (gets tool-specific rate, enforces balance, records ledger)
+ *   3. Returns actual cost in lamports + rate used
+ *   4. Fails atomically if balance insufficient
  *
  * @param callerId - Agent making the call
  * @param calleeId - Agent being called
  * @param toolName - Name of the tool
  * @param tokensUsed - Tokens consumed
- * @returns { callerId, calleeId, toolName, tokensUsed, costLamports, ratePer1kTokens }
+ * @param quoteId - Optional quote ID for frozen pricing
+ * @returns { callerId, calleeId, toolName, tokensUsed, costLamports, ratePer1kTokens, quoteId? }
  * @throws Error if balance insufficient or transaction fails
  */
 export async function logToolCall(
   callerId: string,
   calleeId: string,
   toolName: string,
-  tokensUsed: number
+  tokensUsed: number,
+  quoteId?: string
 ) {
   try {
     // Validate token count
@@ -41,8 +47,40 @@ export async function logToolCall(
       );
     }
 
-    // Execute pricing logic (atomic deduct/credit) - now with per-tool pricing
-    const result = await onToolExecuted(callerId, calleeId, toolName, tokensUsed);
+    let quoteInfo: QuoteInfo | undefined;
+
+    // If quoteId provided, validate and get frozen pricing
+    if (quoteId) {
+      const quoteResult = await executeWithQuote(
+        quoteId,
+        callerId,
+        calleeId,
+        toolName,
+        tokensUsed
+      );
+
+      if (!quoteResult.valid || !quoteResult.pricing) {
+        throw new Error(`Quote validation failed: ${quoteResult.error}`);
+      }
+
+      quoteInfo = {
+        quoteId: quoteResult.pricing.quoteId,
+        quotedAt: quoteResult.pricing.quotedAt,
+        quoteExpiresAt: quoteResult.pricing.quoteExpiresAt,
+        frozenRate: quoteResult.pricing.ratePer1kTokens,
+        frozenCost: quoteResult.pricing.costLamports,
+      };
+    }
+
+    // Execute pricing logic (atomic deduct/credit) - with optional frozen pricing
+    const result = await onToolExecuted(callerId, calleeId, toolName, tokensUsed, quoteInfo);
+
+    // If quote was used, mark it as consumed
+    if (quoteId && result.usageId) {
+      await consumeQuote(quoteId, result.usageId).catch((err) => {
+        console.warn(`Failed to mark quote ${quoteId} as consumed:`, err.message);
+      });
+    }
 
     // AUTO-SETTLEMENT: Check if callee should be settled automatically
     // This runs async (fire-and-forget) to not block the response
@@ -58,6 +96,16 @@ export async function logToolCall(
       costLamports: result.costLamports,
       ratePer1kTokens: result.ratePer1kTokens,
       toolId: result.toolId,
+      usageId: result.usageId,
+      // Include quote info if used
+      ...(quoteId && {
+        quoteId,
+        pricingSource: "quote" as const,
+        pricingFrozenAt: quoteInfo?.quotedAt,
+      }),
+      ...(!quoteId && {
+        pricingSource: "live" as const,
+      }),
     };
   } catch (err) {
     console.error(

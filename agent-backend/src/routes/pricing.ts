@@ -395,4 +395,251 @@ router.post("/budget/:agentId/resume", apiKeyAuth, async (req, res) => {
   }
 });
 
+// =============================================================================
+// PRICING QUOTES - Time-bound pricing guarantees
+// =============================================================================
+
+/**
+ * POST /pricing/quote
+ *
+ * Issue a new pricing quote with frozen pricing and expiry.
+ * The quote locks in the current price for a specified validity period.
+ *
+ * Request:
+ *   {
+ *     callerAgentId: string,
+ *     calleeAgentId: string,
+ *     toolName: string,
+ *     estimatedTokens: number,
+ *     validityMs?: number  // Optional: 1-30 minutes, default 5 minutes
+ *   }
+ *
+ * Response:
+ *   {
+ *     quoteId: string,
+ *     quotedCostLamports: number,
+ *     ratePer1kTokens: number,
+ *     issuedAt: string,
+ *     expiresAt: string,
+ *     ...
+ *   }
+ */
+router.post("/quote", apiKeyAuth, async (req, res) => {
+  try {
+    const { callerAgentId, calleeAgentId, toolName, estimatedTokens, validityMs } = req.body;
+
+    if (!callerAgentId || !calleeAgentId || !toolName || estimatedTokens === undefined) {
+      return res.status(400).json({
+        error: "Missing required fields: callerAgentId, calleeAgentId, toolName, estimatedTokens",
+      });
+    }
+
+    const { issueQuote } = await import("../services/quoteService");
+    
+    const quote = await issueQuote({
+      callerAgentId,
+      calleeAgentId,
+      toolName,
+      estimatedTokens: Number(estimatedTokens),
+      validityMs: validityMs ? Number(validityMs) : undefined,
+    });
+
+    res.json({
+      success: true,
+      quote: {
+        quoteId: quote.quoteId,
+        callerAgentId: quote.callerAgentId,
+        calleeAgentId: quote.calleeAgentId,
+        toolName: quote.toolName,
+        estimatedTokens: quote.estimatedTokens,
+        // Frozen pricing
+        ratePer1kTokens: quote.ratePer1kTokens,
+        quotedCostLamports: quote.quotedCostLamports,
+        platformFeeLamports: quote.platformFeeLamports,
+        netToCallee: quote.netToCallee,
+        // Validity window
+        issuedAt: quote.issuedAt.toISOString(),
+        expiresAt: quote.expiresAt.toISOString(),
+        validityMs: quote.validityMs,
+        expiresIn: quote.expiresIn,
+        // Breakdown
+        priceSnapshot: quote.priceSnapshot,
+      },
+      usage: {
+        description: "Use this quoteId when executing the tool call to lock in this price",
+        executeEndpoint: "POST /meter/execute",
+        requiredParams: { quoteId: quote.quoteId },
+      },
+    });
+  } catch (error: any) {
+    console.error("Error issuing quote:", error);
+    res.status(error.message?.includes("not found") ? 404 : 500).json({
+      error: error.message || "Failed to issue quote",
+    });
+  }
+});
+
+/**
+ * GET /pricing/quote/:quoteId
+ *
+ * Get details of an existing quote.
+ */
+router.get("/quote/:quoteId", apiKeyAuth, async (req, res) => {
+  try {
+    const { quoteId } = req.params;
+    const { getQuote } = await import("../services/quoteService");
+    
+    const quote = await getQuote(quoteId);
+    
+    if (!quote) {
+      return res.status(404).json({ error: "Quote not found" });
+    }
+
+    const now = new Date();
+    const isExpired = now > quote.expiresAt;
+    const remainingMs = Math.max(0, quote.expiresAt.getTime() - now.getTime());
+
+    res.json({
+      quoteId: quote.id,
+      callerAgentId: quote.callerAgentId,
+      calleeAgentId: quote.calleeAgentId,
+      toolName: quote.toolName,
+      estimatedTokens: quote.estimatedTokens,
+      ratePer1kTokens: quote.ratePer1kTokens,
+      quotedCostLamports: quote.quotedCostLamports,
+      platformFeeLamports: quote.platformFeeLamports,
+      issuedAt: quote.issuedAt.toISOString(),
+      expiresAt: quote.expiresAt.toISOString(),
+      status: quote.status,
+      isExpired,
+      remainingMs,
+      usedAt: quote.usedAt?.toISOString() || null,
+    });
+  } catch (error: any) {
+    console.error("Error fetching quote:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch quote" });
+  }
+});
+
+/**
+ * POST /pricing/quote/:quoteId/validate
+ *
+ * Validate a quote before execution (pre-flight check).
+ */
+router.post("/quote/:quoteId/validate", apiKeyAuth, async (req, res) => {
+  try {
+    const { quoteId } = req.params;
+    const { callerAgentId, calleeAgentId, toolName, actualTokens } = req.body;
+
+    if (!callerAgentId || !calleeAgentId || !toolName || actualTokens === undefined) {
+      return res.status(400).json({
+        error: "Missing required fields: callerAgentId, calleeAgentId, toolName, actualTokens",
+      });
+    }
+
+    const { validateQuote } = await import("../services/quoteService");
+    
+    const validation = await validateQuote(
+      quoteId,
+      callerAgentId,
+      calleeAgentId,
+      toolName,
+      Number(actualTokens)
+    );
+
+    res.json({
+      valid: validation.valid,
+      error: validation.error,
+      details: validation.details,
+      quote: validation.quote ? {
+        quotedCostLamports: validation.quote.quotedCostLamports,
+        ratePer1kTokens: validation.quote.ratePer1kTokens,
+        expiresAt: validation.quote.expiresAt.toISOString(),
+        status: validation.quote.status,
+      } : null,
+    });
+  } catch (error: any) {
+    console.error("Error validating quote:", error);
+    res.status(500).json({ error: error.message || "Failed to validate quote" });
+  }
+});
+
+/**
+ * DELETE /pricing/quote/:quoteId
+ *
+ * Cancel an active quote.
+ */
+router.delete("/quote/:quoteId", apiKeyAuth, async (req, res) => {
+  try {
+    const { quoteId } = req.params;
+    const { cancelQuote } = await import("../services/quoteService");
+    
+    const cancelled = await cancelQuote(quoteId);
+    
+    if (!cancelled) {
+      return res.status(400).json({
+        error: "Quote cannot be cancelled (not found or not active)",
+      });
+    }
+
+    res.json({ success: true, message: "Quote cancelled" });
+  } catch (error: any) {
+    console.error("Error cancelling quote:", error);
+    res.status(500).json({ error: error.message || "Failed to cancel quote" });
+  }
+});
+
+/**
+ * GET /pricing/quotes/:agentId
+ *
+ * List active quotes for an agent.
+ */
+router.get("/quotes/:agentId", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { listActiveQuotes } = await import("../services/quoteService");
+    
+    const quotes = await listActiveQuotes(agentId);
+
+    res.json({
+      agentId,
+      activeQuotes: quotes.map((q) => ({
+        quoteId: q.id,
+        calleeAgentId: q.calleeAgentId,
+        toolName: q.toolName,
+        quotedCostLamports: q.quotedCostLamports,
+        issuedAt: q.issuedAt.toISOString(),
+        expiresAt: q.expiresAt.toISOString(),
+        remainingMs: Math.max(0, q.expiresAt.getTime() - Date.now()),
+      })),
+      count: quotes.length,
+    });
+  } catch (error: any) {
+    console.error("Error listing quotes:", error);
+    res.status(500).json({ error: error.message || "Failed to list quotes" });
+  }
+});
+
+/**
+ * GET /pricing/quotes/:agentId/stats
+ *
+ * Get quote statistics for an agent.
+ */
+router.get("/quotes/:agentId/stats", apiKeyAuth, async (req, res) => {
+  try {
+    const { agentId } = req.params;
+    const { getQuoteStats } = await import("../services/quoteService");
+    
+    const stats = await getQuoteStats(agentId);
+
+    res.json({
+      agentId,
+      ...stats,
+    });
+  } catch (error: any) {
+    console.error("Error fetching quote stats:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch quote stats" });
+  }
+});
+
 export default router;
