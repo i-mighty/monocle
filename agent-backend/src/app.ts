@@ -13,6 +13,7 @@ import economics from "./routes/economics";
 import reputation from "./routes/reputation";
 import simulation from "./routes/simulation";
 import webhooks from "./routes/webhooks";
+import antiAbuse from "./routes/antiAbuse";
 
 const app = express();
 app.use(cors());
@@ -30,6 +31,7 @@ app.use("/economics", economics);
 app.use("/reputation", reputation);
 app.use("/simulation", simulation);
 app.use("/webhooks", webhooks);
+app.use("/anti-abuse", antiAbuse);
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
