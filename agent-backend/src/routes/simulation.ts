@@ -2,11 +2,14 @@
  * Simulation Routes
  *
  * Run workflows without payment to predict costs.
- * Developers LOVE this for testing and planning.
+ * Useful for development, testing, and planning.
+ * 
+ * DEMO ENDPOINTS: All routes disabled in production unless ALLOW_DEMO_ENDPOINTS=true
  */
 
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { demoOnly } from "../middleware/demoOnly";
 import {
   simulateCall,
   simulateWorkflow,
@@ -15,6 +18,9 @@ import {
 } from "../services/simulationService";
 
 const router = Router();
+
+// All simulation routes are demo-only
+router.use(demoOnly);
 
 // =============================================================================
 // SINGLE CALL SIMULATION

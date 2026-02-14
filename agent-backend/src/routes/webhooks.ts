@@ -15,6 +15,7 @@
 
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { demoOnly } from "../middleware/demoOnly";
 import {
   registerWebhook,
   updateWebhook,
@@ -460,9 +461,9 @@ router.post("/deliveries/:deliveryId/retry", apiKeyAuth, async (req, res) => {
  * POST /webhooks/verify-signature
  *
  * Helper endpoint for developers to verify webhook signatures.
- * Useful for debugging integration issues.
+ * DEMO ENDPOINT: Disabled in production unless ALLOW_DEMO_ENDPOINTS=true
  */
-router.post("/verify-signature", async (req, res) => {
+router.post("/verify-signature", demoOnly, async (req, res) => {
   try {
     const { payload, signature, secret } = req.body;
 

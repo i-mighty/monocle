@@ -21,6 +21,7 @@ import {
 } from "../middleware/x402";
 import { calculateCost, PRICING_CONSTANTS } from "../services/pricingService";
 import { query } from "../db/client";
+import { demoOnly } from "../middleware/demoOnly";
 
 const router = Router();
 
@@ -339,10 +340,11 @@ router.post("/verify", async (req: Request, res: Response) => {
  * GET /x402/demo-resource
  * 
  * Demo endpoint that requires x402 payment to access.
- * Returns a protected resource after payment verification.
+ * DEMO ENDPOINT: Disabled in production unless ALLOW_DEMO_ENDPOINTS=true
  */
 router.get(
   "/demo-resource",
+  demoOnly,
   x402Middleware(x402Config, (_req) => ({
     amount: 1000, // 1000 lamports (~$0.0001)
     description: "Access to demo protected resource",
@@ -396,11 +398,11 @@ router.get("/pricing", (_req: Request, res: Response) => {
  * POST /x402/simulate
  * 
  * Simulate an x402 payment flow without actual payment.
- * Useful for testing and integration development.
+ * DEMO ENDPOINT: Disabled in production unless ALLOW_DEMO_ENDPOINTS=true
  * 
  * Body: { agentId, toolName, tokens }
  */
-router.post("/simulate", async (req: Request, res: Response) => {
+router.post("/simulate", demoOnly, async (req: Request, res: Response) => {
   const { agentId, toolName, tokens } = req.body;
 
   if (!tokens) {
