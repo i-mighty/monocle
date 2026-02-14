@@ -1,0 +1,1247 @@
+openapi: 3.0.3
+info:
+  title: AgentPay API
+  description: |
+    Payment and metering infrastructure for AI agents.
+    Enables micropayments, tool execution tracking, settlements, and compliance auditing.
+  version: 1.0.0
+  contact:
+    name: AgentPay Team
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:3001/v1
+    description: Local development server
+  - url: https://api.agentpay.io/v1
+    description: Production server
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: Agents
+    description: Agent registration and management
+  - name: Identity
+    description: Identity verification
+  - name: Meter
+    description: Tool execution and usage tracking
+  - name: Payments
+    description: Settlements and balance management
+  - name: Pricing
+    description: Cost preview and calculations
+  - name: Activity
+    description: Audit logs and activity tracking
+  - name: Budget
+    description: Budget limits and authorization
+
+paths:
+  # ==================== AGENTS ====================
+  /agents/register:
+    post:
+      tags: [Agents]
+      summary: Register a new agent
+      description: Register a new agent with pricing configuration
+      operationId: registerAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentRegisterRequest'
+      responses:
+        '201':
+          description: Agent registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /agents/{agentId}:
+    get:
+      tags: [Agents]
+      summary: Get agent details
+      description: Fetch agent details including pricing and balances
+      operationId: getAgent
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agents/{agentId}/pricing:
+    patch:
+      tags: [Agents]
+      summary: Update agent pricing
+      description: Update an agent's pricing rate. Only affects future calls.
+      operationId: updateAgentPricing
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PricingUpdateRequest'
+      responses:
+        '200':
+          description: Pricing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingUpdateResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /agents/{agentId}/metrics:
+    get:
+      tags: [Agents]
+      summary: Get agent metrics
+      description: Fetch comprehensive agent metrics including balances, usage, and earnings
+      operationId: getAgentMetrics
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Agent metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentMetrics'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== IDENTITY ====================
+  /identity/verify-identity:
+    post:
+      tags: [Identity]
+      summary: Verify identity and register agent
+      description: Register/verify identity and initialize agent with pricing
+      operationId: verifyIdentity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityVerifyRequest'
+      responses:
+        '200':
+          description: Identity verified and agent registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityVerifyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # ==================== METER ====================
+  /meter/execute:
+    post:
+      tags: [Meter]
+      summary: Execute a tool call
+      description: Execute a tool call with pricing enforcement. Supports optional quoteId for frozen pricing.
+      operationId: executeToolCall
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolExecuteRequest'
+      responses:
+        '200':
+          description: Tool executed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolExecuteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '402':
+          $ref: '#/components/responses/InsufficientBalance'
+
+  /meter/history/{agentId}:
+    get:
+      tags: [Meter]
+      summary: Get tool call history
+      description: Fetch execution ledger for an agent (as caller)
+      operationId: getToolHistory
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Tool call history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolCallRecord'
+
+  /meter/earnings/{agentId}:
+    get:
+      tags: [Meter]
+      summary: Get earnings history
+      description: Fetch execution ledger where agent is the callee (earnings history)
+      operationId: getEarningsHistory
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Earnings history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolCallRecord'
+
+  # ==================== PAYMENTS ====================
+  /payments/settle/{agentId}:
+    post:
+      tags: [Payments]
+      summary: Trigger settlement
+      description: Trigger on-chain settlement for an agent's pending balance
+      operationId: settleAgent
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Settlement completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettlementResponse'
+        '402':
+          $ref: '#/components/responses/InsufficientBalance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /payments/settlements/{agentId}:
+    get:
+      tags: [Payments]
+      summary: Get settlement history
+      description: Fetch settlement history for an agent
+      operationId: getSettlements
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Settlement history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SettlementRecord'
+
+  /payments/topup:
+    post:
+      tags: [Payments]
+      summary: Top up balance
+      description: Top up an agent's balance (for testing/development)
+      operationId: topupBalance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TopupRequest'
+      responses:
+        '200':
+          description: Balance topped up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopupResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== PRICING ====================
+  /pricing/constants:
+    get:
+      tags: [Pricing]
+      summary: Get pricing constants
+      description: Return platform pricing constants
+      operationId: getPricingConstants
+      security: []
+      responses:
+        '200':
+          description: Pricing constants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingConstants'
+
+  /pricing/preview:
+    post:
+      tags: [Pricing]
+      summary: Preview tool call cost
+      description: Returns exact cost before execution - enables simulation, budgeting, and prevents surprises
+      operationId: previewToolCall
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PricingPreviewRequest'
+      responses:
+        '200':
+          description: Cost preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingPreviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /pricing/calculate:
+    post:
+      tags: [Pricing]
+      summary: Calculate cost
+      description: Calculate cost for given tokens and rate (pure calculation, no agent lookup)
+      operationId: calculateCost
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalculateCostRequest'
+      responses:
+        '200':
+          description: Cost calculation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalculateCostResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /pricing/budget/{agentId}:
+    get:
+      tags: [Budget]
+      summary: Get budget status
+      description: Get budget status for an agent including limits, daily spend, and kill switch status
+      operationId: getBudgetStatus
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Budget status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetStatus'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /pricing/quote:
+    post:
+      tags: [Pricing]
+      summary: Create pricing quote
+      description: Create a price freeze quote that locks in pricing for a specified duration
+      operationId: createPricingQuote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuoteRequest'
+      responses:
+        '200':
+          description: Quote created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingQuote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /pricing/quote/{quoteId}:
+    get:
+      tags: [Pricing]
+      summary: Get quote details
+      description: Get details of a pricing quote
+      operationId: getQuote
+      parameters:
+        - name: quoteId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Quote details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PricingQuote'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ==================== ACTIVITY ====================
+  /activity/logs:
+    get:
+      tags: [Activity]
+      summary: Query activity logs
+      description: Query activity logs with filters and pagination
+      operationId: queryActivityLogs
+      parameters:
+        - name: agentId
+          in: query
+          schema:
+            type: string
+        - name: eventType
+          in: query
+          schema:
+            type: string
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [debug, info, warn, error]
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Activity logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityLogsResponse'
+
+  /activity/logs/{agentId}:
+    get:
+      tags: [Activity]
+      summary: Get agent activity logs
+      description: Get activity logs for a specific agent
+      operationId: getAgentActivityLogs
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Agent activity logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivityLogsResponse'
+
+  /activity/summary/{agentId}:
+    get:
+      tags: [Activity]
+      summary: Get activity summary
+      description: Get activity summary statistics for an agent
+      operationId: getActivitySummary
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      responses:
+        '200':
+          description: Activity summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActivitySummary'
+
+  /activity/export:
+    get:
+      tags: [Activity]
+      summary: Export activity logs
+      description: Export activity logs for compliance (JSON or CSV format)
+      operationId: exportActivityLogs
+      parameters:
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, csv]
+            default: json
+        - name: agentId
+          in: query
+          schema:
+            type: string
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Exported activity logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActivityLogEntry'
+            text/csv:
+              schema:
+                type: string
+
+  # ==================== BUDGET ====================
+  /budget/{agentId}/authorize:
+    post:
+      tags: [Budget]
+      summary: Authorize budget
+      description: Authorize a budget for an agent
+      operationId: authorizeBudget
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BudgetAuthorizeRequest'
+      responses:
+        '200':
+          description: Budget authorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BudgetAuthorization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /budget/{agentId}/kill-switch:
+    post:
+      tags: [Budget]
+      summary: Toggle kill switch
+      description: Activate or deactivate the spending kill switch for an agent
+      operationId: toggleKillSwitch
+      parameters:
+        - $ref: '#/components/parameters/AgentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active:
+                  type: boolean
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Kill switch toggled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agentId:
+                    type: string
+                  killSwitchActive:
+                    type: boolean
+                  reason:
+                    type: string
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: API key for authentication
+
+  parameters:
+    AgentId:
+      name: agentId
+      in: path
+      required: true
+      description: Unique agent identifier
+      schema:
+        type: string
+        example: agent-123
+
+    Limit:
+      name: limit
+      in: query
+      description: Maximum number of results
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+
+    Offset:
+      name: offset
+      in: query
+      description: Offset for pagination
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  responses:
+    BadRequest:
+      description: Bad request - invalid parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Unauthorized:
+      description: Unauthorized - invalid or missing API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    InsufficientBalance:
+      description: Insufficient balance for operation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/InsufficientBalanceError'
+
+  schemas:
+    # ==================== COMMON ====================
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        details:
+          type: object
+          additionalProperties: true
+
+    InsufficientBalanceError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        currentBalance:
+          type: integer
+          description: Current balance in lamports
+        requiredAmount:
+          type: integer
+          description: Required amount in lamports
+
+    # ==================== AGENTS ====================
+    AgentRegisterRequest:
+      type: object
+      required: [agentId]
+      properties:
+        agentId:
+          type: string
+          description: Unique agent identifier
+          example: agent-123
+        name:
+          type: string
+          description: Display name
+          example: My Agent
+        publicKey:
+          type: string
+          description: Solana public key for settlements
+          example: 7nYabs9dUhvxYwdTnrWVBL9MYviKSfrEbdWCUbcnwkpF
+        ratePer1kTokens:
+          type: integer
+          description: Lamports per 1K tokens
+          default: 1000
+          minimum: 1
+
+    AgentResponse:
+      type: object
+      required: [agentId, ratePer1kTokens, balanceLamports, pendingLamports]
+      properties:
+        agentId:
+          type: string
+        name:
+          type: string
+          nullable: true
+        publicKey:
+          type: string
+          nullable: true
+        ratePer1kTokens:
+          type: integer
+        balanceLamports:
+          type: integer
+        pendingLamports:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    AgentMetrics:
+      type: object
+      properties:
+        agentId:
+          type: string
+        balanceLamports:
+          type: integer
+        pendingLamports:
+          type: integer
+        totalSpent:
+          type: integer
+        totalEarned:
+          type: integer
+        callsMade:
+          type: integer
+        callsReceived:
+          type: integer
+        ratePer1kTokens:
+          type: integer
+
+    PricingUpdateRequest:
+      type: object
+      required: [ratePer1kTokens]
+      properties:
+        ratePer1kTokens:
+          type: integer
+          minimum: 1
+          description: New rate in lamports per 1K tokens
+
+    PricingUpdateResponse:
+      type: object
+      properties:
+        agentId:
+          type: string
+        ratePer1kTokens:
+          type: integer
+        balanceLamports:
+          type: integer
+        pendingLamports:
+          type: integer
+        message:
+          type: string
+
+    # ==================== IDENTITY ====================
+    IdentityVerifyRequest:
+      type: object
+      required: [agentId, firstName, lastName, dob, idNumber]
+      properties:
+        agentId:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        dob:
+          type: string
+          description: Date of birth (YYYY-MM-DD)
+        idNumber:
+          type: string
+        defaultRatePer1kTokens:
+          type: integer
+        tools:
+          type: array
+          items:
+            type: object
+            required: [name, ratePer1kTokens]
+            properties:
+              name:
+                type: string
+              ratePer1kTokens:
+                type: integer
+              description:
+                type: string
+
+    IdentityVerifyResponse:
+      type: object
+      required: [status, agent]
+      properties:
+        status:
+          type: string
+          enum: [verified, failed]
+        agent:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            defaultRatePer1kTokens:
+              type: integer
+            balanceLamports:
+              type: integer
+            tools:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  ratePer1kTokens:
+                    type: integer
+        details:
+          type: object
+          additionalProperties: true
+
+    # ==================== METER ====================
+    ToolExecuteRequest:
+      type: object
+      required: [callerId, calleeId, toolName, tokensUsed]
+      properties:
+        callerId:
+          type: string
+          description: Agent making the call
+        calleeId:
+          type: string
+          description: Agent being called
+        toolName:
+          type: string
+          description: Tool to execute
+        tokensUsed:
+          type: integer
+          minimum: 0
+          description: Number of tokens used
+        quoteId:
+          type: string
+          format: uuid
+          description: Optional quote ID for frozen pricing
+
+    ToolExecuteResponse:
+      type: object
+      required: [callerId, calleeId, toolName, tokensUsed, costLamports]
+      properties:
+        callerId:
+          type: string
+        calleeId:
+          type: string
+        toolName:
+          type: string
+        tokensUsed:
+          type: integer
+        costLamports:
+          type: integer
+        pricingSource:
+          type: string
+          enum: [quote, live]
+        quoteId:
+          type: string
+          format: uuid
+        pricingFrozenAt:
+          type: string
+          format: date-time
+
+    ToolCallRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        callerId:
+          type: string
+        calleeId:
+          type: string
+        toolName:
+          type: string
+        tokensUsed:
+          type: integer
+        costLamports:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    # ==================== PAYMENTS ====================
+    SettlementResponse:
+      type: object
+      required: [settlementId, agentId, grossLamports, platformFeeLamports, netLamports, status]
+      properties:
+        settlementId:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+        grossLamports:
+          type: integer
+          description: Total amount before fees
+        platformFeeLamports:
+          type: integer
+          description: Platform fee deducted
+        netLamports:
+          type: integer
+          description: Amount paid out
+        txSignature:
+          type: string
+          description: Solana transaction signature
+        status:
+          type: string
+          enum: [pending, completed, failed]
+
+    SettlementRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fromAgentId:
+          type: string
+        toAgentId:
+          type: string
+        grossLamports:
+          type: integer
+        platformFeeLamports:
+          type: integer
+        netLamports:
+          type: integer
+        txSignature:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    TopupRequest:
+      type: object
+      required: [agentId, amountLamports]
+      properties:
+        agentId:
+          type: string
+        amountLamports:
+          type: integer
+          minimum: 1
+          description: Amount to add in lamports
+
+    TopupResponse:
+      type: object
+      properties:
+        agentId:
+          type: string
+        newBalance:
+          type: integer
+        amountAdded:
+          type: integer
+        message:
+          type: string
+
+    # ==================== PRICING ====================
+    PricingConstants:
+      type: object
+      properties:
+        minCostLamports:
+          type: integer
+          description: Minimum cost per call
+        maxTokensPerCall:
+          type: integer
+          description: Maximum tokens allowed per call
+        platformFeePercent:
+          type: number
+          description: Platform fee percentage
+        minPayoutLamports:
+          type: integer
+          description: Minimum balance for settlement
+
+    PricingPreviewRequest:
+      type: object
+      required: [callerId, calleeId, toolName, tokensEstimate]
+      properties:
+        callerId:
+          type: string
+        calleeId:
+          type: string
+        toolName:
+          type: string
+        tokensEstimate:
+          type: integer
+          minimum: 0
+
+    PricingPreviewResponse:
+      type: object
+      required: [canExecute, costLamports]
+      properties:
+        canExecute:
+          type: boolean
+          description: Whether the call can be executed
+        costLamports:
+          type: integer
+          nullable: true
+        breakdown:
+          type: object
+          properties:
+            tokenBlocks:
+              type: integer
+            ratePer1kTokens:
+              type: integer
+            rawCost:
+              type: integer
+            platformFee:
+              type: integer
+            totalCost:
+              type: integer
+        budgetStatus:
+          $ref: '#/components/schemas/BudgetStatus'
+        warnings:
+          type: array
+          items:
+            type: string
+
+    CalculateCostRequest:
+      type: object
+      required: [tokensUsed, ratePer1kTokens]
+      properties:
+        tokensUsed:
+          type: integer
+          minimum: 0
+        ratePer1kTokens:
+          type: integer
+          minimum: 0
+
+    CalculateCostResponse:
+      type: object
+      properties:
+        tokensUsed:
+          type: integer
+        ratePer1kTokens:
+          type: integer
+        costLamports:
+          type: integer
+        breakdown:
+          type: object
+          properties:
+            tokenBlocks:
+              type: integer
+            rawCost:
+              type: integer
+            minCostEnforced:
+              type: boolean
+
+    CreateQuoteRequest:
+      type: object
+      required: [callerId, calleeId, toolName, tokensEstimate]
+      properties:
+        callerId:
+          type: string
+        calleeId:
+          type: string
+        toolName:
+          type: string
+        tokensEstimate:
+          type: integer
+        ttlSeconds:
+          type: integer
+          default: 300
+          description: Quote validity in seconds
+
+    PricingQuote:
+      type: object
+      properties:
+        quoteId:
+          type: string
+          format: uuid
+        callerId:
+          type: string
+        calleeId:
+          type: string
+        toolName:
+          type: string
+        tokensEstimate:
+          type: integer
+        costLamports:
+          type: integer
+        ratePer1kTokens:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, used, expired]
+
+    # ==================== BUDGET ====================
+    BudgetStatus:
+      type: object
+      properties:
+        agentId:
+          type: string
+        dailyLimit:
+          type: integer
+          nullable: true
+        dailySpent:
+          type: integer
+        remainingToday:
+          type: integer
+          nullable: true
+        killSwitchActive:
+          type: boolean
+        canSpend:
+          type: boolean
+
+    BudgetAuthorizeRequest:
+      type: object
+      required: [amountLamports]
+      properties:
+        amountLamports:
+          type: integer
+          minimum: 1
+        dailyLimit:
+          type: integer
+        reason:
+          type: string
+
+    BudgetAuthorization:
+      type: object
+      properties:
+        authorizationId:
+          type: string
+          format: uuid
+        agentId:
+          type: string
+        amountLamports:
+          type: integer
+        dailyLimit:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    # ==================== ACTIVITY ====================
+    ActivityLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          enum:
+            - identity_created
+            - agent_registered
+            - agent_updated
+            - pricing_changed
+            - tool_registered
+            - tool_executed
+            - payment_executed
+            - settlement_completed
+            - budget_changed
+            - verification_changed
+            - capability_added
+            - capability_removed
+            - audit_created
+            - api_key_used
+            - error_occurred
+        severity:
+          type: string
+          enum: [debug, info, warn, error]
+        agentId:
+          type: string
+          nullable: true
+        actorId:
+          type: string
+          nullable: true
+        actorType:
+          type: string
+          enum: [system, agent, user, api]
+        resourceType:
+          type: string
+          nullable: true
+        resourceId:
+          type: string
+          nullable: true
+        action:
+          type: string
+        description:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        ipAddress:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        requestId:
+          type: string
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ActivityLogsResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityLogEntry'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    ActivitySummary:
+      type: object
+      properties:
+        agentId:
+          type: string
+        totalEvents:
+          type: integer
+        eventsByType:
+          type: object
+          additionalProperties:
+            type: integer
+        eventsBySeverity:
+          type: object
+          additionalProperties:
+            type: integer
+        firstEvent:
+          type: string
+          format: date-time
+        lastEvent:
+          type: string
+          format: date-time
