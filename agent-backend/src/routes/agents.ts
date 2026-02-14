@@ -5,6 +5,7 @@ import { calculateCost, getAgentMetrics, PRICING_CONSTANTS } from "../services/p
 import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
 import * as agentRegistry from "../services/agentRegistryService";
 import { logAgentRegistered, logPricingChanged } from "../services/activityService";
+import { demoOnly } from "../middleware/demoOnly";
 
 const router = Router();
 
@@ -209,12 +210,12 @@ router.post("/quote", apiKeyAuth, asyncHandler(async (req, res) => {
  * POST /agents/fund
  *
  * Add funds to an agent's balance (for testing/demo purposes).
- * In production, this would be replaced by actual deposit verification.
+ * DEMO ENDPOINT: Disabled in production unless ALLOW_DEMO_ENDPOINTS=true
  *
  * Request:
  *   { agentId: string, amount: number (lamports) }
  */
-router.post("/fund", apiKeyAuth, asyncHandler(async (req, res) => {
+router.post("/fund", apiKeyAuth, demoOnly, asyncHandler(async (req, res) => {
   const { agentId, amount } = req.body;
 
   if (!agentId || !amount) {

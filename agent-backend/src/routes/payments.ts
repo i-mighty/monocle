@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { demoOnly } from "../middleware/demoOnly";
 import { sendMicropayment } from "../services/solanaService";
 import {
   settleAgent,
@@ -108,12 +109,12 @@ router.get("/settlements/:agentId", apiKeyAuth, async (req, res) => {
  * POST /payments/topup
  *
  * Top up an agent's balance (for testing/development).
- * In production, this would be restricted to authorized sources.
+ * DEMO ENDPOINT: Disabled in production unless ALLOW_DEMO_ENDPOINTS=true
  *
  * Request:
  *   { agentId: string, amountLamports: number }
  */
-router.post("/topup", apiKeyAuth, async (req, res) => {
+router.post("/topup", apiKeyAuth, demoOnly, async (req, res) => {
   try {
     const { agentId, amountLamports } = req.body;
 

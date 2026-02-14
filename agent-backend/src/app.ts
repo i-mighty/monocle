@@ -19,6 +19,7 @@ import antiAbuse from "./routes/antiAbuse";
 import budget from "./routes/budget";
 import activity from "./routes/activity";
 import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
+import { getDemoStatus } from "./middleware/demoOnly";
 
 const app = express();
 app.use(cors());
@@ -79,6 +80,7 @@ app.use("/activity", deprecationWarning, activity);
 // API INFO
 // =============================================================================
 app.get("/", (req, res) => {
+  const demoStatus = getDemoStatus();
   res.json({
     name: "AgentPay API",
     version: "1.0.0",
@@ -87,9 +89,17 @@ app.get("/", (req, res) => {
       v1: "/v1",
       openapi: "/openapi.yaml",
       docs: "/docs",
+      demoStatus: "/demo-status",
     },
+    demoEndpoints: demoStatus.demoEndpointsEnabled,
+    environment: demoStatus.environment,
     documentation: "https://docs.agentpay.dev",
   });
+});
+
+// Demo endpoints status
+app.get("/demo-status", (req, res) => {
+  res.json(getDemoStatus());
 });
 
 // OpenAPI spec endpoint
