@@ -22,6 +22,13 @@ import apiKeys from "./routes/apiKeys";
 import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 import { getDemoStatus } from "./middleware/demoOnly";
 import { rateLimit, ipRateLimit, slowDown } from "./middleware/rateLimit";
+import { enforceProductionRequirements, isProduction } from "./middleware/requireProduction";
+
+// =============================================================================
+// PRODUCTION ENVIRONMENT VALIDATION
+// =============================================================================
+// Fail fast if production environment is misconfigured
+enforceProductionRequirements();
 
 const app = express();
 app.use(cors());
@@ -149,7 +156,24 @@ app.use(errorHandler);
 
 const port = process.env.PORT || 3001;
 app.listen(port, () => {
-  console.log(`API v1 on :${port}`);
-  console.log(`  Versioned:   http://localhost:${port}/v1/...`);
-  console.log(`  Deprecated:  http://localhost:${port}/... (use /v1/ prefix)`);
+  const mode = isProduction() ? "PRODUCTION" : "DEVELOPMENT";
+  const dbStatus = process.env.DATABASE_URL ? "CONNECTED" : "MOCK MODE";
+  
+  console.log(`\n========================================`);
+  console.log(`  AgentPay API Server`);
+  console.log(`  Mode: ${mode}`);
+  console.log(`  Database: ${dbStatus}`);
+  console.log(`  Port: ${port}`);
+  console.log(`========================================`);
+  console.log(`  API v1:      http://localhost:${port}/v1/...`);
+  console.log(`  Health:      http://localhost:${port}/health`);
+  console.log(`  Demo Status: http://localhost:${port}/demo-status`);
+  if (!isProduction()) {
+    console.log(`\n  ⚠️  Running in development mode`);
+    console.log(`  ⚠️  Demo endpoints enabled`);
+    if (!process.env.DATABASE_URL) {
+      console.log(`  ⚠️  Using mock database (set DATABASE_URL for real DB)`);
+    }
+  }
+  console.log(`========================================\n`);
 });

@@ -32,9 +32,16 @@ export default function Messaging() {
 
   const registerAgent = async () => {
     if (!myAgentId) return log("Enter your agent ID");
+    
+    // Get API key from localStorage (set in login page)
+    const apiKey = typeof window !== "undefined" ? localStorage.getItem("apiKey") : null;
+    if (!apiKey) {
+      return log("Error: API key required. Please log in first.");
+    }
+    
     const res = await fetch(`${BACKEND_URL}/verify-identity`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": "test_key_12345" },
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey },
       body: JSON.stringify({
         agentId: myAgentId,
         firstName: myAgentId.split("-")[0] || "Agent",
