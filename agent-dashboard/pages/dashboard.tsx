@@ -85,6 +85,7 @@ export default function Dashboard() {
         <div className="brand">AgentPay Marketplace</div>
         <div className="links">
           <Link href="/">Marketplace</Link>
+          <Link href="/economy">Economy</Link>
           <Link href="/dashboard" className="active">Dashboard</Link>
           <Link href="/usage">Usage</Link>
           <Link href="/receipts">Receipts</Link>

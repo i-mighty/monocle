@@ -309,6 +309,7 @@ export default function Marketplace() {
         <div className="brand">AgentPay Marketplace</div>
         <div className="links">
           <Link href="/" className="active">Marketplace</Link>
+          <Link href="/economy">Economy</Link>
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/usage">Usage</Link>
           <Link href="/receipts">Receipts</Link>

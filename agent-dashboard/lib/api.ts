@@ -170,3 +170,211 @@ export const getAgentMetrics = (apiKey: string, agentId: string) =>
     headers: { "X-API-Key": apiKey }
   });
 
+// ==================== AGENT ECONOMY API ====================
+
+/**
+ * Helper to get API key from localStorage
+ */
+export function getStoredApiKey(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("apiKey");
+}
+
+/**
+ * Authenticated fetch helper
+ */
+export async function authFetch(path: string, init?: RequestInit) {
+  const apiKey = getStoredApiKey();
+  if (!apiKey) throw new Error("API key required. Please log in.");
+  
+  return fetchJson(path, {
+    ...init,
+    headers: {
+      "X-API-Key": apiKey,
+      ...(init?.headers || {})
+    }
+  });
+}
+
+// === Agent Registration ===
+
+export interface RegisterAgentRequest {
+  agentId: string;
+  name?: string;
+  publicKey?: string;
+  ratePer1kTokens?: number;
+}
+
+export interface RegisteredAgent {
+  agentId: string;
+  name: string | null;
+  publicKey: string | null;
+  ratePer1kTokens: number;
+  balanceLamports: number;
+  pendingLamports: number;
+}
+
+export const registerAgent = (data: RegisterAgentRequest) =>
+  authFetch("/v1/agents/register", {
+    method: "POST",
+    body: JSON.stringify(data)
+  });
+
+// === Economic State ===
+
+export interface AgentEconomicState {
+  agentId: string;
+  ratePer1kTokens: number;
+  balanceLamports: number;
+  pendingLamports: number;
+  totalCallsMade: number;
+  totalCallsReceived: number;
+  totalSpentLamports: number;
+  totalEarnedLamports: number;
+}
+
+export const getAgentEconomicState = (agentId: string) =>
+  authFetch(`/v1/payments/metrics/${agentId}`);
+
+// === Tool Call Execution ===
+
+export interface ExecuteCallRequest {
+  callerId: string;
+  calleeId: string;
+  toolName: string;
+  tokensUsed: number;
+  quoteId?: string;
+}
+
+export interface ExecuteCallResult {
+  callerId: string;
+  calleeId: string;
+  toolName: string;
+  tokensUsed: number;
+  costLamports: number;
+  pricingSource: "quote" | "live";
+  quoteId?: string;
+  pricingFrozenAt?: string;
+  callerNewBalance?: number;
+  calleePendingIncrease?: number;
+}
+
+export const executeToolCall = (data: ExecuteCallRequest) =>
+  authFetch("/v1/meter/execute", {
+    method: "POST",
+    body: JSON.stringify(data)
+  });
+
+// === Tool Call History ===
+
+export interface ToolCallRecord {
+  id: string;
+  callerId: string;
+  calleeId: string;
+  toolName: string;
+  tokensUsed: number;
+  costLamports: number;
+  timestamp: string;
+}
+
+export const getToolCallHistory = (agentId: string, limit: number = 50) =>
+  authFetch(`/v1/meter/history/${agentId}?limit=${limit}`);
+
+export const getEarningsHistory = (agentId: string, limit: number = 50) =>
+  authFetch(`/v1/meter/earnings/${agentId}?limit=${limit}`);
+
+// === Pricing ===
+
+export interface PricingConstants {
+  minCostLamports: number;
+  maxTokensPerCall: number;
+  platformFeePercent: number;
+  minPayoutLamports: number;
+}
+
+export const getPricingConstants = () =>
+  fetchJson("/v1/pricing/constants");
+
+export interface CostPreviewRequest {
+  callerId: string;
+  calleeId: string;
+  toolName: string;
+  tokensEstimate: number;
+}
+
+export interface CostPreview {
+  canExecute: boolean;
+  costLamports: number;
+  breakdown: {
+    tokenBlocks: number;
+    rawCost: number;
+    ratePer1kTokens: number;
+    minimumApplied: boolean;
+  };
+  budgetStatus: {
+    currentBalance: number;
+    afterCallBalance: number;
+    budgetRemaining: number;
+  };
+  warnings: string[];
+}
+
+export const previewCost = (data: CostPreviewRequest) =>
+  authFetch("/v1/pricing/preview", {
+    method: "POST",
+    body: JSON.stringify(data)
+  });
+
+// === Settlements ===
+
+export interface Settlement {
+  id: string;
+  fromAgentId: string;
+  toAgentId: string;
+  grossLamports: number;
+  platformFeeLamports: number;
+  netLamports: number;
+  txSignature: string | null;
+  status: "pending" | "completed" | "failed";
+  createdAt: string;
+}
+
+export const getSettlementHistory = (agentId: string) =>
+  authFetch(`/v1/payments/settlements/${agentId}`);
+
+export const settlePayment = (agentId: string) =>
+  authFetch(`/v1/payments/settle/${agentId}`, {
+    method: "POST"
+  });
+
+export const getAllSettlements = () =>
+  authFetch("/v1/payments/");
+
+// === Platform Revenue ===
+
+export interface PlatformRevenue {
+  totalFeesLamports: number;
+  totalFeesSOL: number;
+  settlementCount: number;
+  recentFees: {
+    id: string;
+    feeLamports: number;
+    agentId: string;
+    grossLamports: number;
+    netLamports: number;
+    txSignature: string | null;
+    createdAt: string;
+  }[];
+}
+
+export const getPlatformRevenue = () =>
+  authFetch("/v1/pricing/platform-revenue");
+
+// === Demo Mode (for testing) ===
+
+export const topUpAgent = (agentId: string, amountLamports: number) =>
+  authFetch("/v1/payments/topup", {
+    method: "POST",
+    body: JSON.stringify({ agentId, amountLamports })
+  });
+
