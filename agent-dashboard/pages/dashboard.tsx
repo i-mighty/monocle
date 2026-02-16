@@ -1,27 +1,38 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getUsage, getEarnings, getToolLogs } from "../lib/api";
+import { getUsage, getEarnings, getToolLogs, getDeployedAgents, DeployedAgent } from "../lib/api";
 import { searchAgents, AgentSearchResult } from "../lib/reputation-api";
 
 type UsageRow = { agent_id: string; calls: number; spend: number };
 type LogRow = { agent_id: string; tool_name: string; tokens_used: number; timestamp: string };
 
-// Mock deployed agents - in production these would come from the backend
-const mockDeployedAgents = [
-  { id: "1", name: "GPT DevOps", slug: "gpt-devops", status: "active", spend: 0.045, calls: 127 },
-  { id: "2", name: "SecurityBot", slug: "securitybot", status: "active", spend: 0.023, calls: 84 },
-];
+// Deployed agent display type
+interface DisplayAgent {
+  id: string;
+  name: string;
+  slug: string;
+  status: "active" | "inactive";
+  spend: number;
+  calls: number;
+}
 
 export default function Dashboard() {
   const [usage, setUsage] = useState<UsageRow[]>([]);
   const [totalEarned, setTotalEarned] = useState(0);
   const [recentLogs, setRecentLogs] = useState<LogRow[]>([]);
   const [marketplaceAgents, setMarketplaceAgents] = useState<AgentSearchResult[]>([]);
+  const [deployedAgents, setDeployedAgents] = useState<DisplayAgent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      setAuthError(null);
+      
+      // Get API key from localStorage (set in login page)
+      const apiKey = typeof window !== "undefined" ? localStorage.getItem("apiKey") : null;
+      
       try {
         const [usageData, earningsData, logsData, agentsData] = await Promise.allSettled([
           getUsage(),
@@ -34,6 +45,27 @@ export default function Dashboard() {
         if (earningsData.status === 'fulfilled') setTotalEarned(Number(earningsData.value?.total_sol || 0));
         if (logsData.status === 'fulfilled') setRecentLogs(logsData.value?.slice(0, 5) || []);
         if (agentsData.status === 'fulfilled') setMarketplaceAgents(agentsData.value?.agents || []);
+        
+        // Fetch deployed agents if API key is available
+        if (apiKey) {
+          try {
+            const agents = await getDeployedAgents(apiKey);
+            const data = agents.data || agents;
+            setDeployedAgents((data || []).map((agent: DeployedAgent) => ({
+              id: agent.agentId,
+              name: agent.name || agent.agentId,
+              slug: agent.agentId.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+              status: "active" as const,
+              spend: agent.balanceLamports / 1e9, // Convert lamports to SOL
+              calls: 0, // Will be populated from metrics
+            })));
+          } catch (err) {
+            console.warn("Failed to load deployed agents - authentication may be required");
+            setAuthError("API key required to view deployed agents");
+          }
+        } else {
+          setAuthError("Please log in to view your deployed agents");
+        }
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
       }
@@ -42,8 +74,8 @@ export default function Dashboard() {
     loadData();
   }, []);
 
-  const totalSpend = mockDeployedAgents.reduce((acc, a) => acc + a.spend, 0);
-  const totalCalls = mockDeployedAgents.reduce((acc, a) => acc + a.calls, 0);
+  const totalSpend = deployedAgents.reduce((acc, a) => acc + a.spend, 0);
+  const totalCalls = deployedAgents.reduce((acc, a) => acc + a.calls, 0);
 
   return (
     <main className="page">
@@ -68,7 +100,7 @@ export default function Dashboard() {
         <div className="stat-card">
           <div className="stat-icon">AG</div>
           <div className="stat-content">
-            <div className="stat-value">{mockDeployedAgents.length}</div>
+            <div className="stat-value">{deployedAgents.length}</div>
             <div className="stat-label">Deployed Agents</div>
           </div>
         </div>
@@ -102,7 +134,13 @@ export default function Dashboard() {
             <Link href="/" className="btn-small">+ Deploy New</Link>
           </div>
           <div className="agents-list">
-            {mockDeployedAgents.map((agent) => (
+            {authError && (
+              <div className="auth-warning">
+                <p>{authError}</p>
+                <Link href="/login" className="btn-primary">Log In</Link>
+              </div>
+            )}
+            {!authError && deployedAgents.map((agent) => (
               <div key={agent.id} className="deployed-agent">
                 <div className="agent-avatar">{agent.name.charAt(0)}</div>
                 <div className="agent-info">
@@ -121,7 +159,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {mockDeployedAgents.length === 0 && (
+            {!authError && deployedAgents.length === 0 && (
               <div className="empty-state">
                 <p>No agents deployed yet</p>
                 <Link href="/" className="btn-primary">Browse Marketplace</Link>

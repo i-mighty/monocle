@@ -133,3 +133,40 @@ export interface TrustMetrics {
   trustTier: "new" | "basic" | "verified" | "trusted" | "elite";
 }
 
+// ==================== AGENTS ENDPOINTS ====================
+
+export interface DeployedAgent {
+  agentId: string;
+  name: string | null;
+  publicKey: string | null;
+  ratePer1kTokens: number;
+  balanceLamports: number;
+  pendingLamports: number;
+  createdAt: string;
+}
+
+/**
+ * Fetch deployed/registered agents.
+ * Requires API key authentication via X-API-Key header.
+ */
+export const getDeployedAgents = (apiKey: string, limit: number = 50) => 
+  fetchJson(`/v1/agents?limit=${limit}`, {
+    headers: { "X-API-Key": apiKey }
+  });
+
+/**
+ * Get agent metrics (calls, spend, etc.)
+ */
+export const getAgentDetails = (apiKey: string, agentId: string) =>
+  fetchJson(`/v1/agents/${agentId}`, {
+    headers: { "X-API-Key": apiKey }
+  });
+
+/**
+ * Get agent metrics
+ */
+export const getAgentMetrics = (apiKey: string, agentId: string) =>
+  fetchJson(`/v1/agents/${agentId}/metrics`, {
+    headers: { "X-API-Key": apiKey }
+  });
+
