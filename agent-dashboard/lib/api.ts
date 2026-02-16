@@ -378,3 +378,98 @@ export const topUpAgent = (agentId: string, amountLamports: number) =>
     body: JSON.stringify({ agentId, amountLamports })
   });
 
+// =============================================================================
+// DEPOSITS: Real Solana deposits to fund agent accounts
+// =============================================================================
+
+export interface DepositAddress {
+  treasuryAddress: string;
+  network: string;
+  currency: string;
+  minimumDeposit: number;
+  instructions: string;
+}
+
+export interface DepositIntent {
+  intentId: string;
+  agentId: string;
+  reference: string;
+  depositAddress: string;
+  expectedAmountLamports: number | null;
+  expiresAt: string;
+  status: string;
+  qrCodeData: string;
+  instructions: string[];
+}
+
+export interface Deposit {
+  id: string;
+  agentId: string;
+  txSignature: string;
+  amountLamports: number;
+  status: string;
+  confirmedAt: string | null;
+  creditedAt: string | null;
+  createdAt: string;
+}
+
+export interface DepositVerifyResult {
+  verified: boolean;
+  txSignature: string;
+  amountLamports: number | null;
+  agentId: string | null;
+  status: string;
+  message: string;
+  newBalance: number | null;
+}
+
+export interface PendingIntent {
+  intentId: string;
+  reference: string;
+  expectedAmountLamports: number | null;
+  depositAddress: string;
+  expiresAt: string;
+  status: string;
+}
+
+export interface WithdrawResult {
+  success: boolean;
+  withdrawalId: string;
+  txSignature: string;
+  amountLamports: number;
+  toAddress: string;
+  newBalance: number;
+}
+
+// Get treasury address for deposits (public)
+export const getDepositAddress = (): Promise<DepositAddress> =>
+  fetchJson("/v1/deposits/address");
+
+// Create deposit intent with QR code
+export const createDepositIntent = (agentId: string, amountLamports?: number): Promise<DepositIntent> =>
+  authFetch("/v1/deposits/intent", {
+    method: "POST",
+    body: JSON.stringify({ agentId, amountLamports })
+  });
+
+// Verify a deposit transaction
+export const verifyDeposit = (txSignature: string, agentId: string): Promise<DepositVerifyResult> =>
+  authFetch("/v1/deposits/verify", {
+    method: "POST",
+    body: JSON.stringify({ txSignature, agentId })
+  });
+
+// Get deposit history for an agent
+export const getDepositHistory = (agentId: string): Promise<{ deposits: Deposit[] }> =>
+  authFetch(`/v1/deposits/${agentId}`);
+
+// Get pending deposit intents for an agent
+export const getPendingDepositIntents = (agentId: string): Promise<{ pendingIntents: PendingIntent[] }> =>
+  authFetch(`/v1/deposits/${agentId}/pending`);
+
+// Withdraw to external wallet
+export const withdrawToWallet = (agentId: string, amountLamports: number, toAddress: string): Promise<WithdrawResult> =>
+  authFetch("/v1/deposits/withdraw", {
+    method: "POST",
+    body: JSON.stringify({ agentId, amountLamports, toAddress })
+  });

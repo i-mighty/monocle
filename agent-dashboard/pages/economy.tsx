@@ -14,6 +14,12 @@ import {
   getPlatformRevenue,
   topUpAgent,
   getStoredApiKey,
+  getDepositAddress,
+  createDepositIntent,
+  verifyDeposit,
+  getDepositHistory,
+  getPendingDepositIntents,
+  withdrawToWallet,
   RegisterAgentRequest,
   AgentEconomicState,
   ExecuteCallRequest,
@@ -24,6 +30,10 @@ import {
   Settlement,
   PlatformRevenue,
   DeployedAgent,
+  DepositAddress,
+  DepositIntent,
+  Deposit,
+  PendingIntent,
 } from "../lib/api";
 
 // =============================================================================
@@ -81,8 +91,17 @@ export default function EconomyControlPanel() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [platformRevenue, setPlatformRevenue] = useState<PlatformRevenue | null>(null);
 
+  // Deposits
+  const [depositAddress, setDepositAddress] = useState<DepositAddress | null>(null);
+  const [depositIntent, setDepositIntent] = useState<DepositIntent | null>(null);
+  const [depositHistory, setDepositHistory] = useState<Deposit[]>([]);
+  const [pendingIntents, setPendingIntents] = useState<PendingIntent[]>([]);
+  const [depositAmount, setDepositAmount] = useState<string>("");
+  const [verifyTxSignature, setVerifyTxSignature] = useState<string>("");
+  const [withdrawForm, setWithdrawForm] = useState({ amount: "", toAddress: "" });
+
   // UI state
-  const [activeTab, setActiveTab] = useState<"register" | "state" | "execute" | "pricing" | "settlements">("register");
+  const [activeTab, setActiveTab] = useState<"register" | "state" | "execute" | "pricing" | "settlements" | "deposits">("register");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -105,8 +124,14 @@ export default function EconomyControlPanel() {
       loadEconomicState(selectedAgent);
       loadHistory(selectedAgent);
       loadSettlements(selectedAgent);
+      loadDeposits(selectedAgent);
     }
   }, [selectedAgent, isAuthenticated]);
+
+  // Load deposit address on mount
+  useEffect(() => {
+    loadDepositAddress();
+  }, []);
 
   // Auto-preview cost when call form changes
   useEffect(() => {
@@ -179,6 +204,28 @@ export default function EconomyControlPanel() {
       setPlatformRevenue(revenueData);
     } catch (err) {
       console.error("Failed to load settlements:", err);
+    }
+  };
+
+  const loadDepositAddress = async () => {
+    try {
+      const addr = await getDepositAddress();
+      setDepositAddress(addr);
+    } catch (err) {
+      console.error("Failed to load deposit address:", err);
+    }
+  };
+
+  const loadDeposits = async (agentId: string) => {
+    try {
+      const [historyData, pendingData] = await Promise.all([
+        getDepositHistory(agentId).catch(() => ({ deposits: [] })),
+        getPendingDepositIntents(agentId).catch(() => ({ pendingIntents: [] })),
+      ]);
+      setDepositHistory(historyData.deposits || []);
+      setPendingIntents(pendingData.pendingIntents || []);
+    } catch (err) {
+      console.error("Failed to load deposits:", err);
     }
   };
 
@@ -280,6 +327,70 @@ export default function EconomyControlPanel() {
     setLoading(false);
   };
 
+  const handleCreateDepositIntent = async () => {
+    if (!selectedAgent) {
+      showMessage("error", "Select an agent first");
+      return;
+    }
+    setLoading(true);
+    try {
+      const amount = depositAmount ? parseInt(depositAmount) : undefined;
+      const intent = await createDepositIntent(selectedAgent, amount);
+      setDepositIntent(intent);
+      showMessage("success", "Deposit intent created! Send SOL to the address shown.");
+      await loadDeposits(selectedAgent);
+    } catch (err: any) {
+      showMessage("error", err.message || "Failed to create deposit intent");
+    }
+    setLoading(false);
+  };
+
+  const handleVerifyDeposit = async () => {
+    if (!selectedAgent || !verifyTxSignature) {
+      showMessage("error", "Enter a transaction signature to verify");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await verifyDeposit(verifyTxSignature, selectedAgent);
+      if (result.verified) {
+        showMessage("success", `Deposit verified! ${result.amountLamports} lamports credited.`);
+        setVerifyTxSignature("");
+        await loadDeposits(selectedAgent);
+        await loadEconomicState(selectedAgent);
+        await loadAgents();
+      } else {
+        showMessage("error", result.message || "Deposit not verified");
+      }
+    } catch (err: any) {
+      showMessage("error", err.message || "Verification failed");
+    }
+    setLoading(false);
+  };
+
+  const handleWithdraw = async () => {
+    if (!selectedAgent || !withdrawForm.amount || !withdrawForm.toAddress) {
+      showMessage("error", "Enter amount and destination address");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await withdrawToWallet(
+        selectedAgent,
+        parseInt(withdrawForm.amount),
+        withdrawForm.toAddress
+      );
+      showMessage("success", `Withdrawal sent! TX: ${result.txSignature.slice(0, 16)}...`);
+      setWithdrawForm({ amount: "", toAddress: "" });
+      await loadDeposits(selectedAgent);
+      await loadEconomicState(selectedAgent);
+      await loadAgents();
+    } catch (err: any) {
+      showMessage("error", err.message || "Withdrawal failed");
+    }
+    setLoading(false);
+  };
+
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
     setTimeout(() => setMessage(null), 5000);
@@ -365,31 +476,37 @@ export default function EconomyControlPanel() {
           className={`tab ${activeTab === "register" ? "active" : ""}`}
           onClick={() => setActiveTab("register")}
         >
-          1️⃣ Register Agent
+          1. Register Agent
         </button>
         <button
           className={`tab ${activeTab === "state" ? "active" : ""}`}
           onClick={() => setActiveTab("state")}
         >
-          2️⃣ Economic State
+          2. Economic State
         </button>
         <button
           className={`tab ${activeTab === "execute" ? "active" : ""}`}
           onClick={() => setActiveTab("execute")}
         >
-          3️⃣ Execute Call
+          3. Execute Call
         </button>
         <button
           className={`tab ${activeTab === "pricing" ? "active" : ""}`}
           onClick={() => setActiveTab("pricing")}
         >
-          4️⃣ Pricing
+          4. Pricing
         </button>
         <button
           className={`tab ${activeTab === "settlements" ? "active" : ""}`}
           onClick={() => setActiveTab("settlements")}
         >
-          5️⃣ Settlements
+          5. Settlements
+        </button>
+        <button
+          className={`tab ${activeTab === "deposits" ? "active" : ""}`}
+          onClick={() => setActiveTab("deposits")}
+        >
+          6. Deposits
         </button>
       </div>
 
@@ -701,7 +818,7 @@ export default function EconomyControlPanel() {
                       </div>
                       {costPreview.breakdown.minimumApplied && (
                         <div className="breakdown-item warning">
-                          <span>⚠️ Minimum applied</span>
+                          <span>Minimum applied</span>
                         </div>
                       )}
                     </div>
@@ -721,7 +838,7 @@ export default function EconomyControlPanel() {
                     {costPreview.warnings.length > 0 && (
                       <div className="preview-warnings">
                         {costPreview.warnings.map((w, i) => (
-                          <div key={i} className="warning">⚠️ {w}</div>
+                          <div key={i} className="warning">{w}</div>
                         ))}
                       </div>
                     )}
@@ -840,7 +957,7 @@ export default function EconomyControlPanel() {
                   onClick={() => handleSettle(selectedAgent)}
                   disabled={loading || !pricingConstants || economicState.pendingLamports < pricingConstants.minPayoutLamports}
                 >
-                  🏦 Settle Now
+                  Settle Now
                 </button>
                 {pricingConstants && economicState.pendingLamports < pricingConstants.minPayoutLamports && (
                   <p className="settle-warning">
@@ -911,6 +1028,217 @@ export default function EconomyControlPanel() {
                 </div>
               </div>
             )}
+          </section>
+        )}
+
+        {/* 6. DEPOSITS */}
+        {activeTab === "deposits" && (
+          <section className="panel">
+            <h2>Deposit & Withdraw SOL</h2>
+            <p className="description">Fund your agent account with real SOL or withdraw to your wallet</p>
+
+            {/* Agent Selector */}
+            <div className="form-group">
+              <label>Select Agent</label>
+              <select
+                value={selectedAgent}
+                onChange={(e) => setSelectedAgent(e.target.value)}
+              >
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name} ({a.id})</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Current Balance */}
+            {economicState && (
+              <div className="balance-card">
+                <div className="balance-info">
+                  <span className="balance-label">Current Balance</span>
+                  <span className="balance-value">{formatLamports(economicState.balanceLamports)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Treasury Address */}
+            {depositAddress && (
+              <div className="deposit-section">
+                <h3>Deposit SOL</h3>
+                <div className="treasury-info">
+                  <label>Treasury Address ({depositAddress.network})</label>
+                  <div className="address-display">
+                    <code>{depositAddress.treasuryAddress}</code>
+                    <button 
+                      className="btn-copy"
+                      onClick={() => {
+                        navigator.clipboard.writeText(depositAddress.treasuryAddress);
+                        showMessage("success", "Address copied!");
+                      }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <p className="hint">{depositAddress.instructions}</p>
+                </div>
+
+                {/* Create Deposit Intent */}
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Expected Amount (optional)</label>
+                    <input
+                      type="number"
+                      placeholder="Amount in lamports"
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                    />
+                  </div>
+                  <button 
+                    className="btn-primary"
+                    onClick={handleCreateDepositIntent}
+                    disabled={loading}
+                  >
+                    Create Deposit Intent
+                  </button>
+                </div>
+
+                {/* Show Intent if created */}
+                {depositIntent && (
+                  <div className="intent-card">
+                    <h4>Deposit Intent Created</h4>
+                    <div className="intent-details">
+                      <p><strong>Reference:</strong> {depositIntent.reference}</p>
+                      <p><strong>Expires:</strong> {formatTime(depositIntent.expiresAt)}</p>
+                      {depositIntent.expectedAmountLamports && (
+                        <p><strong>Expected:</strong> {formatLamports(depositIntent.expectedAmountLamports)}</p>
+                      )}
+                    </div>
+                    <div className="qr-code">
+                      <img src={depositIntent.qrCodeData} alt="Deposit QR Code" />
+                    </div>
+                    <ul className="instructions">
+                      {depositIntent.instructions.map((inst, i) => (
+                        <li key={i}>{inst}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Verify Transaction */}
+                <div className="verify-section">
+                  <h4>Verify a Transaction</h4>
+                  <div className="form-row">
+                    <input
+                      type="text"
+                      placeholder="Solana transaction signature"
+                      value={verifyTxSignature}
+                      onChange={(e) => setVerifyTxSignature(e.target.value)}
+                      className="input-wide"
+                    />
+                    <button 
+                      className="btn-primary"
+                      onClick={handleVerifyDeposit}
+                      disabled={loading || !verifyTxSignature}
+                    >
+                      Verify Deposit
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Withdraw Section */}
+            <div className="deposit-section">
+              <h3>Withdraw SOL</h3>
+              <div className="form-group">
+                <label>Amount (lamports)</label>
+                <input
+                  type="number"
+                  placeholder="Amount to withdraw"
+                  value={withdrawForm.amount}
+                  onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Destination Wallet Address</label>
+                <input
+                  type="text"
+                  placeholder="Solana wallet address"
+                  value={withdrawForm.toAddress}
+                  onChange={(e) => setWithdrawForm({ ...withdrawForm, toAddress: e.target.value })}
+                />
+              </div>
+              <button 
+                className="btn-danger"
+                onClick={handleWithdraw}
+                disabled={loading || !withdrawForm.amount || !withdrawForm.toAddress}
+              >
+                Withdraw SOL
+              </button>
+            </div>
+
+            {/* Pending Intents */}
+            {pendingIntents.length > 0 && (
+              <div className="deposits-history">
+                <h3>Pending Deposit Intents</h3>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Reference</th>
+                      <th>Expected Amount</th>
+                      <th>Expires</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingIntents.map((pi, i) => (
+                      <tr key={i}>
+                        <td><code>{pi.reference}</code></td>
+                        <td>{pi.expectedAmountLamports ? formatLamports(pi.expectedAmountLamports) : "-"}</td>
+                        <td>{formatTime(pi.expiresAt)}</td>
+                        <td><span className={`status-badge ${pi.status}`}>{pi.status}</span></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Deposit History */}
+            <div className="deposits-history">
+              <h3>Deposit History</h3>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                    <th>TX Signature</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {depositHistory.length === 0 && (
+                    <tr><td colSpan={4} className="empty">No deposits yet</td></tr>
+                  )}
+                  {depositHistory.map((d, i) => (
+                    <tr key={i}>
+                      <td>{formatTime(d.createdAt)}</td>
+                      <td className="earned">{formatLamports(d.amountLamports)}</td>
+                      <td><span className={`status-badge ${d.status}`}>{d.status}</span></td>
+                      <td>
+                        <a 
+                          href={`https://solscan.io/tx/${d.txSignature}?cluster=devnet`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="tx-link"
+                        >
+                          {d.txSignature.slice(0, 12)}...
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
       </div>
@@ -1358,4 +1686,118 @@ const styles = `
   }
   .revenue-value { font-size: 24px; font-weight: 700; color: #8b5cf6; }
   .revenue-label { color: #94a3b8; font-size: 14px; margin-top: 4px; }
+
+  /* Deposit Section Styles */
+  .balance-card {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(6, 182, 212, 0.2));
+    padding: 24px;
+    border-radius: 16px;
+    margin-bottom: 24px;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+  }
+  .balance-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .balance-label { color: #a5b4fc; font-size: 14px; }
+  .balance-value { font-size: 28px; font-weight: 700; color: #8b5cf6; }
+
+  .deposit-section {
+    background: rgba(15, 23, 42, 0.6);
+    padding: 24px;
+    border-radius: 16px;
+    margin-bottom: 24px;
+  }
+  .deposit-section h3 { margin-bottom: 16px; color: #c4b5fd; }
+  .deposit-section h4 { margin: 24px 0 12px; color: #a5b4fc; }
+
+  .treasury-info { margin-bottom: 24px; }
+  .treasury-info label { display: block; margin-bottom: 8px; color: #94a3b8; }
+  .address-display {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  .address-display code {
+    flex: 1;
+    font-family: monospace;
+    font-size: 14px;
+    color: #06b6d4;
+    word-break: break-all;
+  }
+  .btn-copy {
+    background: rgba(139, 92, 246, 0.3);
+    color: #c4b5fd;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-copy:hover { background: rgba(139, 92, 246, 0.5); }
+
+  .form-row {
+    display: flex;
+    gap: 16px;
+    align-items: flex-end;
+    margin-bottom: 16px;
+  }
+  .form-row .form-group { flex: 1; margin-bottom: 0; }
+  .input-wide { flex: 1; }
+
+  .intent-card {
+    background: rgba(139, 92, 246, 0.1);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 16px;
+  }
+  .intent-card h4 { color: #8b5cf6; margin-bottom: 12px; }
+  .intent-details p { margin: 8px 0; color: #94a3b8; }
+  .intent-details strong { color: #c4b5fd; }
+  .qr-code {
+    text-align: center;
+    margin: 20px 0;
+    padding: 16px;
+    background: white;
+    border-radius: 8px;
+    display: inline-block;
+  }
+  .qr-code img { max-width: 200px; height: auto; }
+  .instructions {
+    list-style: decimal;
+    padding-left: 20px;
+    color: #94a3b8;
+  }
+  .instructions li { margin: 8px 0; }
+
+  .verify-section {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(139, 92, 246, 0.2);
+  }
+
+  .btn-danger {
+    background: linear-gradient(135deg, #dc2626, #b91c1c);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-danger:hover { filter: brightness(1.1); }
+  .btn-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .deposits-history { margin-top: 32px; }
+  .deposits-history h3 { margin-bottom: 16px; color: #c4b5fd; }
 `;
