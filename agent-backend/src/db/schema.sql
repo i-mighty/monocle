@@ -491,3 +491,65 @@ create index idx_activity_logs_created_at on activity_logs(created_at desc);
 create index idx_activity_logs_actor_id on activity_logs(actor_id);
 create index idx_activity_logs_resource_type on activity_logs(resource_type);
 create index idx_activity_logs_composite on activity_logs(agent_id, event_type, created_at desc);
+
+-- =============================================================================
+-- DEPOSIT INTENTS: Track pending deposit requests
+-- =============================================================================
+create table if not exists deposit_intents (
+  id uuid primary key default gen_random_uuid(),
+  agent_id text not null references agents(id) on delete cascade,
+  reference text unique not null,  -- Unique reference for memo field
+  expected_amount_lamports bigint,  -- Optional expected amount
+  deposit_address text not null,    -- Treasury address
+  status text not null default 'pending' check (status in ('pending', 'completed', 'expired', 'cancelled')),
+  expires_at timestamptz not null,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+-- =============================================================================
+-- DEPOSITS: Confirmed SOL deposits
+-- =============================================================================
+create table if not exists deposits (
+  id uuid primary key default gen_random_uuid(),
+  agent_id text not null references agents(id) on delete cascade,
+  tx_signature text unique not null,      -- Solana transaction signature
+  amount_lamports bigint not null,        -- Amount received
+  status text not null default 'pending' check (status in ('pending', 'confirmed', 'credited', 'failed')),
+  deposit_intent_id uuid references deposit_intents(id),  -- Optional link to intent
+  confirmed_at timestamptz,
+  credited_at timestamptz,
+  created_at timestamptz default now()
+);
+
+-- =============================================================================
+-- WITHDRAWALS: SOL withdrawals from agent balance
+-- =============================================================================
+create table if not exists withdrawals (
+  id uuid primary key default gen_random_uuid(),
+  agent_id text not null references agents(id) on delete cascade,
+  tx_signature text,                      -- Solana transaction signature (null until sent)
+  amount_lamports bigint not null,        -- Amount to withdraw
+  to_address text not null,               -- Destination wallet address
+  status text not null default 'pending' check (status in ('pending', 'processing', 'completed', 'failed')),
+  error_message text,                     -- Error details if failed
+  created_at timestamptz default now(),
+  completed_at timestamptz
+);
+
+-- =============================================================================
+-- DEPOSIT/WITHDRAWAL INDEXES
+-- =============================================================================
+create index idx_deposit_intents_agent on deposit_intents(agent_id);
+create index idx_deposit_intents_reference on deposit_intents(reference);
+create index idx_deposit_intents_status on deposit_intents(status);
+create index idx_deposit_intents_expires on deposit_intents(expires_at);
+
+create index idx_deposits_agent on deposits(agent_id);
+create index idx_deposits_tx_signature on deposits(tx_signature);
+create index idx_deposits_status on deposits(status);
+create index idx_deposits_created_at on deposits(created_at desc);
+
+create index idx_withdrawals_agent on withdrawals(agent_id);
+create index idx_withdrawals_status on withdrawals(status);
+create index idx_withdrawals_created_at on withdrawals(created_at desc);
