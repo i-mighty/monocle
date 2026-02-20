@@ -20,6 +20,7 @@ import budget from "./routes/budget";
 import activity from "./routes/activity";
 import apiKeys from "./routes/apiKeys";
 import deposits from "./routes/deposits";
+import chat from "./routes/chat";
 import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 import { getDemoStatus } from "./middleware/demoOnly";
 import { rateLimit, ipRateLimit, slowDown } from "./middleware/rateLimit";
@@ -71,6 +72,7 @@ v1.use("/budget", budget);
 v1.use("/activity", activity);
 v1.use("/api-keys", apiKeys);
 v1.use("/deposits", deposits);
+v1.use("/chat", chat);
 
 // Mount v1 API
 app.use("/v1", v1);
