@@ -553,3 +553,42 @@ create index idx_deposits_created_at on deposits(created_at desc);
 create index idx_withdrawals_agent on withdrawals(agent_id);
 create index idx_withdrawals_status on withdrawals(status);
 create index idx_withdrawals_created_at on withdrawals(created_at desc);
+
+-- =============================================================================
+-- CONVERSATIONS_AI: User-AI Chat Conversations (for Router Agent)
+-- =============================================================================
+create table if not exists conversations_ai (
+  id text primary key,
+  user_id text not null,                      -- User identifier
+  messages text not null default '[]',        -- JSON array of messages
+  total_tokens integer not null default 0,    -- Total tokens used
+  total_cost_lamports bigint not null default 0, -- Total cost
+  metadata text,                              -- JSON metadata
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index idx_conversations_ai_user on conversations_ai(user_id);
+create index idx_conversations_ai_updated on conversations_ai(updated_at desc);
+
+-- =============================================================================
+-- SPECIALIST_AGENTS: Registered AI Specialist Agents
+-- =============================================================================
+create table if not exists specialist_agents (
+  id text primary key,
+  name text not null,
+  description text,
+  task_types text not null default '[]',      -- JSON array of task types
+  provider text not null,                     -- openai, anthropic, google
+  model text not null,                        -- gpt-4, claude-3, etc.
+  rate_per_1k_tokens bigint not null,
+  quality_score integer default 80,           -- 0-100
+  reliability_score integer default 90,       -- 0-100
+  avg_latency_ms integer default 2000,
+  is_active boolean default true,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index idx_specialist_agents_provider on specialist_agents(provider);
+create index idx_specialist_agents_active on specialist_agents(is_active);
