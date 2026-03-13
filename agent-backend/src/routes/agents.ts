@@ -6,6 +6,10 @@ import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
 import * as agentRegistry from "../services/agentRegistryService";
 import { logAgentRegistered, logPricingChanged } from "../services/activityService";
 import { demoOnly } from "../middleware/demoOnly";
+import { rateLimit } from "../middleware/rateLimit";
+import { randomUUID } from "crypto";
+import { Connection, PublicKey, Transaction, SystemProgram, Keypair, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { checkEndpointHealth } from "../services/endpointVerifyService";
 
 const router = Router();
 
@@ -56,6 +60,678 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
   }, 201);
+}));
+
+// =============================================================================
+// PUBLIC REGISTRATION (No API Key Required - Marketplace Onboarding)
+// =============================================================================
+
+/**
+ * POST /agents/register/public
+ *
+ * Public endpoint for AI providers to register their agent on the Monocle network.
+ * No API key required, but heavily rate-limited to prevent abuse.
+ *
+ * Request:
+ *   {
+ *     name: string (required, 3-100 chars)
+ *     endpoint: string (required, HTTPS URL where tasks will be sent)
+ *     publicKey: string (required, Solana wallet for receiving earnings)
+ *     ratePer1kTokens?: number (lamports per 1K tokens, default 1000)
+ *     taskTypes?: string[] (capabilities: ["code", "research", "writing", etc.])
+ *     bio?: string (description, max 500 chars)
+ *     websiteUrl?: string
+ *     ownerEmail?: string (for account recovery)
+ *   }
+ *
+ * Response (201):
+ *   {
+ *     agentId: string (generated UUID)
+ *     apiKey: string (one-time display - store this!)
+ *     name, publicKey, ratePer1kTokens, taskTypes, createdAt
+ *   }
+ */
+router.post("/register/public",
+  rateLimit({ maxRequests: 5, windowMs: 60 * 60 * 1000, burstAllowance: 0 }), // 5/hour
+  asyncHandler(async (req, res) => {
+    const { name, endpoint, publicKey, ratePer1kTokens, taskTypes, bio, websiteUrl, ownerEmail } = req.body;
+
+    // Validate required fields
+    if (!name || typeof name !== "string" || name.length < 3 || name.length > 100) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_REQUIRED_FIELD,
+        { field: "name" },
+        "name is required (3-100 characters)"
+      );
+    }
+
+    if (!endpoint || typeof endpoint !== "string") {
+      throw new AppError(
+        ErrorCodes.VALIDATION_REQUIRED_FIELD,
+        { field: "endpoint" },
+        "endpoint URL is required"
+      );
+    }
+
+    // Validate HTTPS endpoint
+    try {
+      const url = new URL(endpoint);
+      if (url.protocol !== "https:" && process.env.NODE_ENV === "production") {
+        throw new Error("Must use HTTPS");
+      }
+    } catch {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "endpoint" },
+        "endpoint must be a valid HTTPS URL"
+      );
+    }
+
+    // Verify endpoint is alive and responds correctly
+    // Skip in development if SKIP_ENDPOINT_VERIFY=true
+    if (process.env.SKIP_ENDPOINT_VERIFY !== "true") {
+      const healthCheck = await checkEndpointHealth(endpoint);
+      if (!healthCheck.success) {
+        throw new AppError(
+          ErrorCodes.VALIDATION_INVALID_FORMAT,
+          { field: "endpoint", healthCheckError: healthCheck.error, latencyMs: healthCheck.latencyMs },
+          `Endpoint health check failed: ${healthCheck.error}. Your endpoint must respond to GET /health with { "status": "ok" }`
+        );
+      }
+    }
+
+    if (!publicKey || typeof publicKey !== "string") {
+      throw new AppError(
+        ErrorCodes.VALIDATION_REQUIRED_FIELD,
+        { field: "publicKey" },
+        "Solana public key is required for receiving payments"
+      );
+    }
+
+    // Validate Solana public key format
+    try {
+      new PublicKey(publicKey);
+    } catch {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "publicKey" },
+        "Invalid Solana public key format"
+      );
+    }
+
+    // Check if public key already registered
+    const existingAgent = await query(
+      "SELECT id FROM agents WHERE public_key = $1",
+      [publicKey]
+    );
+    if (existingAgent.rows.length > 0) {
+      throw new AppError(
+        ErrorCodes.AGENT_ALREADY_EXISTS,
+        { publicKey },
+        "An agent with this Solana wallet is already registered"
+      );
+    }
+
+    // Generate unique agent ID and API key
+    const agentId = `agent_${randomUUID().replace(/-/g, "")}`;
+    const apiKey = `mk_${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const apiKeyHash = require("crypto").createHash("sha256").update(apiKey).digest("hex");
+
+    // Validate rate
+    const rate: number = ratePer1kTokens ? Math.max(100, Math.min(1000000, Math.floor(Number(ratePer1kTokens)))) : 1000;
+
+    // Validate task types
+    const validTaskTypes = ["code", "research", "reasoning", "writing", "math", "translation", "image", "audio", "general"];
+    const agentTaskTypes = Array.isArray(taskTypes)
+      ? taskTypes.filter((t: string) => validTaskTypes.includes(t))
+      : ["general"];
+
+    // Validate bio
+    const agentBio = bio && typeof bio === "string" ? bio.slice(0, 500) : null;
+
+    // Insert agent
+    const agentResult = await query(
+      `INSERT INTO agents (
+        id, name, public_key, default_rate_per_1k_tokens, balance_lamports, pending_lamports,
+        bio, website_url, owner_email, categories, verified_status, created_at
+      ) VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7, $8, 'unverified', NOW())
+      RETURNING id, name, public_key, default_rate_per_1k_tokens, created_at`,
+      [agentId, name, publicKey, rate, agentBio, websiteUrl || null, ownerEmail || null, JSON.stringify(agentTaskTypes)]
+    );
+
+    // Create API key for this agent
+    await query(
+      `INSERT INTO api_keys (
+        id, key_hash, agent_id, name, scopes, is_active, created_at
+      ) VALUES ($1, $2, $3, $4, $5, true, NOW())`,
+      [
+        randomUUID(),
+        apiKeyHash,
+        agentId,
+        `${name} - Primary Key`,
+        JSON.stringify(["read:own", "write:own", "agents:manage"])
+      ]
+    );
+
+    // Store endpoint configuration (you may have a separate table for this)
+    await query(
+      `INSERT INTO agent_endpoints (agent_id, endpoint_url, is_active, created_at)
+       VALUES ($1, $2, true, NOW())
+       ON CONFLICT (agent_id) DO UPDATE SET endpoint_url = $2`,
+      [agentId, endpoint]
+    ).catch(() => {
+      // Table might not exist yet, log warning but don't fail registration
+      console.warn(`[Agents] agent_endpoints table not found, skipping endpoint storage`);
+    });
+
+    // Log registration
+    logAgentRegistered(agentId, name as string, rate, { publicKey, endpoint, taskTypes: agentTaskTypes });
+
+    sendSuccess(res, {
+      agentId,
+      apiKey, // One-time display!
+      name,
+      publicKey,
+      ratePer1kTokens: rate,
+      taskTypes: agentTaskTypes,
+      createdAt: agentResult.rows[0].created_at,
+      message: "Registration successful! Store your API key securely - it won't be shown again.",
+    }, 201);
+  })
+);
+
+// =============================================================================
+// PUBLIC MARKETPLACE (No Auth Required - Discovery)
+// =============================================================================
+
+/**
+ * GET /agents/marketplace
+ *
+ * Public marketplace listing of all registered agents.
+ * No API key required - this is the main discovery surface for the network.
+ *
+ * Query params:
+ *   - taskType: Filter by capability (code, research, writing, etc.)
+ *   - verified: Only verified agents (true/false)
+ *   - sort: Sort by "reputation" (default), "cost", "speed", "newest"
+ *   - order: "asc" or "desc" (default)
+ *   - minReputation: Minimum reputation score (0-1000)
+ *   - maxCost: Maximum rate per 1K tokens (lamports)
+ *   - limit: Max results (default 50, max 100)
+ *   - offset: Pagination offset
+ */
+router.get("/marketplace", asyncHandler(async (req, res) => {
+  const taskType = req.query.taskType as string;
+  const verifiedOnly = req.query.verified === "true";
+  const sortBy = (req.query.sort as string) || "reputation";
+  const sortOrder = req.query.order === "asc" ? "ASC" : "DESC";
+  const minReputation = req.query.minReputation ? Number(req.query.minReputation) : undefined;
+  const maxCost = req.query.maxCost ? Number(req.query.maxCost) : undefined;
+  const limit = Math.min(Number(req.query.limit) || 50, 100);
+  const offset = Number(req.query.offset) || 0;
+
+  // Build query
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  // Only show agents with active healthy endpoints
+  conditions.push(`EXISTS (
+    SELECT 1 FROM agent_endpoints e 
+    WHERE e.agent_id = a.id AND e.is_active = true AND e.is_healthy = true
+  )`);
+
+  if (taskType) {
+    conditions.push(`a.categories::jsonb ? $${paramIndex++}`);
+    params.push(taskType);
+  }
+
+  if (verifiedOnly) {
+    conditions.push(`a.verified_status = 'verified'`);
+  }
+
+  if (minReputation !== undefined) {
+    conditions.push(`a.reputation_score >= $${paramIndex++}`);
+    params.push(minReputation);
+  }
+
+  if (maxCost !== undefined) {
+    conditions.push(`a.default_rate_per_1k_tokens <= $${paramIndex++}`);
+    params.push(maxCost);
+  }
+
+  // Sort mapping
+  const sortColumns: Record<string, string> = {
+    reputation: "a.reputation_score",
+    cost: "a.default_rate_per_1k_tokens",
+    speed: "COALESCE(stats.avg_latency_ms, 9999)",
+    newest: "a.created_at",
+  };
+  const orderColumn = sortColumns[sortBy] || sortColumns.reputation;
+
+  // Main query with performance stats
+  const sql = `
+    WITH agent_stats AS (
+      SELECT 
+        selected_agent_id,
+        COUNT(*) as total_requests,
+        COUNT(*) FILTER (WHERE success = true) as success_count,
+        AVG(latency_ms) FILTER (WHERE success = true) as avg_latency_ms
+      FROM request_logs
+      WHERE created_at > NOW() - INTERVAL '30 days'
+      GROUP BY selected_agent_id
+    )
+    SELECT 
+      a.id,
+      a.name,
+      a.bio,
+      a.website_url,
+      a.logo_url,
+      a.categories,
+      a.default_rate_per_1k_tokens,
+      a.reputation_score,
+      a.verified_status,
+      a.created_at,
+      COALESCE(stats.total_requests, 0) as total_requests_30d,
+      COALESCE(stats.success_count, 0) as success_count_30d,
+      COALESCE(stats.avg_latency_ms, 0) as avg_latency_ms,
+      CASE WHEN stats.total_requests > 0 
+           THEN ROUND(stats.success_count * 100.0 / stats.total_requests, 1) 
+           ELSE NULL END as success_rate
+    FROM agents a
+    LEFT JOIN agent_stats stats ON stats.selected_agent_id = a.id
+    ${conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : ""}
+    ORDER BY ${orderColumn} ${sortOrder}
+    LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+  `;
+
+  params.push(limit, offset);
+
+  const result = await query(sql, params);
+
+  // Get total count for pagination
+  const countSql = `
+    SELECT COUNT(*) as total
+    FROM agents a
+    ${conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : ""}
+  `;
+  const countResult = await query(countSql, params.slice(0, -2));
+  const total = Number(countResult.rows[0]?.total) || 0;
+
+  sendSuccess(res, {
+    agents: result.rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      bio: row.bio,
+      websiteUrl: row.website_url,
+      logoUrl: row.logo_url,
+      taskTypes: JSON.parse(row.categories || "[]"),
+      ratePer1kTokens: Number(row.default_rate_per_1k_tokens),
+      reputationScore: row.reputation_score,
+      verified: row.verified_status === "verified",
+      createdAt: row.created_at,
+      stats: {
+        totalRequests30d: Number(row.total_requests_30d),
+        successRate: row.success_rate ? `${row.success_rate}%` : "N/A",
+        avgLatencyMs: Math.round(Number(row.avg_latency_ms)) || null,
+      },
+    })),
+    pagination: {
+      total,
+      limit,
+      offset,
+      hasMore: offset + result.rows.length < total,
+    },
+    filters: {
+      taskType,
+      verifiedOnly,
+      sortBy,
+      sortOrder,
+      minReputation,
+      maxCost,
+    },
+  });
+}));
+
+/**
+ * GET /agents/marketplace/featured
+ *
+ * Get featured/top agents for homepage display.
+ * Returns top 6 verified agents by reputation.
+ */
+router.get("/marketplace/featured", asyncHandler(async (req, res) => {
+  const result = await query(
+    `SELECT 
+      a.id, a.name, a.bio, a.logo_url, a.categories,
+      a.default_rate_per_1k_tokens, a.reputation_score, a.verified_status
+    FROM agents a
+    INNER JOIN agent_endpoints e ON e.agent_id = a.id AND e.is_active = true AND e.is_healthy = true
+    WHERE a.verified_status = 'verified'
+    ORDER BY a.reputation_score DESC
+    LIMIT 6`
+  );
+
+  sendSuccess(res, {
+    featured: result.rows.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      bio: row.bio,
+      logoUrl: row.logo_url,
+      taskTypes: JSON.parse(row.categories || "[]"),
+      ratePer1kTokens: Number(row.default_rate_per_1k_tokens),
+      reputationScore: row.reputation_score,
+    })),
+  });
+}));
+
+/**
+ * GET /agents/marketplace/task-types
+ *
+ * Get all available task types with agent counts.
+ */
+router.get("/marketplace/task-types", asyncHandler(async (req, res) => {
+  const taskTypes = ["code", "research", "reasoning", "writing", "math", "translation", "image", "audio", "general"];
+
+  const counts = await Promise.all(
+    taskTypes.map(async (type) => {
+      const result = await query(
+        `SELECT COUNT(*) as count
+         FROM agents a
+         INNER JOIN agent_endpoints e ON e.agent_id = a.id AND e.is_active = true AND e.is_healthy = true
+         WHERE a.categories::jsonb ? $1`,
+        [type]
+      );
+      return { type, count: Number(result.rows[0]?.count) || 0 };
+    })
+  );
+
+  sendSuccess(res, {
+    taskTypes: counts.filter(c => c.count > 0).sort((a, b) => b.count - a.count),
+  });
+}));
+
+// =============================================================================
+// AGENT STATS & PROFILE
+// =============================================================================
+
+/**
+ * GET /agents/:agentId/stats
+ *
+ * Get comprehensive performance statistics for an agent.
+ * Public endpoint - no API key required (for marketplace discovery).
+ */
+router.get("/:agentId/stats", asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+  const days = Math.min(Number(req.query.days) || 30, 90);
+
+  // Fetch agent
+  const agentResult = await query(
+    `SELECT id, name, public_key, default_rate_per_1k_tokens, bio, website_url,
+            categories, verified_status, reputation_score, created_at
+     FROM agents WHERE id = $1`,
+    [agentId]
+  );
+
+  if (agentResult.rows.length === 0) {
+    throw AppError.agentNotFound(agentId);
+  }
+
+  const agent = agentResult.rows[0];
+
+  // Fetch performance stats from request_logs
+  const statsResult = await query(
+    `SELECT
+       COUNT(*) as total_requests,
+       COUNT(*) FILTER (WHERE success = true) as successful_requests,
+       COUNT(*) FILTER (WHERE success = false) as failed_requests,
+       AVG(latency_ms) FILTER (WHERE success = true) as avg_latency_ms,
+       PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE success = true) as p50_latency_ms,
+       PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE success = true) as p95_latency_ms,
+       PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE success = true) as p99_latency_ms,
+       SUM(tokens_used) as total_tokens_processed,
+       SUM(cost_lamports) as total_earnings_lamports,
+       COUNT(DISTINCT DATE(created_at)) as active_days,
+       MIN(created_at) as first_request_at,
+       MAX(created_at) as last_request_at
+     FROM request_logs
+     WHERE selected_agent_id = $1
+       AND created_at > NOW() - INTERVAL '1 day' * $2`,
+    [agentId, days]
+  );
+
+  const stats = statsResult.rows[0] || {};
+
+  // Task type breakdown
+  const taskBreakdownResult = await query(
+    `SELECT task_type, COUNT(*) as count,
+            AVG(latency_ms) FILTER (WHERE success = true) as avg_latency,
+            COUNT(*) FILTER (WHERE success = true) * 100.0 / NULLIF(COUNT(*), 0) as success_rate
+     FROM request_logs
+     WHERE selected_agent_id = $1
+       AND created_at > NOW() - INTERVAL '1 day' * $2
+     GROUP BY task_type
+     ORDER BY count DESC`,
+    [agentId, days]
+  );
+
+  // Calculate uptime (% of days with successful requests)
+  const uptimeResult = await query(
+    `SELECT
+       COUNT(DISTINCT DATE(created_at)) as active_days,
+       COUNT(DISTINCT DATE(created_at)) FILTER (WHERE success = true) as successful_days
+     FROM request_logs
+     WHERE selected_agent_id = $1
+       AND created_at > NOW() - INTERVAL '1 day' * $2`,
+    [agentId, days]
+  );
+
+  const uptime = uptimeResult.rows[0];
+  const uptimePercent = uptime.active_days > 0
+    ? (uptime.successful_days / uptime.active_days) * 100
+    : 100;
+
+  sendSuccess(res, {
+    agent: {
+      id: agent.id,
+      name: agent.name,
+      bio: agent.bio,
+      websiteUrl: agent.website_url,
+      verified: agent.verified_status === "verified",
+      reputationScore: agent.reputation_score,
+      ratePer1kTokens: Number(agent.default_rate_per_1k_tokens),
+      taskTypes: JSON.parse(agent.categories || "[]"),
+      memberSince: agent.created_at,
+    },
+    performance: {
+      periodDays: days,
+      totalRequests: Number(stats.total_requests) || 0,
+      successfulRequests: Number(stats.successful_requests) || 0,
+      failedRequests: Number(stats.failed_requests) || 0,
+      successRate: stats.total_requests > 0
+        ? ((stats.successful_requests / stats.total_requests) * 100).toFixed(2) + "%"
+        : "N/A",
+      uptimePercent: uptimePercent.toFixed(1) + "%",
+      latency: {
+        avgMs: Math.round(stats.avg_latency_ms) || 0,
+        p50Ms: Math.round(stats.p50_latency_ms) || 0,
+        p95Ms: Math.round(stats.p95_latency_ms) || 0,
+        p99Ms: Math.round(stats.p99_latency_ms) || 0,
+      },
+      totalTokensProcessed: Number(stats.total_tokens_processed) || 0,
+      totalEarningsLamports: Number(stats.total_earnings_lamports) || 0,
+      totalEarningsSol: ((Number(stats.total_earnings_lamports) || 0) / LAMPORTS_PER_SOL).toFixed(6),
+      firstRequestAt: stats.first_request_at,
+      lastRequestAt: stats.last_request_at,
+    },
+    taskBreakdown: taskBreakdownResult.rows.map((row: any) => ({
+      taskType: row.task_type,
+      count: Number(row.count),
+      avgLatencyMs: Math.round(row.avg_latency) || 0,
+      successRate: (Number(row.success_rate) || 0).toFixed(1) + "%",
+    })),
+  });
+}));
+
+// =============================================================================
+// WITHDRAWALS
+// =============================================================================
+
+/**
+ * POST /agents/:agentId/withdraw
+ *
+ * Withdraw earned balance to the agent's Solana wallet.
+ * Requires API key auth and ownership verification.
+ *
+ * Request:
+ *   { amount?: number } - Lamports to withdraw (default: full balance)
+ *
+ * Response:
+ *   { txSignature, amountWithdrawn, remainingBalance }
+ */
+router.post("/:agentId/withdraw", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+  const { amount } = req.body;
+
+  // Verify ownership (API key must belong to this agent)
+  const apiKeyRecord = (req as any).apiKeyRecord;
+  if (apiKeyRecord?.agentId && apiKeyRecord.agentId !== agentId) {
+    throw new AppError(
+      ErrorCodes.AUTH_INSUFFICIENT_PERMISSIONS,
+      { agentId },
+      "You can only withdraw from your own agent account"
+    );
+  }
+
+  // Get agent details
+  const agentResult = await query(
+    `SELECT id, public_key, balance_lamports FROM agents WHERE id = $1`,
+    [agentId]
+  );
+
+  if (agentResult.rows.length === 0) {
+    throw AppError.agentNotFound(agentId);
+  }
+
+  const agent = agentResult.rows[0];
+  const currentBalance = Number(agent.balance_lamports);
+
+  if (!agent.public_key) {
+    throw new AppError(
+      ErrorCodes.VALIDATION_REQUIRED_FIELD,
+      { field: "publicKey" },
+      "No Solana wallet configured. Update your profile with a public key first."
+    );
+  }
+
+  // Determine withdrawal amount
+  const withdrawAmount = amount ? Math.floor(Number(amount)) : currentBalance;
+
+  if (withdrawAmount <= 0) {
+    throw AppError.invalidAmount(withdrawAmount, "Withdrawal amount must be positive");
+  }
+
+  if (withdrawAmount > currentBalance) {
+    throw new AppError(
+      ErrorCodes.BALANCE_INSUFFICIENT,
+      { requested: withdrawAmount, available: currentBalance },
+      `Insufficient balance. Available: ${currentBalance} lamports`
+    );
+  }
+
+  // Minimum withdrawal (to cover transaction fees)
+  const MIN_WITHDRAWAL = 10000; // 0.00001 SOL
+  if (withdrawAmount < MIN_WITHDRAWAL) {
+    throw new AppError(
+      ErrorCodes.VALIDATION_OUT_OF_RANGE,
+      { min: MIN_WITHDRAWAL, requested: withdrawAmount },
+      `Minimum withdrawal is ${MIN_WITHDRAWAL} lamports (0.00001 SOL)`
+    );
+  }
+
+  // Get platform payer keypair
+  const payerSecret = process.env.SOLANA_PAYER_SECRET;
+  if (!payerSecret) {
+    throw new AppError(
+      ErrorCodes.INTERNAL_ERROR,
+      {},
+      "Withdrawals temporarily unavailable. Please try again later."
+    );
+  }
+
+  let payer: Keypair;
+  try {
+    payer = Keypair.fromSecretKey(new Uint8Array(JSON.parse(payerSecret)));
+  } catch {
+    throw new AppError(ErrorCodes.INTERNAL_ERROR, {}, "Payment system configuration error");
+  }
+
+  // CRITICAL: Correct order to prevent money loss on failed transactions
+  // 1. Attempt Solana transfer FIRST (without deducting balance)
+  // 2. Only deduct balance AFTER confirmed transaction
+  // This ensures: if transfer fails, agent keeps their balance
+
+  const connection = new Connection(
+    process.env.SOLANA_RPC ?? "https://api.devnet.solana.com",
+    "confirmed"
+  );
+
+  // Step 1: Execute Solana transfer BEFORE deducting balance
+  let signature: string;
+  try {
+    const tx = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: payer.publicKey,
+        toPubkey: new PublicKey(agent.public_key),
+        lamports: withdrawAmount,
+      })
+    );
+
+    signature = await sendAndConfirmTransaction(connection, tx, [payer]);
+  } catch (error: any) {
+    // Transfer failed - balance unchanged, safe to throw
+    throw new AppError(
+      ErrorCodes.WITHDRAWAL_FAILED,
+      { error: error.message },
+      `Withdrawal failed: ${error.message}. Your balance is unchanged.`
+    );
+  }
+
+  // Step 2: Transaction confirmed - NOW deduct balance atomically
+  const updateResult = await query(
+    `UPDATE agents
+     SET balance_lamports = balance_lamports - $1
+     WHERE id = $2 AND balance_lamports >= $1
+     RETURNING balance_lamports`,
+    [withdrawAmount, agentId]
+  );
+
+  if (updateResult.rows.length === 0) {
+    // Edge case: balance changed between validation and deduction
+    // Transaction already sent, log this discrepancy for manual review
+    console.error(`[CRITICAL] Withdrawal succeeded but balance deduction failed: agent=${agentId}, amount=${withdrawAmount}, tx=${signature}`);
+    // Still return success since funds were transferred
+  }
+
+  // Step 3: Log withdrawal with confirmed signature
+  await query(
+    `INSERT INTO withdrawals (id, agent_id, amount_lamports, destination_wallet, tx_signature, status, created_at)
+     VALUES ($1, $2, $3, $4, $5, 'completed', NOW())`,
+    [randomUUID(), agentId, withdrawAmount, agent.public_key, signature]
+  ).catch(() => {
+    console.log(`[Withdraw] ${agentId} withdrew ${withdrawAmount} lamports: ${signature}`);
+  });
+
+  sendSuccess(res, {
+    success: true,
+    txSignature: signature,
+    amountWithdrawn: withdrawAmount,
+    amountSol: (withdrawAmount / LAMPORTS_PER_SOL).toFixed(9),
+    destinationWallet: agent.public_key,
+    remainingBalance: updateResult.rows[0] ? Number(updateResult.rows[0].balance_lamports) : currentBalance - withdrawAmount,
+    explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=${
+      process.env.SOLANA_CLUSTER || "devnet"
+    }`,
+  });
 }));
 
 /**

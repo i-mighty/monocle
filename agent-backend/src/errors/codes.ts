@@ -42,6 +42,11 @@ export const ErrorCodes = {
   PAYMENT_TOPUP_FAILED: "PAYMENT_TOPUP_FAILED",
   PAYMENT_SETTLEMENT_FAILED: "PAYMENT_SETTLEMENT_FAILED",
 
+  // ==================== Balance & Withdrawal Errors ====================
+  BALANCE_INSUFFICIENT: "BALANCE_INSUFFICIENT",
+  WITHDRAWAL_FAILED: "WITHDRAWAL_FAILED",
+  WITHDRAWAL_MINIMUM_NOT_MET: "WITHDRAWAL_MINIMUM_NOT_MET",
+
   // ==================== Budget & Spending Errors ====================
   BUDGET_EXCEEDED: "BUDGET_EXCEEDED",
   BUDGET_DAILY_LIMIT_EXCEEDED: "BUDGET_DAILY_LIMIT_EXCEEDED",
@@ -139,6 +144,11 @@ export const ErrorHttpStatus: Record<ErrorCode, number> = {
   PAYMENT_TOPUP_FAILED: 500,
   PAYMENT_SETTLEMENT_FAILED: 500,
 
+  // Balance & Withdrawal - 400/402/500
+  BALANCE_INSUFFICIENT: 402,
+  WITHDRAWAL_FAILED: 500,
+  WITHDRAWAL_MINIMUM_NOT_MET: 400,
+
   // Budget - 400/402/403
   BUDGET_EXCEEDED: 402,
   BUDGET_DAILY_LIMIT_EXCEEDED: 402,
@@ -233,6 +243,11 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   PAYMENT_PAYER_NOT_CONFIGURED: "Solana payer not configured",
   PAYMENT_TOPUP_FAILED: "Balance top-up failed",
   PAYMENT_SETTLEMENT_FAILED: "Settlement transaction failed",
+
+  // Balance & Withdrawal
+  BALANCE_INSUFFICIENT: "Insufficient balance for this operation",
+  WITHDRAWAL_FAILED: "Withdrawal transaction failed",
+  WITHDRAWAL_MINIMUM_NOT_MET: "Amount does not meet minimum withdrawal threshold",
 
   // Budget
   BUDGET_EXCEEDED: "Budget limit exceeded",

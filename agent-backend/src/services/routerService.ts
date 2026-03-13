@@ -59,6 +59,7 @@ export interface RoutingDecision {
   confidence: number;         // 0-1 confidence in classification
   alternativeAgents: SpecialistAgent[];
   reasoning: string;
+  classificationMethod: "llm" | "keyword";  // How the task was classified
 }
 
 export interface ChatRequest {
@@ -93,6 +94,9 @@ export interface ChatResponse {
     };
   };
   latencyMs: number;
+  // Fallback information (present when primary agent failed)
+  fallbackUsed?: boolean;
+  failedAgents?: number;
 }
 
 // =============================================================================
@@ -188,6 +192,121 @@ export function classifyTask(message: string): { taskType: TaskType; confidence:
   }
 
   return { taskType: bestType, confidence: Math.min(confidence + 0.3, 1) };
+}
+
+// =============================================================================
+// LLM-BASED TASK CLASSIFICATION (PRIMARY)
+// =============================================================================
+
+const CLASSIFICATION_PROMPT = `You are a task classifier for an AI routing system. Analyze the user's request and classify it into ONE of these task types:
+
+- research: Information lookup, fact-finding, explanations, "what is", research questions
+- code: Programming, debugging, code review, algorithms, software development
+- reasoning: Complex analysis, philosophy, strategy, pros/cons, decision making
+- math: Calculations, statistics, equations, mathematical proofs
+- writing: Creative content, essays, stories, marketing copy, editing
+- translation: Language translation, localization
+- image: Image generation, picture creation, visual content
+
+Respond with ONLY the task type word, nothing else.
+
+User request: """
+{query}
+"""
+
+Task type:`;
+
+async function classifyWithLLM(query: string): Promise<TaskType | null> {
+  // Try OpenAI first (fastest classifier)
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openaiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "user", content: CLASSIFICATION_PROMPT.replace("{query}", query) }
+          ],
+          max_tokens: 20,
+          temperature: 0
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const result = data.choices[0]?.message?.content?.trim().toLowerCase();
+        if (isValidTaskType(result)) {
+          console.log(`[LLM Router] OpenAI classified as: ${result}`);
+          return result as TaskType;
+        }
+      }
+    } catch (error) {
+      console.log("[LLM Router] OpenAI classification failed, trying Anthropic");
+    }
+  }
+
+  // Fallback to Anthropic Haiku
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (anthropicKey) {
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "claude-3-5-haiku-20241022",
+          max_tokens: 20,
+          messages: [
+            { role: "user", content: CLASSIFICATION_PROMPT.replace("{query}", query) }
+          ]
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const result = data.content[0]?.text?.trim().toLowerCase();
+        if (isValidTaskType(result)) {
+          console.log(`[LLM Router] Anthropic classified as: ${result}`);
+          return result as TaskType;
+        }
+      }
+    } catch (error) {
+      console.log("[LLM Router] Anthropic classification failed");
+    }
+  }
+
+  return null; // LLM classification unavailable
+}
+
+function isValidTaskType(type: string | undefined): type is TaskType {
+  const validTypes: TaskType[] = ["research", "image", "code", "reasoning", "writing", "math", "translation", "unknown"];
+  return !!type && validTypes.includes(type as TaskType);
+}
+
+/**
+ * Smart task classification with LLM + keyword fallback
+ * Uses fast LLM (GPT-4o-mini or Haiku) for accurate classification,
+ * falls back to keyword matching if LLM is unavailable
+ */
+export async function classifyTaskSmart(message: string): Promise<{ taskType: TaskType; confidence: number; method: "llm" | "keyword" }> {
+  // First try LLM classification (more accurate)
+  const llmResult = await classifyWithLLM(message);
+  if (llmResult) {
+    return { taskType: llmResult, confidence: 0.95, method: "llm" };
+  }
+  
+  // Fallback to keyword-based classification
+  const keywordResult = classifyTask(message);
+  console.log(`[Keyword Router] Classified as: ${keywordResult.taskType}`);
+  return { ...keywordResult, method: "keyword" };
 }
 
 // =============================================================================
@@ -359,7 +478,8 @@ export function selectBestAgent(
       taskType,
       confidence: 0.5,
       alternativeAgents: [],
-      reasoning: "No specialist available for this task type, using general assistant"
+      reasoning: "No specialist available for this task type, using general assistant",
+      classificationMethod: "keyword"  // Will be overwritten by routeRequest
     };
   }
 
@@ -399,7 +519,8 @@ export function selectBestAgent(
     confidence: scored[0].score,
     alternativeAgents: alternatives,
     reasoning: `Selected ${selected.name} (${selected.model}) for ${taskType} task. ` +
-               `Quality: ${selected.qualityScore}/100, Cost: ${selected.ratePer1kTokens} lamports/1k tokens.`
+               `Quality: ${selected.qualityScore}/100, Cost: ${selected.ratePer1kTokens} lamports/1k tokens.`,
+    classificationMethod: "keyword"  // Will be overwritten by routeRequest
   };
 }
 
@@ -415,10 +536,12 @@ export async function routeRequest(
     preferQuality?: boolean;
   } = {}
 ): Promise<RoutingDecision> {
-  // 1. Classify the task
+  // 1. Classify the task using LLM (with keyword fallback)
   const classification = options.preferredTaskType 
-    ? { taskType: options.preferredTaskType, confidence: 1 }
-    : classifyTask(message);
+    ? { taskType: options.preferredTaskType, confidence: 1, method: "keyword" as const }
+    : await classifyTaskSmart(message);
+
+  console.log(`[Router] Classification: ${classification.taskType} (${classification.method}, confidence: ${classification.confidence})`);
 
   // 2. Get available specialist agents
   const agents = await getSpecialistAgents();
@@ -438,6 +561,9 @@ export async function routeRequest(
 
   // Update confidence based on classification confidence
   decision.confidence = (decision.confidence + classification.confidence) / 2;
+  
+  // Add classification method for observability
+  decision.classificationMethod = classification.method;
 
   return decision;
 }
