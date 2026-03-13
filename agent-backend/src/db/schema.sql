@@ -592,3 +592,128 @@ create table if not exists specialist_agents (
 
 create index idx_specialist_agents_provider on specialist_agents(provider);
 create index idx_specialist_agents_active on specialist_agents(is_active);
+
+-- =============================================================================
+-- REQUEST_LOGS: End-to-End Observability for AI Routing
+-- =============================================================================
+-- Captures every AI request for debugging, analytics, and tuning routing weights.
+-- Answers: "Why did router pick X?", "Which agent fails most?", "Cost per task type?"
+--
+-- RETENTION POLICY: Run weekly via cron or pg_cron:
+--   DELETE FROM request_logs WHERE created_at < NOW() - INTERVAL '90 days';
+--
+create table if not exists request_logs (
+  id text primary key,
+  user_id text,
+  hashed_user_id text,                    -- SHA256 of user_id for privacy-safe tracing
+  conversation_id text,
+  task_type text,
+  classification_method text,             -- 'llm' | 'keyword'
+  classification_confidence real,
+  selected_agent_id text,
+  selected_agent_score real,
+  alternative_agents text,                -- JSON array of agent IDs considered
+  fallback_used boolean default false,
+  failed_agents integer default 0,
+  tokens_used integer,
+  cost_lamports bigint,
+  latency_ms integer,
+  success boolean,
+  error_message text,
+  message_length integer,
+  message_preview text,                   -- First 200 chars for debugging (truncated)
+  escrow_hold_id text,
+  truncation_applied boolean default false,
+  created_at timestamptz default now()
+);
+
+-- Primary query patterns: time-based analytics, per-agent stats, user session tracing
+create index idx_request_logs_created_at on request_logs(created_at desc);
+create index idx_request_logs_agent_created on request_logs(selected_agent_id, created_at desc);
+create index idx_request_logs_user on request_logs(user_id);
+create index idx_request_logs_hashed_user on request_logs(hashed_user_id);
+create index idx_request_logs_task on request_logs(task_type);
+create index idx_request_logs_success on request_logs(success);
+create index idx_request_logs_method on request_logs(classification_method);
+
+-- =============================================================================
+-- ADMIN_USERS: Platform administrators
+-- =============================================================================
+create table if not exists admin_users (
+  id text primary key,
+  email text unique not null,
+  password_hash text not null,            -- bcrypt hash
+  name text,
+  role text not null default 'admin',     -- admin, super_admin
+  is_active boolean default true,
+  last_login_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index idx_admin_users_email on admin_users(email);
+create index idx_admin_users_active on admin_users(is_active);
+
+-- =============================================================================
+-- ESCROW_HOLDS: Payment Protection for AI Requests
+-- =============================================================================
+create table if not exists escrow_holds (
+  id text primary key,
+  user_id text not null,
+  agent_id text not null,
+  quote_id text,
+  estimated_cost_lamports integer not null,
+  hold_amount_lamports integer not null,
+  actual_cost_lamports integer,
+  status text not null default 'held',    -- held, released, refunded, expired
+  created_at timestamptz default now(),
+  expires_at timestamptz not null,
+  released_at timestamptz,
+  release_reason text
+);
+
+create index idx_escrow_holds_user on escrow_holds(user_id);
+create index idx_escrow_holds_status on escrow_holds(status);
+create index idx_escrow_holds_expires on escrow_holds(expires_at);
+
+-- =============================================================================
+-- AGENT_ENDPOINTS: Endpoint URLs and Health Status
+-- =============================================================================
+-- Stores the callable endpoint for each agent with health monitoring
+create table if not exists agent_endpoints (
+  agent_id text primary key references agents(id) on delete cascade,
+  endpoint_url text not null,
+  is_active boolean default true,
+  is_healthy boolean default true,
+  last_check_at timestamptz,
+  last_check_latency_ms integer,
+  last_check_error text,
+  consecutive_failures integer default 0,
+  total_checks integer default 0,
+  successful_checks integer default 0,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create index idx_agent_endpoints_active_healthy on agent_endpoints(is_active, is_healthy);
+create index idx_agent_endpoints_needs_check on agent_endpoints(last_check_at) where is_active = true;
+
+-- =============================================================================
+-- WITHDRAWALS: Agent Balance Withdrawal History
+-- =============================================================================
+-- Tracks all withdrawals from agent balances to Solana wallets
+create table if not exists withdrawals (
+  id text primary key,
+  agent_id text not null references agents(id) on delete cascade,
+  amount_lamports bigint not null,
+  destination_wallet text not null,
+  tx_signature text unique,                -- Solana transaction signature
+  status text not null default 'pending',  -- pending, completed, failed
+  error_message text,
+  created_at timestamptz default now(),
+  completed_at timestamptz
+);
+
+create index idx_withdrawals_agent on withdrawals(agent_id);
+create index idx_withdrawals_status on withdrawals(status);
+create index idx_withdrawals_created on withdrawals(created_at desc);

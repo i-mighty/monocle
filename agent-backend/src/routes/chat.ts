@@ -9,9 +9,10 @@
 
 import { Router, Request, Response } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuth";
+import { adminAuth } from "../middleware/adminAuth";
 import { routeRequest, classifyTask, getSpecialistAgents, logRoutingDecision, TaskType } from "../services/routerService";
 import { executeChat, calculateCost } from "../services/specialistService";
-import { logToolCall } from "../services/meterService";
+import { logRequest, buildLogEntry, getAgentStats, getClassificationStats, getTaskTypeStats, getRecentFailures, explainRoutingDecision } from "../services/requestLogger";
 import { query } from "../db/client";
 
 const router = Router();
@@ -49,34 +50,27 @@ router.post("/", apiKeyAuth, async (req: Request, res: Response) => {
       preferQuality
     });
 
-    // 2. Execute through specialist agent
+    // 2. Execute through specialist agent (with escrow payment protection)
     const chatResponse = await executeChat(
       userId,
       message,
       routingDecision,
-      conversationId
+      {
+        conversationId,
+        useEscrow: true,  // Enable escrow for payment protection
+        estimatedTokens: 2000  // Default estimate, escrow adds buffer
+      }
     );
 
-    // 3. Record usage in AgentPay ledger (meter the call)
-    try {
-      // Log the tool call for metering
-      await logToolCall(
-        "router-agent",
-        routingDecision.selectedAgent.agentId,
-        `${routingDecision.taskType}-task`,
-        chatResponse.usage.totalTokens
-      );
-    } catch (meterError) {
-      // Metering failure shouldn't break the response
-      console.error("Failed to record usage:", meterError);
-    }
-
-    // 4. Log routing decision for analytics
+    // 3. Log routing decision for analytics
     await logRoutingDecision(userId, message, routingDecision, {
       success: true,
       latencyMs: chatResponse.latencyMs,
       tokensUsed: chatResponse.usage.totalTokens
     });
+
+    // 4. Log request for observability (structured logging)
+    await logRequest(buildLogEntry(userId, message, routingDecision, chatResponse));
 
     // 5. Return response with full cost transparency
     res.json({
@@ -85,6 +79,7 @@ router.post("/", apiKeyAuth, async (req: Request, res: Response) => {
       routing: {
         taskType: routingDecision.taskType,
         confidence: routingDecision.confidence,
+        classificationMethod: routingDecision.classificationMethod,
         reasoning: routingDecision.reasoning,
         alternatives: routingDecision.alternativeAgents.map(a => ({
           agentId: a.agentId,
@@ -97,6 +92,34 @@ router.post("/", apiKeyAuth, async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("Chat error:", error);
+    
+    // Log failed request for debugging
+    try {
+      const userId = (req as any).apiKeyData?.developerId || "anonymous";
+      const { message, preferredTaskType } = req.body;
+      if (message) {
+        // Create a minimal routing decision for logging
+        const classification = classifyTask(message);
+        await logRequest({
+          userId,
+          taskType: classification.taskType,
+          classificationMethod: "keyword",
+          classificationConfidence: classification.confidence,
+          selectedAgentId: "unknown",
+          fallbackUsed: false,
+          failedAgents: 0,
+          tokensUsed: 0,
+          costLamports: 0,
+          latencyMs: 0,
+          success: false,
+          errorMessage: error.message,
+          messageLength: message.length
+        });
+      }
+    } catch (logError) {
+      // Don't fail the error response over logging
+    }
+    
     res.status(500).json({
       success: false,
       error: error.message || "Chat execution failed"
@@ -393,6 +416,96 @@ router.get("/stats", apiKeyAuth, async (req: Request, res: Response) => {
         totalCostSOL: 0
       }
     });
+  }
+});
+
+// =============================================================================
+// OBSERVABILITY ENDPOINTS (Admin-only)
+// =============================================================================
+// These endpoints expose sensitive business data and require admin authentication.
+// Set ADMIN_API_KEY in environment and provide X-Admin-Key header.
+
+// GET /chat/analytics/agents - Agent performance stats
+router.get("/analytics/agents", adminAuth, async (req: Request, res: Response) => {
+  try {
+    const days = parseInt(req.query.days as string) || 7;
+    const agentId = req.query.agentId as string;
+    
+    const stats = await getAgentStats(agentId, days);
+    
+    res.json({
+      success: true,
+      period: `${days} days`,
+      agents: stats
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /chat/analytics/classification - Classification method breakdown
+router.get("/analytics/classification", adminAuth, async (req: Request, res: Response) => {
+  try {
+    const days = parseInt(req.query.days as string) || 7;
+    const stats = await getClassificationStats(days);
+    
+    res.json({
+      success: true,
+      period: `${days} days`,
+      classification: stats
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /chat/analytics/tasks - Task type distribution
+router.get("/analytics/tasks", adminAuth, async (req: Request, res: Response) => {
+  try {
+    const days = parseInt(req.query.days as string) || 7;
+    const stats = await getTaskTypeStats(days);
+    
+    res.json({
+      success: true,
+      period: `${days} days`,
+      taskTypes: stats
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /chat/analytics/failures - Recent failures for debugging
+router.get("/analytics/failures", adminAuth, async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 10;
+    const failures = await getRecentFailures(limit);
+    
+    res.json({
+      success: true,
+      failures
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// GET /chat/analytics/explain/:logId - Explain a routing decision
+router.get("/analytics/explain/:logId", adminAuth, async (req: Request, res: Response) => {
+  try {
+    const { logId } = req.params;
+    const explanation = await explainRoutingDecision(logId);
+    
+    if (!explanation) {
+      return res.status(404).json({ success: false, error: "Log entry not found" });
+    }
+    
+    res.json({
+      success: true,
+      explanation
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

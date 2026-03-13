@@ -7,10 +7,12 @@
 // - Google (Gemini)
 //
 // Integrates with AgentPay for metering and payment.
+// Includes escrow-based payment protection.
 // =============================================================================
 
 import { query } from "../db/client";
 import { SpecialistAgent, RoutingDecision, ChatResponse, TaskType } from "./routerService";
+import { createEscrowHold, releaseEscrowHold, refundEscrowHold } from "./escrowService";
 
 // =============================================================================
 // TYPES
@@ -41,6 +43,106 @@ interface Conversation {
   totalCostLamports: number;
   createdAt: Date;
   updatedAt: Date;
+}
+
+// =============================================================================
+// CONVERSATION TOKEN MANAGEMENT
+// =============================================================================
+
+const TOKEN_LIMITS = {
+  /** Maximum tokens allowed in conversation context */
+  MAX_CONTEXT_TOKENS: 16000,
+  
+  /** Reserve for response generation */
+  RESPONSE_RESERVE: 2048,
+  
+  /** Minimum messages to keep (recent context) */
+  MIN_MESSAGES_TO_KEEP: 4,
+  
+  /** Approximate chars per token (rough estimate) */
+  CHARS_PER_TOKEN: 4
+} as const;
+
+/**
+ * Estimate token count for a message (fast approximation)
+ * For production, use tiktoken or similar for accurate counts
+ */
+function estimateTokens(text: string): number {
+  // Simple estimation: ~4 chars per token on average for English
+  // This is a reasonable approximation for most use cases
+  return Math.ceil(text.length / TOKEN_LIMITS.CHARS_PER_TOKEN);
+}
+
+/**
+ * Count total tokens in a conversation
+ */
+function countConversationTokens(messages: ConversationMessage[]): number {
+  return messages.reduce((sum, msg) => {
+    // Add overhead for message structure (~4 tokens per message)
+    return sum + estimateTokens(msg.content) + 4;
+  }, 0);
+}
+
+/**
+ * Truncate conversation history to fit within token limits
+ * 
+ * Strategy:
+ * 1. Keep system messages (if any)
+ * 2. Keep the most recent N messages (MIN_MESSAGES_TO_KEEP)
+ * 3. Remove oldest messages until under limit
+ * 4. Add truncation notice if messages were removed
+ */
+function truncateConversation(
+  messages: ConversationMessage[],
+  maxTokens: number = TOKEN_LIMITS.MAX_CONTEXT_TOKENS - TOKEN_LIMITS.RESPONSE_RESERVE
+): { messages: ConversationMessage[]; truncated: boolean; removedCount: number } {
+  
+  const currentTokens = countConversationTokens(messages);
+  
+  if (currentTokens <= maxTokens) {
+    return { messages, truncated: false, removedCount: 0 };
+  }
+
+  // Separate system messages from conversation
+  const systemMessages = messages.filter(m => m.role === "system");
+  const conversationMessages = messages.filter(m => m.role !== "system");
+  
+  // Calculate system tokens
+  const systemTokens = countConversationTokens(systemMessages);
+  const availableForConversation = maxTokens - systemTokens;
+
+  // Keep removing oldest messages until we fit
+  let truncatedConversation = [...conversationMessages];
+  let removedCount = 0;
+  
+  while (
+    truncatedConversation.length > TOKEN_LIMITS.MIN_MESSAGES_TO_KEEP &&
+    countConversationTokens(truncatedConversation) > availableForConversation
+  ) {
+    // Remove oldest message pair (user + assistant typically)
+    truncatedConversation.shift();
+    removedCount++;
+  }
+
+  // Add truncation notice if messages were removed
+  if (removedCount > 0) {
+    const notice: ConversationMessage = {
+      role: "system",
+      content: `[Note: ${removedCount} earlier messages were removed to fit context window. The conversation continues from here.]`
+    };
+    truncatedConversation = [notice, ...truncatedConversation];
+  }
+
+  // Recombine with system messages
+  const result = [...systemMessages, ...truncatedConversation];
+  
+  console.log(`[Context] Truncated conversation: removed ${removedCount} messages, ${countConversationTokens(result)} tokens remaining`);
+  
+  return {
+    messages: result,
+    truncated: removedCount > 0,
+    removedCount
+  };
 }
 
 // =============================================================================
@@ -545,70 +647,173 @@ export function calculateCost(
 }
 
 // =============================================================================
-// FULL CHAT EXECUTION (COMBINES EVERYTHING)
+// FULL CHAT EXECUTION (WITH RETRY/FALLBACK + ESCROW)
 // =============================================================================
+
+interface ExecuteChatOptions {
+  conversationId?: string;
+  useEscrow?: boolean;       // Enable escrow-protected payments
+  estimatedTokens?: number;  // For escrow estimation (default: 2000)
+}
 
 export async function executeChat(
   userId: string,
   message: string,
   routingDecision: RoutingDecision,
-  conversationId?: string
+  options: ExecuteChatOptions = {}
 ): Promise<ChatResponse> {
   const startTime = Date.now();
+  const { conversationId, useEscrow = true, estimatedTokens = 2000 } = options;
 
   // Get or create conversation
   const conversation = await getOrCreateConversation(userId, conversationId);
 
   // Build messages array with history
-  const messages: ConversationMessage[] = [
+  let messages: ConversationMessage[] = [
     ...conversation.messages,
     { role: "user", content: message }
   ];
 
-  // Execute through specialist agent
-  const result = await executeSpecialistRequest(
-    routingDecision.selectedAgent,
-    messages,
-    routingDecision.taskType
-  );
-
-  if (!result.success) {
-    throw new Error(result.error || "Execution failed");
+  // ============= TOKEN MANAGEMENT: Truncate if needed =============
+  const truncationResult = truncateConversation(messages);
+  messages = truncationResult.messages;
+  
+  if (truncationResult.truncated) {
+    console.log(`[Context] Conversation truncated: ${truncationResult.removedCount} messages removed`);
   }
 
-  // Calculate cost
-  const cost = calculateCost(routingDecision.selectedAgent, result.usage.totalTokens);
-
-  // Update conversation
-  await updateConversation(
-    conversation,
-    message,
-    result.response,
-    result.usage.totalTokens,
-    cost.totalCost
-  );
-
-  // Build response
-  const response: ChatResponse = {
-    conversationId: conversation.id,
-    messageId: `msg-${Date.now()}`,
-    response: result.response,
-    taskType: routingDecision.taskType,
-    agentUsed: {
+  // ============= ESCROW: Create hold before execution =============
+  let holdId: string | undefined;
+  
+  if (useEscrow) {
+    const holdResult = await createEscrowHold({
+      userId,
       agentId: routingDecision.selectedAgent.agentId,
-      name: routingDecision.selectedAgent.name,
-      model: routingDecision.selectedAgent.model
-    },
-    usage: result.usage,
-    cost: {
-      totalLamports: cost.totalCost,
-      breakdown: {
-        agentCost: cost.agentCost,
-        platformFee: cost.platformFee
-      }
-    },
-    latencyMs: Date.now() - startTime
-  };
+      estimatedTokens,
+      ratePer1kTokens: routingDecision.selectedAgent.ratePer1kTokens,
+      toolName: "chat"
+    });
 
-  return response;
+    if (!holdResult.success) {
+      throw new Error(`Payment hold failed: ${holdResult.error}`);
+    }
+    
+    holdId = holdResult.hold!.holdId;
+    console.log(`[Escrow] Hold created: ${holdId} for ${holdResult.hold!.holdAmountLamports} lamports`);
+  }
+
+  // Build list of agents to try: primary + alternatives
+  const agentsToTry = [
+    routingDecision.selectedAgent,
+    ...(routingDecision.alternativeAgents || [])
+  ];
+
+  let result: ExecutionResult | null = null;
+  let usedAgent = routingDecision.selectedAgent;
+  const failedAgents: string[] = [];
+
+  try {
+    // Try each agent in order until one succeeds
+    for (const agent of agentsToTry) {
+      console.log(`[Specialist] Trying agent: ${agent.name} (${agent.model})`);
+      
+      const attemptResult = await executeSpecialistRequest(
+        agent,
+        messages,
+        routingDecision.taskType
+      );
+
+      if (attemptResult.success) {
+        result = attemptResult;
+        usedAgent = agent;
+        
+        if (failedAgents.length > 0) {
+          console.log(`[Specialist] Success with fallback agent: ${agent.name} after ${failedAgents.length} failures`);
+        }
+        break;
+      }
+
+      // Log the failure and try next agent
+      failedAgents.push(`${agent.name}: ${attemptResult.error}`);
+      console.log(`[Specialist] Agent ${agent.name} failed: ${attemptResult.error}`);
+    }
+
+    // If all agents failed, refund escrow and throw error
+    if (!result || !result.success) {
+      if (holdId) {
+        await refundEscrowHold(holdId, "All agents failed");
+        console.log(`[Escrow] Refunded hold ${holdId} due to execution failure`);
+      }
+      const errorDetails = failedAgents.join("; ");
+      throw new Error(`All agents failed. Attempted: ${errorDetails}`);
+    }
+
+    // ============= ESCROW: Release hold on success =============
+    let escrowRelease: { actualCost: number; refundAmount: number } | undefined;
+    
+    if (holdId) {
+      const releaseResult = await releaseEscrowHold(
+        holdId,
+        result.usage.totalTokens,
+        usedAgent.ratePer1kTokens
+      );
+      
+      if (releaseResult.success) {
+        escrowRelease = {
+          actualCost: releaseResult.actualCost,
+          refundAmount: releaseResult.refundAmount
+        };
+        console.log(`[Escrow] Released: ${releaseResult.actualCost} to agent, ${releaseResult.refundAmount} refunded`);
+      }
+    }
+
+    // Calculate cost (for response, escrow handles actual payment)
+    const cost = calculateCost(usedAgent, result.usage.totalTokens);
+
+    // Update conversation
+    await updateConversation(
+      conversation,
+      message,
+      result.response,
+      result.usage.totalTokens,
+      cost.totalCost
+    );
+
+    // Build response
+    const response: ChatResponse = {
+      conversationId: conversation.id,
+      messageId: `msg-${Date.now()}`,
+      response: result.response,
+      taskType: routingDecision.taskType,
+      agentUsed: {
+        agentId: usedAgent.agentId,
+        name: usedAgent.name,
+        model: usedAgent.model
+      },
+      usage: result.usage,
+      cost: {
+        totalLamports: cost.totalCost,
+        breakdown: {
+          agentCost: cost.agentCost,
+          platformFee: cost.platformFee
+        }
+      },
+      latencyMs: Date.now() - startTime,
+      // Include fallback info if we used an alternative
+      ...(failedAgents.length > 0 && {
+        fallbackUsed: true,
+        failedAgents: failedAgents.length
+      })
+    };
+
+    return response;
+    
+  } catch (error) {
+    // If anything fails after creating hold, ensure refund
+    if (holdId) {
+      await refundEscrowHold(holdId, `Execution error: ${(error as Error).message}`);
+      console.log(`[Escrow] Emergency refund for hold ${holdId}`);
+    }
+    throw error;
+  }
 }

@@ -283,12 +283,59 @@ export async function updateReputationScore(
 }
 
 /**
- * Calculate reputation score based on activity metrics
+ * Calculate reputation score based on observable performance metrics
+ *
+ * REPUTATION FORMULA (0-1000 scale):
+ * ---------------------------------
+ * SUCCESS_RATE  (50%): success_count / total_requests * 500
+ * UPTIME        (25%): days_with_successful_requests / total_active_days * 250
+ * SPEED         (15%): percentile rank by avg latency * 150 (faster = higher)
+ * LONGEVITY     (10%): min(days_since_registration / 365, 1) * 100
+ *
+ * BONUSES:
+ * - Verified status: +50
+ * - Passed security audit: +50
+ *
+ * PENALTIES:
+ * - Consecutive health check failures: -10 per failure (max -100)
+ * - Recent errors (last 24h): -5 per error (max -50)
+ *
+ * Minimum score: 0, Maximum score: 1000
  */
+export const REPUTATION_FORMULA = {
+  weights: {
+    successRate: 0.50,      // 50% weight
+    uptime: 0.25,           // 25% weight
+    speed: 0.15,            // 15% weight
+    longevity: 0.10,        // 10% weight
+  },
+  bonuses: {
+    verified: 50,
+    securityAudit: 50,
+  },
+  penalties: {
+    healthCheckFailure: -10,  // per consecutive failure
+    maxHealthPenalty: -100,
+    recentError: -5,          // per error in last 24h
+    maxErrorPenalty: -50,
+  },
+  maxScore: 1000,
+  baseScore: 500,  // New agents start here
+};
+
 export async function calculateReputationScore(agentId: string): Promise<{
   success: boolean;
   score?: number;
-  factors?: any;
+  factors?: {
+    successRate: { value: number; score: number; weight: string };
+    uptime: { value: number; score: number; weight: string };
+    speed: { value: number; percentile: number; score: number; weight: string };
+    longevity: { value: number; score: number; weight: string };
+    bonuses: { verified: number; audit: number };
+    penalties: { healthCheck: number; recentErrors: number };
+    total: number;
+    formula: string;
+  };
   error?: string;
 }> {
   try {
@@ -303,71 +350,151 @@ export async function calculateReputationScore(agentId: string): Promise<{
     }
 
     const agent = agentResult.rows[0];
+    const ageInDays = Math.max(1, Math.floor(
+      (Date.now() - new Date(agent.created_at).getTime()) / (1000 * 60 * 60 * 24)
+    ));
 
-    // Get activity metrics
-    const metricsResult = await query(
+    // Get performance metrics from request_logs (last 90 days)
+    const perfResult = await query(
       `SELECT 
-        COUNT(*) as total_calls,
-        COUNT(DISTINCT caller_agent_id) as unique_callers,
-        SUM(tokens_used) as total_tokens,
-        AVG(cost_lamports) as avg_cost
-       FROM tool_usage 
-       WHERE callee_agent_id = $1 
-       AND created_at > now() - interval '90 days'`,
+        COUNT(*) as total_requests,
+        COUNT(*) FILTER (WHERE success = true) as success_count,
+        AVG(latency_ms) FILTER (WHERE success = true) as avg_latency_ms,
+        COUNT(DISTINCT DATE(created_at)) as active_days,
+        COUNT(DISTINCT DATE(created_at)) FILTER (WHERE success = true) as successful_days
+       FROM request_logs 
+       WHERE selected_agent_id = $1 
+       AND created_at > NOW() - INTERVAL '90 days'`,
       [agentId]
     );
 
-    const metrics = metricsResult.rows[0];
+    const perf = perfResult.rows[0];
+    const totalRequests = Number(perf.total_requests) || 0;
+    const successCount = Number(perf.success_count) || 0;
+    const avgLatencyMs = Number(perf.avg_latency_ms) || 1000;
+    const activeDays = Number(perf.active_days) || 1;
+    const successfulDays = Number(perf.successful_days) || 0;
 
-    // Get audit scores
+    // Get recent errors (last 24h)
+    const recentErrorsResult = await query(
+      `SELECT COUNT(*) as error_count
+       FROM request_logs
+       WHERE selected_agent_id = $1
+       AND success = false
+       AND created_at > NOW() - INTERVAL '24 hours'`,
+      [agentId]
+    );
+    const recentErrors = Number(recentErrorsResult.rows[0]?.error_count) || 0;
+
+    // Get health check status
+    const healthResult = await query(
+      `SELECT consecutive_failures FROM agent_endpoints WHERE agent_id = $1`,
+      [agentId]
+    ).catch(() => ({ rows: [{ consecutive_failures: 0 }] }));
+    const consecutiveFailures = Number(healthResult.rows[0]?.consecutive_failures) || 0;
+
+    // Get speed percentile (compare to all agents)
+    const speedPercentileResult = await query(
+      `WITH agent_speeds AS (
+        SELECT selected_agent_id, AVG(latency_ms) as avg_latency
+        FROM request_logs
+        WHERE success = true AND created_at > NOW() - INTERVAL '90 days'
+        GROUP BY selected_agent_id
+      )
+      SELECT 
+        PERCENT_RANK() OVER (ORDER BY avg_latency DESC) as speed_percentile
+      FROM agent_speeds
+      WHERE selected_agent_id = $1`,
+      [agentId]
+    );
+    const speedPercentile = Number(speedPercentileResult.rows[0]?.speed_percentile) || 0.5;
+
+    // Get audit status
     const auditResult = await query(
-      `SELECT AVG(score) as avg_audit_score, COUNT(*) as audit_count
+      `SELECT COUNT(*) as passed_audits
        FROM agent_audits 
        WHERE agent_id = $1 
        AND result = 'passed'
-       AND (valid_until IS NULL OR valid_until > now())`,
+       AND audit_type = 'security'
+       AND (valid_until IS NULL OR valid_until > NOW())`,
       [agentId]
+    ).catch(() => ({ rows: [{ passed_audits: 0 }] }));
+    const hasSecurityAudit = Number(auditResult.rows[0]?.passed_audits) > 0;
+
+    // =========================================================================
+    // CALCULATE SCORES
+    // =========================================================================
+
+    // Success Rate (0-500)
+    const successRate = totalRequests > 0 ? successCount / totalRequests : 0.5;
+    const successRateScore = Math.round(successRate * 500);
+
+    // Uptime (0-250)
+    const uptimeRatio = activeDays > 0 ? successfulDays / activeDays : 0.5;
+    const uptimeScore = Math.round(uptimeRatio * 250);
+
+    // Speed (0-150) - higher percentile = faster = higher score
+    const speedScore = Math.round(speedPercentile * 150);
+
+    // Longevity (0-100)
+    const longevityRatio = Math.min(ageInDays / 365, 1);
+    const longevityScore = Math.round(longevityRatio * 100);
+
+    // Bonuses
+    const verifiedBonus = agent.verified_status === "verified" ? REPUTATION_FORMULA.bonuses.verified : 0;
+    const auditBonus = hasSecurityAudit ? REPUTATION_FORMULA.bonuses.securityAudit : 0;
+
+    // Penalties
+    const healthPenalty = Math.max(
+      REPUTATION_FORMULA.penalties.maxHealthPenalty,
+      consecutiveFailures * REPUTATION_FORMULA.penalties.healthCheckFailure
+    );
+    const errorPenalty = Math.max(
+      REPUTATION_FORMULA.penalties.maxErrorPenalty,
+      recentErrors * REPUTATION_FORMULA.penalties.recentError
     );
 
-    const audits = auditResult.rows[0];
-
-    // Calculate score components (0-1000 scale)
-    const factors: any = {};
-
-    // Base score
-    factors.baseScore = 300;
-
-    // Verification bonus (0-200)
-    factors.verificationBonus = agent.verified_status === "verified" ? 200 :
-                                agent.verified_status === "pending" ? 50 : 0;
-
-    // Activity bonus (0-200)
-    const callCount = parseInt(metrics.total_calls) || 0;
-    factors.activityBonus = Math.min(200, Math.round(callCount / 10));
-
-    // Diversity bonus (0-100) - more unique callers = better
-    const uniqueCallers = parseInt(metrics.unique_callers) || 0;
-    factors.diversityBonus = Math.min(100, uniqueCallers * 10);
-
-    // Audit bonus (0-100)
-    const avgAuditScore = parseFloat(audits.avg_audit_score) || 0;
-    const auditCount = parseInt(audits.audit_count) || 0;
-    factors.auditBonus = auditCount > 0 ? Math.round(avgAuditScore) : 0;
-
-    // Longevity bonus (0-100) - older accounts get slight bonus
-    const ageInDays = Math.floor(
-      (Date.now() - new Date(agent.created_at).getTime()) / (1000 * 60 * 60 * 24)
-    );
-    factors.longevityBonus = Math.min(100, Math.round(ageInDays / 3.65));
-
-    // Calculate total
-    const totalScore = Object.values(factors).reduce((sum: number, val: any) => sum + val, 0) as number;
-    const clampedScore = Math.max(0, Math.min(1000, totalScore));
+    // Total
+    const rawScore = successRateScore + uptimeScore + speedScore + longevityScore +
+                     verifiedBonus + auditBonus + healthPenalty + errorPenalty;
+    const finalScore = Math.max(0, Math.min(REPUTATION_FORMULA.maxScore, Math.round(rawScore)));
 
     return {
       success: true,
-      score: clampedScore,
-      factors,
+      score: finalScore,
+      factors: {
+        successRate: {
+          value: Math.round(successRate * 100),
+          score: successRateScore,
+          weight: "50%",
+        },
+        uptime: {
+          value: Math.round(uptimeRatio * 100),
+          score: uptimeScore,
+          weight: "25%",
+        },
+        speed: {
+          value: Math.round(avgLatencyMs),
+          percentile: Math.round(speedPercentile * 100),
+          score: speedScore,
+          weight: "15%",
+        },
+        longevity: {
+          value: ageInDays,
+          score: longevityScore,
+          weight: "10%",
+        },
+        bonuses: {
+          verified: verifiedBonus,
+          audit: auditBonus,
+        },
+        penalties: {
+          healthCheck: healthPenalty,
+          recentErrors: errorPenalty,
+        },
+        total: finalScore,
+        formula: "(success_rate × 500) + (uptime × 250) + (speed_percentile × 150) + (longevity × 100) + bonuses - penalties",
+      },
     };
   } catch (error: any) {
     return { success: false, error: error.message };
