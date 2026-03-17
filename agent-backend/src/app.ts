@@ -25,6 +25,8 @@ import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 import { getDemoStatus } from "./middleware/demoOnly";
 import { rateLimit, ipRateLimit, slowDown } from "./middleware/rateLimit";
 import { enforceProductionRequirements, isProduction } from "./middleware/requireProduction";
+import { runVerificationJob, disableUnhealthyAgents } from "./services/endpointVerifyService";
+import { query } from "./db/client";
 
 // =============================================================================
 // PRODUCTION ENVIRONMENT VALIDATION
@@ -104,6 +106,31 @@ app.use("/budget", deprecationWarning, budget);
 app.use("/activity", deprecationWarning, activity);
 
 // =============================================================================
+// HEALTH CHECK
+// =============================================================================
+app.get("/health", async (req, res) => {
+  const checks: Record<string, { status: string; latencyMs?: number }> = {};
+  
+  // Database check
+  const dbStart = Date.now();
+  try {
+    await query("SELECT 1");
+    checks.database = { status: "healthy", latencyMs: Date.now() - dbStart };
+  } catch {
+    checks.database = { status: "unhealthy", latencyMs: Date.now() - dbStart };
+  }
+
+  const allHealthy = Object.values(checks).every(c => c.status === "healthy");
+  
+  res.status(allHealthy ? 200 : 503).json({
+    status: allHealthy ? "healthy" : "degraded",
+    timestamp: new Date().toISOString(),
+    version: "1.0.0",
+    checks,
+  });
+});
+
+// =============================================================================
 // API INFO
 // =============================================================================
 app.get("/", (req, res) => {
@@ -180,4 +207,50 @@ app.listen(port, () => {
     }
   }
   console.log(`========================================\n`);
+
+  // ==========================================================================
+  // SCHEDULED JOBS
+  // ==========================================================================
+
+  // Endpoint health verification - runs every 15 minutes
+  const VERIFICATION_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+  const DISABLE_THRESHOLD = 5; // Consecutive failures before auto-disable
+
+  if (process.env.DATABASE_URL) {
+    console.log(`  📡 Starting endpoint verification scheduler (every 15 min)`);
+    
+    // Initial run after 30 seconds (let server warm up)
+    setTimeout(async () => {
+      try {
+        const result = await runVerificationJob();
+        console.log(`[Scheduler] Initial verification: ${result.checked} endpoints checked`);
+        
+        // Disable persistently unhealthy agents
+        const disabled = await disableUnhealthyAgents(DISABLE_THRESHOLD);
+        if (disabled > 0) {
+          console.log(`[Scheduler] Disabled ${disabled} agents due to repeated failures`);
+        }
+      } catch (err) {
+        console.error("[Scheduler] Initial verification failed:", err);
+      }
+    }, 30000);
+
+    // Regular interval
+    setInterval(async () => {
+      try {
+        const result = await runVerificationJob();
+        if (result.checked > 0) {
+          console.log(`[Scheduler] Verification: ${result.healthy}/${result.checked} healthy`);
+        }
+        
+        const disabled = await disableUnhealthyAgents(DISABLE_THRESHOLD);
+        if (disabled > 0) {
+          console.warn(`[Scheduler] Auto-disabled ${disabled} unhealthy agents`);
+          // TODO: Send webhook/email notifications to affected agents
+        }
+      } catch (err) {
+        console.error("[Scheduler] Verification job failed:", err);
+      }
+    }, VERIFICATION_INTERVAL_MS);
+  }
 });

@@ -1,11 +1,29 @@
 {
-  "name": "agent-sdk",
-  "version": "0.0.1",
+  "name": "monocle-sdk",
+  "version": "1.0.0",
+  "description": "Monocle AI Router SDK - Chat with AI agents, browse the marketplace, register your own agent",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "monocle",
+    "router",
+    "marketplace",
+    "solana",
+    "payments"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",
@@ -13,5 +31,10 @@
   },
   "devDependencies": {
     "typescript": "^5.3.3"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/monocle-ai/monocle-sdk"
+  },
+  "license": "MIT"
 }

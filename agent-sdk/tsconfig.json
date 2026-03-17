@@ -2,13 +2,14 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "ES2020",
-    "moduleResolution": "bundler",
+    "moduleResolution": "Node",
     "outDir": "dist",
     "declaration": true,
     "strict": true,
     "esModuleInterop": true,
     "lib": ["ES2020", "DOM"],
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "skipLibCheck": true
   },
   "include": ["src"]
 }

@@ -321,6 +321,9 @@ export const REPUTATION_FORMULA = {
   },
   maxScore: 1000,
   baseScore: 500,  // New agents start here
+  // Cold start protection: new agents get provisional score
+  provisionalScore: 500,
+  provisionalRequestThreshold: 50,  // Requests before full scoring applies
 };
 
 export async function calculateReputationScore(agentId: string): Promise<{
@@ -333,6 +336,13 @@ export async function calculateReputationScore(agentId: string): Promise<{
     longevity: { value: number; score: number; weight: string };
     bonuses: { verified: number; audit: number };
     penalties: { healthCheck: number; recentErrors: number };
+    provisional?: {
+      isProvisional: boolean;
+      requestsUntilFull: number;
+      blendWeight?: number;
+      baseScore: number;
+      calculatedScore: number;
+    };
     total: number;
     formula: string;
   };
@@ -454,10 +464,34 @@ export async function calculateReputationScore(agentId: string): Promise<{
       recentErrors * REPUTATION_FORMULA.penalties.recentError
     );
 
-    // Total
+    // Total calculated score
     const rawScore = successRateScore + uptimeScore + speedScore + longevityScore +
                      verifiedBonus + auditBonus + healthPenalty + errorPenalty;
-    const finalScore = Math.max(0, Math.min(REPUTATION_FORMULA.maxScore, Math.round(rawScore)));
+    const calculatedScore = Math.max(0, Math.min(REPUTATION_FORMULA.maxScore, Math.round(rawScore)));
+
+    // =========================================================================
+    // PROVISIONAL SCORE (Cold Start Protection)
+    // =========================================================================
+    // New agents with < 50 requests get a blended provisional score so they
+    // have a fair chance to be selected and build their reputation.
+    const isProvisional = totalRequests < REPUTATION_FORMULA.provisionalRequestThreshold;
+    let finalScore: number;
+    let provisionalBlend: number | undefined;
+
+    if (isProvisional && totalRequests > 0) {
+      // Blend: as requests increase, weight shifts from provisional to calculated
+      const weight = totalRequests / REPUTATION_FORMULA.provisionalRequestThreshold;
+      finalScore = Math.round(
+        REPUTATION_FORMULA.provisionalScore * (1 - weight) + calculatedScore * weight
+      );
+      provisionalBlend = Math.round(weight * 100);
+    } else if (totalRequests === 0) {
+      // Brand new agent - full provisional score
+      finalScore = REPUTATION_FORMULA.provisionalScore;
+    } else {
+      // Established agent - use calculated score
+      finalScore = calculatedScore;
+    }
 
     return {
       success: true,
@@ -492,6 +526,13 @@ export async function calculateReputationScore(agentId: string): Promise<{
           healthCheck: healthPenalty,
           recentErrors: errorPenalty,
         },
+        provisional: isProvisional ? {
+          isProvisional: true,
+          requestsUntilFull: REPUTATION_FORMULA.provisionalRequestThreshold - totalRequests,
+          blendWeight: provisionalBlend,
+          baseScore: REPUTATION_FORMULA.provisionalScore,
+          calculatedScore,
+        } : undefined,
         total: finalScore,
         formula: "(success_rate × 500) + (uptime × 250) + (speed_percentile × 150) + (longevity × 100) + bonuses - penalties",
       },

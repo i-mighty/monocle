@@ -1,9 +1,13 @@
 ﻿node_modules/
 .env
 **/.env
+.env.*
+**/.env.*
 *.log
 dist/
 .next/
 **/.next/
 payer.json
 **/payer.json
+*.pem
+*.key
