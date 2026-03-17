@@ -39,103 +39,140 @@ export interface EndpointStatus {
 /**
  * Perform a health check on an agent endpoint
  *
- * Expected endpoint contract:
- * - GET /health returns { status: "ok", ... }
- * - Response time < 10 seconds
- * - HTTP 200 status
+ * Tries multiple endpoints in order of preference:
+ * 1. GET /health - standard health endpoint
+ * 2. GET / - root endpoint (many APIs respond here)
+ * 3. HEAD to base URL - lightweight ping
+ *
+ * Only rejects on CONNECTION errors (timeouts, refused, unreachable).
+ * 404s are acceptable if we get a valid response from another endpoint.
  */
 export async function checkEndpointHealth(endpointUrl: string): Promise<HealthCheckResult> {
   const startTime = Date.now();
+  const url = new URL(endpointUrl);
+  const baseOrigin = url.origin;
 
-  try {
-    // Construct health check URL
-    const url = new URL(endpointUrl);
-    const healthUrl = new URL("/health", url.origin).toString();
+  // Endpoints to try in order
+  const endpointsToTry = [
+    { path: "/health", method: "GET" as const, expectJson: true },
+    { path: "/", method: "GET" as const, expectJson: false },
+    { path: "/", method: "HEAD" as const, expectJson: false },
+  ];
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
+  let lastError: string = "";
+  let connectionFailed = false;
 
-    const response = await fetch(healthUrl, {
-      method: "GET",
-      headers: {
-        "Accept": "application/json",
-        "User-Agent": "Monocle-HealthCheck/1.0"
-      },
-      signal: controller.signal
-    });
+  for (const endpoint of endpointsToTry) {
+    const checkUrl = new URL(endpoint.path, baseOrigin).toString();
+    const checkStart = Date.now();
 
-    clearTimeout(timeoutId);
-    const latencyMs = Date.now() - startTime;
-
-    if (!response.ok) {
-      return {
-        success: false,
-        latencyMs,
-        statusCode: response.status,
-        error: `Endpoint returned HTTP ${response.status}`
-      };
-    }
-
-    // Parse response body
-    let body: any;
     try {
-      body = await response.json();
-    } catch {
-      return {
-        success: false,
-        latencyMs,
-        statusCode: response.status,
-        error: "Endpoint did not return valid JSON"
-      };
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
+
+      const response = await fetch(checkUrl, {
+        method: endpoint.method,
+        headers: {
+          "Accept": "application/json, text/plain, */*",
+          "User-Agent": "Monocle-HealthCheck/1.0"
+        },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      const latencyMs = Date.now() - checkStart;
+
+      // Any successful HTTP response means the server is reachable
+      if (response.ok) {
+        // For /health endpoint, validate JSON response if expected
+        if (endpoint.expectJson) {
+          try {
+            const body = await response.json();
+            // Check for explicit healthy/ok status
+            if (body.status === "ok" || body.status === "healthy" || body.healthy === true) {
+              return {
+                success: true,
+                latencyMs,
+                statusCode: response.status,
+                responseBody: body
+              };
+            }
+            // Has JSON but no clear healthy indicator - still count as success
+            return {
+              success: true,
+              latencyMs,
+              statusCode: response.status,
+              responseBody: body
+            };
+          } catch {
+            // JSON parse failed, but server responded - try next endpoint
+            lastError = "Health endpoint did not return valid JSON";
+            continue;
+          }
+        }
+
+        // Non-JSON endpoint succeeded
+        return {
+          success: true,
+          latencyMs,
+          statusCode: response.status
+        };
+      }
+
+      // 404 is acceptable - just try next endpoint
+      if (response.status === 404) {
+        lastError = `${endpoint.path} returned 404`;
+        continue;
+      }
+
+      // 5xx errors indicate server problems but not connection issues
+      if (response.status >= 500) {
+        lastError = `Server error: HTTP ${response.status}`;
+        continue;
+      }
+
+      // Other 4xx - authentication issues, etc. - server is reachable
+      // For HEAD requests, 405 (method not allowed) is fine - server is up
+      if (endpoint.method === "HEAD" && (response.status === 405 || response.status === 400)) {
+        return {
+          success: true,
+          latencyMs: Date.now() - checkStart,
+          statusCode: response.status
+        };
+      }
+
+      lastError = `HTTP ${response.status}`;
+
+    } catch (error: any) {
+      const latencyMs = Date.now() - checkStart;
+
+      if (error.name === "AbortError") {
+        lastError = `Timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms`;
+        connectionFailed = true;
+        continue; // Try next endpoint
+      }
+
+      // Connection refused, DNS failure, etc. - real connection problem
+      if (error.code === "ECONNREFUSED" || error.code === "ENOTFOUND" || 
+          error.code === "ETIMEDOUT" || error.code === "ENETUNREACH") {
+        connectionFailed = true;
+        lastError = error.message || "Connection failed";
+        // Don't try more endpoints - server is unreachable
+        break;
+      }
+
+      lastError = error.message || "Unknown error";
     }
-
-    // Validate response has required fields
-    const missingFields = REQUIRED_RESPONSE_FIELDS.filter(f => !(f in body));
-    if (missingFields.length > 0) {
-      return {
-        success: false,
-        latencyMs,
-        statusCode: response.status,
-        error: `Response missing required fields: ${missingFields.join(", ")}`,
-        responseBody: body
-      };
-    }
-
-    // Check status field indicates healthy
-    if (body.status !== "ok" && body.status !== "healthy") {
-      return {
-        success: false,
-        latencyMs,
-        statusCode: response.status,
-        error: `Endpoint status is "${body.status}", expected "ok" or "healthy"`,
-        responseBody: body
-      };
-    }
-
-    return {
-      success: true,
-      latencyMs,
-      statusCode: response.status,
-      responseBody: body
-    };
-
-  } catch (error: any) {
-    const latencyMs = Date.now() - startTime;
-
-    if (error.name === "AbortError") {
-      return {
-        success: false,
-        latencyMs,
-        error: `Health check timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms`
-      };
-    }
-
-    return {
-      success: false,
-      latencyMs,
-      error: error.message || "Unknown error during health check"
-    };
   }
+
+  // All endpoints failed
+  return {
+    success: false,
+    latencyMs: Date.now() - startTime,
+    error: connectionFailed 
+      ? `Connection failed: ${lastError}` 
+      : `All health check endpoints failed. Last error: ${lastError}`
+  };
 }
 
 /**

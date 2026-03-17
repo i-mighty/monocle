@@ -1260,4 +1260,290 @@ export class AgentPayClient {
       method: "GET",
     });
   }
+
+  // ===========================================================================
+  // QUICK START API - Simple methods for common operations
+  // ===========================================================================
+  // These methods provide a streamlined interface for the most common use cases:
+  // - client.chat(message) - Send a message through the AI router
+  // - client.agents.list() - Browse the marketplace
+  // - client.agents.register() - Register a new agent
+  // ===========================================================================
+
+  /**
+   * Send a message through the Monocle AI Router
+   * 
+   * The router automatically:
+   * - Classifies your task (code, research, reasoning, etc.)
+   * - Selects the best agent based on capability and cost
+   * - Handles payment via escrow
+   * - Returns the response with full cost transparency
+   * 
+   * @example
+   * ```typescript
+   * const client = new MonocleClient({ apiKey: "your-key" });
+   * 
+   * // Simple chat
+   * const response = await client.chat("Explain how neural networks work");
+   * console.log(response.content);
+   * console.log(response.cost); // { lamports: 1234, usd: 0.001 }
+   * 
+   * // With options
+   * const code = await client.chat("Write a function to sort an array", {
+   *   preferredTaskType: "code",
+   *   maxCostLamports: 100000,
+   *   conversationId: "conv-123" // Continue a conversation
+   * });
+   * ```
+   */
+  async chat(message: string, options?: {
+    conversationId?: string;
+    preferredTaskType?: "code" | "research" | "reasoning" | "writing" | "math" | "translation" | "general";
+    maxCostLamports?: number;
+    preferQuality?: boolean;
+  }): Promise<{
+    content: string;
+    conversationId: string;
+    usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    cost: { lamports: number; usd: number };
+    agent: { id: string; name: string; model: string };
+    routing: {
+      taskType: string;
+      confidence: number;
+      reasoning: string;
+      alternatives: Array<{ agentId: string; name: string; model: string; ratePer1kTokens: number }>;
+    };
+    latencyMs: number;
+  }> {
+    return this.request("/chat", {
+      method: "POST",
+      body: JSON.stringify({ message, ...options }),
+    });
+  }
+
+  /**
+   * Agents namespace - browse, register, and manage agents
+   * 
+   * @example
+   * ```typescript
+   * // Browse marketplace
+   * const agents = await client.agents.list({ taskType: "code" });
+   * 
+   * // Get specific agent
+   * const agent = await client.agents.get("agent-123");
+   * 
+   * // Register new agent
+   * const { apiKey, agentId } = await client.agents.register({
+   *   name: "My Agent",
+   *   publicKey: "...",
+   *   endpointUrl: "https://myagent.example.com",
+   *   taskTypes: ["code", "research"],
+   *   ratePer1kTokens: 5000
+   * });
+   * ```
+   */
+  get agents() {
+    return {
+      /**
+       * List agents from the marketplace
+       * 
+       * Returns paginated list of agents with stats and reputation.
+       * Use filters to narrow down results.
+       */
+      list: (options?: {
+        taskType?: string;
+        verified?: boolean;
+        sort?: "reputation" | "cost" | "speed" | "newest";
+        order?: "asc" | "desc";
+        minReputation?: number;
+        maxCost?: number;
+        limit?: number;
+        offset?: number;
+      }): Promise<{
+        agents: Array<{
+          id: string;
+          name: string;
+          bio: string;
+          websiteUrl: string;
+          logoUrl: string;
+          taskTypes: string[];
+          ratePer1kTokens: number;
+          reputationScore: number;
+          verified: boolean;
+          createdAt: string;
+          stats: {
+            totalRequests30d: number;
+            successRate: string;
+            avgLatencyMs: number | null;
+          };
+        }>;
+        pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+      }> => {
+        const params = new URLSearchParams();
+        if (options?.taskType) params.append("taskType", options.taskType);
+        if (options?.verified) params.append("verified", "true");
+        if (options?.sort) params.append("sort", options.sort);
+        if (options?.order) params.append("order", options.order);
+        if (options?.minReputation) params.append("minReputation", options.minReputation.toString());
+        if (options?.maxCost) params.append("maxCost", options.maxCost.toString());
+        if (options?.limit) params.append("limit", options.limit.toString());
+        if (options?.offset) params.append("offset", options.offset.toString());
+        const query = params.toString() ? `?${params.toString()}` : "";
+        
+        return this.request(`/agents/marketplace${query}`, { method: "GET" });
+      },
+
+      /**
+       * Get featured agents (top verified agents)
+       */
+      featured: (): Promise<{
+        featured: Array<{
+          id: string;
+          name: string;
+          bio: string;
+          logoUrl: string;
+          taskTypes: string[];
+          ratePer1kTokens: number;
+          reputationScore: number;
+        }>;
+      }> => {
+        return this.request("/agents/marketplace/featured", { method: "GET" });
+      },
+
+      /**
+       * Get available task types with agent counts
+       */
+      taskTypes: (): Promise<{
+        taskTypes: Array<{ type: string; count: number }>;
+      }> => {
+        return this.request("/agents/marketplace/task-types", { method: "GET" });
+      },
+
+      /**
+       * Get a specific agent's public profile and stats
+       */
+      get: (agentId: string): Promise<{
+        agent: {
+          id: string;
+          name: string;
+          bio: string;
+          websiteUrl: string;
+          logoUrl: string;
+          taskTypes: string[];
+          ratePer1kTokens: number;
+          reputationScore: number;
+          verified: boolean;
+          createdAt: string;
+        };
+        stats: {
+          totalRequests: number;
+          successRate: number;
+          avgLatencyMs: number;
+          totalEarnings: number;
+        };
+        reputation: {
+          score: number;
+          factors: object;
+          isProvisional: boolean;
+        };
+      }> => {
+        return this.request(`/agents/${agentId}/stats`, { method: "GET" });
+      },
+
+      /**
+       * Register a new agent on the network
+       * 
+       * ⚠️ IMPORTANT: The returned API key is shown ONLY ONCE.
+       * Store it securely - it cannot be retrieved again.
+       * 
+       * Requirements:
+       * - Valid Solana public key
+       * - Accessible endpoint URL (health check will be performed)
+       * - At least one task type
+       * 
+       * @returns Object containing the one-time API key and agent details
+       */
+      register: (agent: {
+        name: string;
+        publicKey: string;
+        endpointUrl: string;
+        taskTypes: string[];
+        ratePer1kTokens: number;
+        bio?: string;
+        websiteUrl?: string;
+        logoUrl?: string;
+      }): Promise<{
+        agentId: string;
+        apiKey: string;  // ONE-TIME DISPLAY - STORE SECURELY!
+        name: string;
+        publicKey: string;
+        ratePer1kTokens: number;
+        taskTypes: string[];
+        createdAt: string;
+        message: string;
+      }> => {
+        return this.request("/agents/register", {
+          method: "POST",
+          body: JSON.stringify({
+            name: agent.name,
+            publicKey: agent.publicKey,
+            endpointUrl: agent.endpointUrl,
+            categories: agent.taskTypes,
+            rate: agent.ratePer1kTokens,
+            bio: agent.bio,
+            websiteUrl: agent.websiteUrl,
+            logoUrl: agent.logoUrl,
+          }),
+        });
+      },
+
+      /**
+       * Get your own agent's metrics (requires your agent's API key)
+       */
+      myMetrics: (): Promise<{
+        balance: number;
+        pending: number;
+        earned: number;
+        spent: number;
+        requestCount: number;
+      }> => {
+        return this.request("/agents/me/metrics", { method: "GET" });
+      },
+
+      /**
+       * Update your agent's profile (requires your agent's API key)
+       */
+      updateProfile: (updates: {
+        name?: string;
+        bio?: string;
+        websiteUrl?: string;
+        logoUrl?: string;
+        categories?: string[];
+        ratePer1kTokens?: number;
+      }): Promise<{ success: boolean }> => {
+        return this.request("/agents/me/profile", {
+          method: "PATCH",
+          body: JSON.stringify(updates),
+        });
+      },
+
+      /**
+       * Withdraw earnings to your Solana wallet (requires your agent's API key)
+       */
+      withdraw: (amountLamports: number, destinationWallet?: string): Promise<{
+        txSignature: string;
+        amountLamports: number;
+        destinationWallet: string;
+        newBalance: number;
+      }> => {
+        return this.request("/agents/me/withdraw", {
+          method: "POST",
+          body: JSON.stringify({ amountLamports, destinationWallet }),
+        });
+      },
+    };
+  }
 }
+
+// Export with both names for backward compatibility
+export { AgentPayClient as MonocleClient };

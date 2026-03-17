@@ -128,6 +128,154 @@ router.post("/", apiKeyAuth, async (req: Request, res: Response) => {
 });
 
 // =============================================================================
+// POST /chat/stream - Streaming Chat Endpoint
+// =============================================================================
+// Server-Sent Events (SSE) endpoint for streaming responses.
+// Returns text chunks as they're generated.
+
+router.post("/stream", apiKeyAuth, async (req: Request, res: Response) => {
+  const { 
+    message, 
+    conversationId, 
+    preferredTaskType,
+    maxCostLamports,
+    preferQuality 
+  } = req.body;
+
+  if (!message || typeof message !== "string") {
+    return res.status(400).json({
+      success: false,
+      error: "Message is required"
+    });
+  }
+
+  const userId = (req as any).apiKeyData?.developerId || "anonymous";
+
+  // Set up SSE headers
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no"); // Disable nginx buffering
+  res.flushHeaders();
+
+  // Helper to send SSE event
+  const sendEvent = (data: any) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  let startTime = Date.now();
+  let totalTokens = 0;
+  let accumulatedContent = "";
+
+  try {
+    // 1. Route the request
+    const routingDecision = await routeRequest(message, {
+      preferredTaskType,
+      maxCostLamports,
+      preferQuality
+    });
+
+    // Send routing info immediately
+    sendEvent({
+      type: "routing",
+      taskType: routingDecision.taskType,
+      confidence: routingDecision.confidence,
+      agent: {
+        id: routingDecision.selectedAgent.agentId,
+        name: routingDecision.selectedAgent.name,
+        model: routingDecision.selectedAgent.model,
+      }
+    });
+
+    // 2. Execute with streaming
+    // For now, we simulate streaming by chunking the response
+    // In production, this would use actual streaming from the LLM provider
+    const chatResponse = await executeChat(
+      userId,
+      message,
+      routingDecision,
+      {
+        conversationId,
+        useEscrow: true,
+        estimatedTokens: 2000
+      }
+    );
+
+    // Simulate streaming by splitting response into chunks
+    const content = chatResponse.response;
+    const words = content.split(' ');
+    const chunkSize = 5; // words per chunk
+    
+    for (let i = 0; i < words.length; i += chunkSize) {
+      const chunk = words.slice(i, i + chunkSize).join(' ') + (i + chunkSize < words.length ? ' ' : '');
+      accumulatedContent += chunk;
+      
+      sendEvent({
+        type: "chunk",
+        text: chunk,
+        accumulated: accumulatedContent,
+      });
+
+      // Small delay to simulate real streaming
+      await new Promise(r => setTimeout(r, 50));
+    }
+
+    totalTokens = chatResponse.usage.totalTokens;
+    const latencyMs = Date.now() - startTime;
+
+    // Send final metadata
+    sendEvent({
+      type: "done",
+      done: true,
+      finish_reason: "stop",
+      conversationId: chatResponse.conversationId,
+      usage: chatResponse.usage,
+      cost: chatResponse.cost,
+      agent: {
+        id: routingDecision.selectedAgent.agentId,
+        name: routingDecision.selectedAgent.name,
+        model: routingDecision.selectedAgent.model,
+      },
+      routing: {
+        taskType: routingDecision.taskType,
+        confidence: routingDecision.confidence,
+      },
+      latencyMs,
+    });
+
+    // Log for analytics
+    await logRoutingDecision(userId, message, routingDecision, {
+      success: true,
+      latencyMs,
+      tokensUsed: totalTokens
+    });
+
+    await logRequest(buildLogEntry(userId, message, routingDecision, chatResponse));
+
+    // End stream
+    res.write("data: [DONE]\n\n");
+    res.end();
+
+  } catch (error: any) {
+    console.error("Stream error:", error);
+
+    // Send STREAM_ERROR event so SDK can surface partial response
+    sendEvent({
+      type: "STREAM_ERROR",
+      error: {
+        code: error.code || "STREAM_ERROR",
+        message: error.message || "Stream interrupted"
+      },
+      partialContent: accumulatedContent,
+      tokensConsumed: totalTokens,
+    });
+
+    res.write("data: [DONE]\n\n");
+    res.end();
+  }
+});
+
+// =============================================================================
 // POST /chat/classify - Just Classify (No Execution)
 // =============================================================================
 // Useful for previewing which agent would handle a request

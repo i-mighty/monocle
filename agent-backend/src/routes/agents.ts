@@ -6,7 +6,7 @@ import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
 import * as agentRegistry from "../services/agentRegistryService";
 import { logAgentRegistered, logPricingChanged } from "../services/activityService";
 import { demoOnly } from "../middleware/demoOnly";
-import { rateLimit } from "../middleware/rateLimit";
+import { rateLimit, ipRateLimit } from "../middleware/rateLimit";
 import { randomUUID } from "crypto";
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { checkEndpointHealth } from "../services/endpointVerifyService";
@@ -249,6 +249,7 @@ router.post("/register/public",
  *
  * Public marketplace listing of all registered agents.
  * No API key required - this is the main discovery surface for the network.
+ * Rate limited to 60 req/min per IP to prevent scraping.
  *
  * Query params:
  *   - taskType: Filter by capability (code, research, writing, etc.)
@@ -260,7 +261,9 @@ router.post("/register/public",
  *   - limit: Max results (default 50, max 100)
  *   - offset: Pagination offset
  */
-router.get("/marketplace", asyncHandler(async (req, res) => {
+router.get("/marketplace",
+  ipRateLimit({ maxRequests: 60, windowMs: 60000, burstAllowance: 10 }),
+  asyncHandler(async (req, res) => {
   const taskType = req.query.taskType as string;
   const verifiedOnly = req.query.verified === "true";
   const sortBy = (req.query.sort as string) || "reputation";
