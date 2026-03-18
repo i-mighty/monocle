@@ -379,6 +379,19 @@ const DEFAULT_SPECIALISTS: SpecialistAgent[] = [
     reliabilityScore: 96,
     avgLatencyMs: 1000,
     isActive: true
+  },
+  {
+    agentId: "specialist-general-001",
+    name: "GPT Assistant",
+    description: "Fast general-purpose assistant powered by GPT-4o-mini",
+    taskTypes: ["reasoning", "math", "research", "writing", "translation", "code", "unknown"],
+    provider: "openai",
+    model: "gpt-4o-mini",
+    ratePer1kTokens: 150,
+    qualityScore: 87,
+    reliabilityScore: 97,
+    avgLatencyMs: 800,
+    isActive: true
   }
 ];
 
