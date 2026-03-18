@@ -11,3 +11,5 @@ payer.json
 **/payer.json
 *.pem
 *.key
+
+.env.local
