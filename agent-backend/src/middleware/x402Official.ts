@@ -56,8 +56,9 @@ export const x402Enabled = !!PLATFORM_WALLET;
 function buildRoutes() {
   if (!PLATFORM_WALLET) return {};
 
+  // Route keys use req.path as seen inside the v1 router (no /v1 prefix)
   return {
-    "POST /v1/chat": {
+    "POST /chat": {
       accepts: {
         scheme: "exact",
         network: NETWORK,
@@ -68,7 +69,7 @@ function buildRoutes() {
       description: "AI chat request routed through Monocle",
       mimeType: "application/json",
     },
-    "POST /v1/chat/stream": {
+    "POST /chat/stream": {
       accepts: {
         scheme: "exact",
         network: NETWORK,
@@ -79,7 +80,7 @@ function buildRoutes() {
       description: "Streaming AI chat request routed through Monocle",
       mimeType: "text/event-stream",
     },
-    "POST /v1/x402/execute": {
+    "POST /x402/execute": {
       accepts: {
         scheme: "exact",
         network: NETWORK,
@@ -131,7 +132,7 @@ export function getX402Middleware(): ((req: Request, res: Response, next: NextFu
     schemes,
     undefined, // no paywall config
     undefined, // no custom paywall
-    false,     // don't sync facilitator on start (avoid blocking startup)
+    true,      // sync facilitator on start to fetch supported payment kinds
   );
 
   return _middleware;
