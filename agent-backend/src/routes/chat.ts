@@ -241,6 +241,8 @@ router.post("/stream", apiKeyAuth, async (req: Request, res: Response) => {
         confidence: routingDecision.confidence,
       },
       latencyMs,
+      // x402 transaction signature (populated when x402 payment was settled)
+      txSignature: (req as any).x402TxSignature || null,
     });
 
     // Log for analytics
