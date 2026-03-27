@@ -131,10 +131,12 @@ export async function createPayingFetch(): Promise<typeof globalThis.fetch> {
       const response = await payingFetch(input, init);
 
       // Check if payment was made (response will have settlement headers)
-      const settleHeader = response.headers.get("x-payment-response");
-      if (settleHeader) {
+      const settleHeaderRaw = response.headers.get("payment-response") || response.headers.get("x-payment-response");
+      if (settleHeaderRaw) {
         try {
-          const settle = JSON.parse(settleHeader);
+          let decoded: string;
+          try { decoded = Buffer.from(settleHeaderRaw, "base64").toString(); } catch { decoded = settleHeaderRaw; }
+          const settle = JSON.parse(decoded);
           emitX402Event({
             type: "payment_settled",
             timestamp: new Date().toISOString(),
@@ -153,7 +155,7 @@ export async function createPayingFetch(): Promise<typeof globalThis.fetch> {
             path: url,
             method: init?.method || "GET",
             network: network as string,
-            settleResponse: settleHeader,
+            settleResponse: settleHeaderRaw,
           });
         }
       }

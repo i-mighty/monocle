@@ -141,50 +141,56 @@ export function getX402Middleware(): ((req: Request, res: Response, next: NextFu
 /**
  * Express middleware that applies x402 payment protection.
  * If x402 is not configured, requests pass through freely.
+ *
+ * The x402 middleware buffers the response, settles with the facilitator
+ * after res.end(), then replays. We hook res.end to capture the settlement
+ * header after x402 has set it but before the response reaches the client.
  */
 export function x402ProtectMiddleware(req: Request, res: Response, next: NextFunction) {
   const mw = getX402Middleware();
   if (!mw) return next();
 
-  // Wrap to capture settlement events
-  const originalJson = res.json.bind(res);
-  const originalEnd = res.end.bind(res);
+  const paymentHeader = req.header("X-PAYMENT") || req.header("x-payment") ||
+                        req.header("payment-signature") || req.header("Payment-Signature");
 
-  // After the middleware runs, check if payment was made
-  const paymentHeader = req.header("X-PAYMENT") || req.header("x-payment");
-
-  mw(req, res, (err?: any) => {
-    if (err) return next(err);
-
-    // If we got here with a payment header, the payment was verified+settled
-    if (paymentHeader) {
-      const settleHeader = res.getHeader("X-PAYMENT-RESPONSE") as string | undefined;
-
-      // Try to extract tx signature from the settle response header
+  if (paymentHeader) {
+    // Hook into res.end to capture settlement headers after x402 sets them.
+    // x402 middleware sets headers on res right before replaying buffered writes.
+    const originalEnd = res.end;
+    (res as any).end = function (this: Response, ...args: any[]) {
+      // At this point x402 has settled and set the headers
+      const settleHeaderRaw = (res.getHeader("payment-response") || res.getHeader("x-payment-response")) as string | undefined;
       let txSignature: string | undefined;
-      if (settleHeader) {
+      if (settleHeaderRaw) {
         try {
-          const settle = JSON.parse(settleHeader);
+          // Header may be base64-encoded JSON
+          let decoded: string;
+          try { decoded = Buffer.from(settleHeaderRaw, "base64").toString(); } catch { decoded = settleHeaderRaw; }
+          const settle = JSON.parse(decoded);
           txSignature = settle.transaction || settle.txSignature;
         } catch {
           // not JSON, ignore
         }
       }
 
-      // Attach tx signature to request so downstream handlers can include it
       (req as any).x402TxSignature = txSignature || null;
 
-      emitX402Event({
-        type: "payment_settled",
-        timestamp: new Date().toISOString(),
-        path: req.path,
-        method: req.method,
-        network: NETWORK as string,
-        txSignature,
-        settleResponse: settleHeader || null,
-      });
-    }
+      if (txSignature || settleHeader) {
+        emitX402Event({
+          type: "payment_settled",
+          timestamp: new Date().toISOString(),
+          path: req.path,
+          method: req.method,
+          network: NETWORK as string,
+          txSignature,
+          settleResponse: settleHeaderRaw || null,
+        });
+      }
 
-    next();
-  });
+      return originalEnd.apply(this, args as any);
+    };
+  }
+
+  // Let the x402 middleware handle the full 402/verify/settle lifecycle
+  mw(req, res, next);
 }
