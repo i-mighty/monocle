@@ -632,9 +632,9 @@ export function calculateCost(
   agent: SpecialistAgent,
   tokensUsed: number
 ): { agentCost: number; platformFee: number; totalCost: number } {
-  // Calculate agent cost based on rate
+  // Enforce MIN_COST to prevent spam (spec requirement)
   const tokenBlocks = Math.ceil(tokensUsed / 1000);
-  const agentCost = tokenBlocks * agent.ratePer1kTokens;
+  const agentCost = Math.max(tokenBlocks * agent.ratePer1kTokens, 100); // MIN_COST = 100 lamports
   
   // Platform fee (5%)
   const platformFee = Math.ceil(agentCost * 0.05);
@@ -664,6 +664,12 @@ export async function executeChat(
 ): Promise<ChatResponse> {
   const startTime = Date.now();
   const { conversationId, useEscrow = true, estimatedTokens = 2000 } = options;
+
+  // Enforce MAX_TOKENS cap per call (anti-abuse)
+  const MAX_TOKENS_PER_CALL = 100_000;
+  if (estimatedTokens > MAX_TOKENS_PER_CALL) {
+    throw new Error(`Token estimate ${estimatedTokens} exceeds maximum ${MAX_TOKENS_PER_CALL} per call`);
+  }
 
   // Get or create conversation
   const conversation = await getOrCreateConversation(userId, conversationId);

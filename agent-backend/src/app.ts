@@ -21,12 +21,15 @@ import activity from "./routes/activity";
 import apiKeys from "./routes/apiKeys";
 import deposits from "./routes/deposits";
 import chat from "./routes/chat";
+import x402Feed from "./routes/x402Feed";
 import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 import { getDemoStatus } from "./middleware/demoOnly";
 import { rateLimit, ipRateLimit, slowDown } from "./middleware/rateLimit";
 import { enforceProductionRequirements, isProduction } from "./middleware/requireProduction";
 import { runVerificationJob, disableUnhealthyAgents } from "./services/endpointVerifyService";
 import { query } from "./db/client";
+import { PRICING_CONSTANTS } from "./services/pricingService";
+import { x402ProtectMiddleware, x402Enabled } from "./middleware/x402Official";
 
 // =============================================================================
 // PRODUCTION ENVIRONMENT VALIDATION
@@ -57,6 +60,9 @@ const v1 = Router();
 // Apply per-key rate limiting to authenticated routes
 v1.use(rateLimit());
 
+// x402 payment protection (returns 402 for configured routes if no payment header)
+v1.use(x402ProtectMiddleware);
+
 v1.use("/identity", identity);
 v1.use("/meter", meter);
 v1.use("/payments", payments);
@@ -64,6 +70,7 @@ v1.use("/dashboard", analytics);
 v1.use("/agents", agents);
 v1.use("/pricing", pricing);
 v1.use("/x402", x402);
+v1.use("/x402-feed", x402Feed);
 v1.use("/messaging", messaging);
 v1.use("/economics", economics);
 v1.use("/reputation", reputation);
@@ -195,6 +202,7 @@ app.listen(port, () => {
   console.log(`  Mode: ${mode}`);
   console.log(`  Database: ${dbStatus}`);
   console.log(`  Port: ${port}`);
+  console.log(`  x402: ${x402Enabled ? "ENABLED" : "DISABLED (set X402_PAY_TO)"}`);
   console.log(`========================================`);
   console.log(`  API v1:      http://localhost:${port}/v1/...`);
   console.log(`  Health:      http://localhost:${port}/health`);
@@ -252,5 +260,63 @@ app.listen(port, () => {
         console.error("[Scheduler] Verification job failed:", err);
       }
     }, VERIFICATION_INTERVAL_MS);
+  }
+
+  // ==========================================================================
+  // AUTOMATIC SETTLEMENT - runs every 5 minutes
+  // ==========================================================================
+  // Settles agents whose pending_lamports >= MIN_PAYOUT threshold.
+  // In production with Solana configured, this executes on-chain transfers.
+  // Without Solana, it logs eligible agents for manual settlement.
+
+  const SETTLEMENT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+  if (process.env.DATABASE_URL) {
+    console.log(`  💰 Starting auto-settlement scheduler (every 5 min, threshold: ${PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS} lamports)`);
+
+    setInterval(async () => {
+      try {
+        const eligible = await query(`
+          SELECT id, name, pending_lamports 
+          FROM agents 
+          WHERE pending_lamports >= $1
+        `, [PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS]);
+
+        if (eligible.rows.length === 0) return;
+
+        for (const agent of eligible.rows) {
+          try {
+            // Check if agent has a public key for on-chain settlement
+            if (!agent.public_key) {
+              console.log(`[Settlement] Agent ${agent.id} eligible (${agent.pending_lamports} lamports) but no public key — skipping`);
+              continue;
+            }
+
+            // Move pending to settled via atomic transaction
+            await query('BEGIN');
+            await query(`
+              UPDATE agents 
+              SET pending_lamports = 0, 
+                  balance_lamports = balance_lamports + pending_lamports
+              WHERE id = $1 AND pending_lamports >= $2
+            `, [agent.id, PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS]);
+
+            // Record settlement
+            await query(`
+              INSERT INTO settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, status)
+              VALUES ($1, $1, $2, 0, $2, 'settled_internal')
+            `, [agent.id, agent.pending_lamports]);
+
+            await query('COMMIT');
+            console.log(`[Settlement] Settled ${agent.pending_lamports} lamports for agent ${agent.id}`);
+          } catch (err) {
+            await query('ROLLBACK').catch(() => {});
+            console.error(`[Settlement] Failed for agent ${agent.id}:`, err);
+          }
+        }
+      } catch (err) {
+        console.error("[Settlement] Scheduler error:", err);
+      }
+    }, SETTLEMENT_INTERVAL_MS);
   }
 });

@@ -38,6 +38,7 @@ export interface StreamChunk {
   cost?: { totalLamports: number; breakdown: { agentCost: number; platformFee: number } };
   routing?: { taskType: string; confidence: number };
   latencyMs?: number;
+  txSignature?: string;
   // error events
   error?: { code: string; message: string } | string;
   partialContent?: string;
@@ -61,6 +62,7 @@ export interface Message {
   routing?: RoutingDecision;
   latencyMs?: number;
   costLamports?: number;
+  txSignature?: string;
   timestamp: Date;
   streaming?: boolean;
   attachments?: Attachment[];

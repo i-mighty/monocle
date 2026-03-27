@@ -214,20 +214,20 @@ export async function releaseEscrowHold(
     const hold = holdResult.rows[0];
     const { user_id, agent_id, hold_amount_lamports } = hold;
 
-    // Calculate actual cost
+    // Calculate actual cost (enforce MIN_COST)
     const tokenBlocks = Math.ceil(actualTokens / 1000);
-    const baseCost = tokenBlocks * ratePer1kTokens;
+    const baseCost = Math.max(tokenBlocks * ratePer1kTokens, PRICING_CONSTANTS.MIN_COST_LAMPORTS);
     const platformFee = Math.ceil(baseCost * PRICING_CONSTANTS.PLATFORM_FEE_PERCENT);
     const actualCost = baseCost + platformFee;
     
     // Calculate refund (any excess from buffer)
     const refundAmount = Math.max(0, hold_amount_lamports - actualCost);
 
-    // Pay agent (actual cost minus platform fee)
+    // Pay agent into pending_lamports (awaiting settlement, not spendable)
     const agentPayment = actualCost - platformFee;
     await query(`
       UPDATE agents 
-      SET balance_lamports = balance_lamports + $1
+      SET pending_lamports = pending_lamports + $1
       WHERE id = $2
     `, [agentPayment, agent_id]);
 

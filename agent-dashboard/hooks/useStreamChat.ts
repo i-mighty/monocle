@@ -205,6 +205,7 @@ export function useStreamChat(
                       streaming: false,
                       latencyMs: latency,
                       costLamports,
+                      txSignature: chunk.txSignature,
                       routing: routingDecision,
                     }
                   : m
