@@ -97,6 +97,7 @@ VALUES
   ('researcher-001',    'Research Agent',        200, 0,        0),
   ('writer-001',        'Writer Agent',          300, 0,        0),
   ('coder-001',         'Code Agent',            250, 0,        0),
+  ('image-001',         'Image Agent',           350, 0,        0),
   ('factcheck-001',     'FactCheck Agent',       150, 0,        0),
   ('formatter-001',     'Formatter Agent',       100, 0,        0)
 ON CONFLICT (id) DO UPDATE SET

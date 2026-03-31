@@ -10,6 +10,7 @@
 
 import { query } from "../db/client";
 import { EventEmitter } from "events";
+import { signMessage, verifyAgentMessage, SignedPayload } from "./agentIdentityService";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -72,7 +73,7 @@ function calculateQuote(
   return raw < MIN_COST ? MIN_COST : raw;
 }
 
-// ─── Log agent message to DB ──────────────────────────────────────────────────
+// ─── Log agent message to DB (signed) ─────────────────────────────────────────
 async function logAgentMessage(
   sessionId: string,
   fromAgentId: string,
@@ -82,12 +83,32 @@ async function logAgentMessage(
   depth: number,
   parentMessageId?: string
 ): Promise<string> {
+  // Sign the message with the sender's identity
+  const signed = signMessage(fromAgentId, {
+    sessionId,
+    from: fromAgentId,
+    to: toAgentId,
+    type: messageType,
+    content,
+    depth,
+    timestamp: new Date().toISOString(),
+  });
+
+  const signedContent = {
+    ...content,
+    _identity: {
+      signature: signed.signature,
+      signerPublicKey: signed.signerPublicKey,
+      signedAt: signed.signedAt,
+    },
+  };
+
   const result = await query(
     `INSERT INTO agent_messages
        (session_id, from_agent_id, to_agent_id, message_type, content, depth, parent_message_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id`,
-    [sessionId, fromAgentId, toAgentId, messageType, JSON.stringify(content), depth, parentMessageId ?? null]
+    [sessionId, fromAgentId, toAgentId, messageType, JSON.stringify(signedContent), depth, parentMessageId ?? null]
   );
   return result.rows[0].id;
 }
@@ -134,7 +155,7 @@ export async function requestQuote(req: QuoteRequest): Promise<QuoteResponse> {
     negotiationId,
   }, req.depth, req.parentMessageId);
 
-  // Emit for UI
+  // Emit for UI — include identity info
   emitNegotiationEvent(req.sessionId, {
     type: "quote_requested",
     depth: req.depth,
@@ -143,6 +164,7 @@ export async function requestQuote(req: QuoteRequest): Promise<QuoteResponse> {
     taskType: req.taskType,
     taskDescription: req.taskDescription,
     negotiationId,
+    identity: { signed: true, signerPublicKey: signMessage(req.requesterId, {}).signerPublicKey },
     timestamp: new Date().toISOString(),
   });
 
@@ -158,7 +180,7 @@ export async function requestQuote(req: QuoteRequest): Promise<QuoteResponse> {
     expiresAt: expiresAt.toISOString(),
   }, req.depth);
 
-  // Emit quote response for UI
+  // Emit quote response for UI — include provider identity
   emitNegotiationEvent(req.sessionId, {
     type: "quote_received",
     depth: req.depth,
@@ -167,6 +189,7 @@ export async function requestQuote(req: QuoteRequest): Promise<QuoteResponse> {
     negotiationId,
     quotedLamports: quotedLamports.toString(),
     ratePer1kTokens: provider.default_rate_per_1k_tokens.toString(),
+    identity: { signed: true, signerPublicKey: signMessage(req.providerId, {}).signerPublicKey },
     timestamp: new Date().toISOString(),
   });
 
@@ -241,7 +264,7 @@ export async function acceptQuote(
     { negotiationId, agreedLamports: neg.quoted_lamports }, depth
   );
 
-  // Emit for UI
+  // Emit for UI — include identity verification
   emitNegotiationEvent(sessionId, {
     type: "quote_accepted",
     depth,
@@ -249,6 +272,11 @@ export async function acceptQuote(
     toAgent: { id: neg.provider_agent_id, name: neg.provider_name },
     negotiationId,
     agreedLamports: neg.quoted_lamports,
+    identity: {
+      signed: true,
+      requesterKey: signMessage(requesterId, {}).signerPublicKey,
+      providerKey: signMessage(neg.provider_agent_id, {}).signerPublicKey,
+    },
     timestamp: new Date().toISOString(),
   });
 
@@ -347,6 +375,7 @@ export async function logResultMessage(
     costLamports: costLamports.toString(),
     tokensUsed,
     txSignature,
+    identity: { signed: true, verified: true, signerPublicKey: signMessage(fromAgentId, {}).signerPublicKey },
     timestamp: new Date().toISOString(),
   });
 }

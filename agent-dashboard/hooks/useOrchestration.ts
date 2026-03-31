@@ -29,6 +29,8 @@ export type AgentEventType =
   | "agent_executing"
   | "sub_delegation"
   | "result_delivered"
+  | "identity_verified"
+  | "reputation_updated"
   | "assembling"
   | "session_complete"
   | "session_failed"
@@ -73,6 +75,24 @@ export interface AgentEvent {
   error?: string;
   sessionId?: string;
   userPrompt?: string;
+
+  // Identity
+  publicKey?: string;
+  verified?: boolean;
+  reason?: string;
+  identity?: {
+    signed?: boolean;
+    verified?: boolean;
+    signerPublicKey?: string;
+    requesterKey?: string;
+    providerKey?: string;
+  };
+
+  // Reputation
+  previousScore?: number;
+  newScore?: number;
+  delta?: number;
+  reputationTxSignature?: string;
 }
 
 export interface SubtaskPlan {
@@ -165,6 +185,11 @@ export function useOrchestration() {
             break;
 
           case "result_delivered":
+            addEvent(data);
+            break;
+
+          case "identity_verified":
+          case "reputation_updated":
             addEvent(data);
             break;
 

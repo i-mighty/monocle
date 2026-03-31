@@ -16,6 +16,7 @@ const AGENT_CONFIG: Record<string, { emoji: string; color: string; bg: string; b
   "researcher-001":   { emoji: "⬡", color: "#60a5fa", bg: "rgba(96,165,250,0.12)",  border: "rgba(96,165,250,0.25)" },
   "writer-001":       { emoji: "⬡", color: "#f9a8d4", bg: "rgba(249,168,212,0.12)", border: "rgba(249,168,212,0.25)" },
   "coder-001":        { emoji: "⬡", color: "#4ade80", bg: "rgba(74,222,128,0.12)",  border: "rgba(74,222,128,0.25)" },
+  "image-001":        { emoji: "⬡", color: "#a78bfa", bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.25)" },
   "factcheck-001":    { emoji: "⬡", color: "#fbbf24", bg: "rgba(251,191,36,0.12)",  border: "rgba(251,191,36,0.25)" },
   "formatter-001":    { emoji: "⬡", color: "#f87171", bg: "rgba(248,113,113,0.12)", border: "rgba(248,113,113,0.25)" },
   "default":          { emoji: "⬡", color: "#94a3b8", bg: "rgba(148,163,184,0.1)",  border: "rgba(148,163,184,0.2)" },
@@ -26,6 +27,7 @@ const AGENT_NAMES: Record<string, string> = {
   "researcher-001":   "Research Agent",
   "writer-001":       "Writer Agent",
   "coder-001":        "Code Agent",
+  "image-001":        "Image Agent",
   "factcheck-001":    "FactCheck Agent",
   "formatter-001":    "Formatter Agent",
 };
@@ -111,6 +113,25 @@ function StatusBar({ status, agentCount, totalCost, durationMs }: {
   );
 }
 
+// ─── Identity badge (inline lock icon with truncated key) ─────────────────────
+function IdentityBadge({ identity }: { identity?: AgentEvent["identity"] }) {
+  if (!identity?.signed) return null;
+  const key = identity.signerPublicKey ?? identity.requesterKey;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: "3px", marginLeft: "4px",
+      fontSize: "10px", fontFamily: "'JetBrains Mono',monospace",
+      color: "rgba(74,222,128,0.7)",
+      padding: "1px 5px",
+      background: "rgba(74,222,128,0.06)",
+      border: "1px solid rgba(74,222,128,0.12)",
+      borderRadius: "3px",
+    }} title={key ? `Signed by ${key}` : "Cryptographically signed"}>
+      🔐{key ? ` ${key.slice(0, 4)}…${key.slice(-3)}` : ""}
+    </span>
+  );
+}
+
 // ─── Individual event card ─────────────────────────────────────────────────────
 function EventCard({ event }: { event: AgentEvent }) {
   const [expanded, setExpanded] = useState(false);
@@ -175,6 +196,7 @@ function EventCard({ event }: { event: AgentEvent }) {
               padding: "1px 6px", background: "rgba(251,191,36,0.08)",
               border: "1px solid rgba(251,191,36,0.15)", borderRadius: "4px",
             }}>{event.taskType}</span>
+            <IdentityBadge identity={event.identity} />
           </div>
         );
 
@@ -189,6 +211,7 @@ function EventCard({ event }: { event: AgentEvent }) {
             <span style={{ color: "rgba(241,241,245,0.3)" }}>
               ({event.ratePer1kTokens} lam/1k tokens)
             </span>
+            <IdentityBadge identity={event.identity} />
           </div>
         );
 
@@ -202,6 +225,7 @@ function EventCard({ event }: { event: AgentEvent }) {
               color: "#4ade80", fontFamily: "'JetBrains Mono',monospace", fontWeight: 600,
             }}>{event.agreedLamports} lam</span>
             <span style={{ color: "rgba(241,241,245,0.3)" }}>— payment escrowed</span>
+            <IdentityBadge identity={event.identity} />
           </div>
         );
 
@@ -245,6 +269,7 @@ function EventCard({ event }: { event: AgentEvent }) {
               <span style={{ color: "#4ade80", fontFamily: "'JetBrains Mono',monospace", fontSize: "11px" }}>
                 {event.costLamports} lam · {event.tokensUsed} tokens
               </span>
+              <IdentityBadge identity={event.identity} />
               {event.txSignature && (
                 <a
                   href={`https://explorer.solana.com/tx/${event.txSignature}?cluster=devnet`}
@@ -278,6 +303,78 @@ function EventCard({ event }: { event: AgentEvent }) {
                   </span>
                 )}
               </div>
+            )}
+          </div>
+        );
+
+      case "identity_verified":
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
+            <span style={{ color: event.verified ? "#4ade80" : "#f87171", fontSize: "14px" }}>
+              {event.verified ? "🔐" : "⚠"}
+            </span>
+            <AgentChip cfg={fromCfg} name={getAgentName(event.agentId, event.agentName)} />
+            <span style={{ color: event.verified ? "rgba(74,222,128,0.8)" : "#f87171" }}>
+              {event.verified ? "identity verified" : "identity verification failed"}
+            </span>
+            {event.publicKey && (
+              <span style={{
+                fontFamily: "'JetBrains Mono',monospace", fontSize: "10px",
+                color: "rgba(180,169,255,0.6)",
+                padding: "1px 6px",
+                background: "rgba(180,169,255,0.06)",
+                border: "1px solid rgba(180,169,255,0.12)",
+                borderRadius: "4px",
+              }}>
+                {event.publicKey.slice(0, 6)}...{event.publicKey.slice(-4)}
+              </span>
+            )}
+            {!event.verified && event.reason && (
+              <span style={{ color: "rgba(248,113,113,0.7)", fontSize: "11px" }}>
+                — {event.reason}
+              </span>
+            )}
+          </div>
+        );
+
+      case "reputation_updated":
+        const isPositive = (event.delta ?? 0) >= 0;
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
+            <span style={{ fontSize: "13px" }}>{isPositive ? "⬆" : "⬇"}</span>
+            <AgentChip cfg={fromCfg} name={getAgentName(event.agentId, event.agentName)} />
+            <span style={{ color: "rgba(241,241,245,0.4)" }}>reputation</span>
+            <span style={{
+              color: isPositive ? "#4ade80" : "#f87171",
+              fontFamily: "'JetBrains Mono',monospace", fontWeight: 600,
+            }}>
+              {isPositive ? "+" : ""}{event.delta}
+            </span>
+            <span style={{
+              fontFamily: "'JetBrains Mono',monospace", fontSize: "11px",
+              color: "rgba(241,241,245,0.5)",
+              padding: "1px 6px",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: "4px",
+            }}>
+              {event.previousScore} → {event.newScore}
+            </span>
+            {event.reputationTxSignature && (
+              <a
+                href={`https://explorer.solana.com/tx/${event.reputationTxSignature}?cluster=devnet`}
+                target="_blank" rel="noopener noreferrer"
+                style={{
+                  marginLeft: "auto", fontSize: "10.5px",
+                  color: "rgba(180,169,255,0.7)", fontFamily: "'JetBrains Mono',monospace",
+                  textDecoration: "none", padding: "1px 6px",
+                  background: "rgba(180,169,255,0.08)",
+                  border: "1px solid rgba(180,169,255,0.15)",
+                  borderRadius: "4px",
+                }}
+              >
+                memo {event.reputationTxSignature.slice(0,6)}…{event.reputationTxSignature.slice(-4)} ↗
+              </a>
             )}
           </div>
         );
