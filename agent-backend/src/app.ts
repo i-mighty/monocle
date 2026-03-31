@@ -22,6 +22,7 @@ import apiKeys from "./routes/apiKeys";
 import deposits from "./routes/deposits";
 import chat from "./routes/chat";
 import x402Feed from "./routes/x402Feed";
+import orchestrate from "./routes/orchestrate";
 import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 import { getDemoStatus } from "./middleware/demoOnly";
 import { rateLimit, ipRateLimit, slowDown } from "./middleware/rateLimit";
@@ -82,6 +83,7 @@ v1.use("/activity", activity);
 v1.use("/api-keys", apiKeys);
 v1.use("/deposits", deposits);
 v1.use("/chat", chat);
+v1.use("/orchestrate", orchestrate);
 
 // Mount v1 API
 app.use("/v1", v1);
