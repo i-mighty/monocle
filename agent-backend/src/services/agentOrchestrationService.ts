@@ -16,10 +16,14 @@ import {
   logResultMessage,
   emitNegotiationEvent,
 } from "./agentNegotiationService";
+import { initializeAgentIdentities, signMessage, verifyAgentMessage } from "./agentIdentityService";
+import { updateReputation, getAgentReputations, reputationAdjustedBudget } from "./onChainReputationService";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const IMAGE_GEN_API_KEY = process.env.TOGETHER_API_KEY ?? process.env.IMAGE_GEN_API_KEY;
 const ORCHESTRATOR_ID = "orchestrator-001";
 const MAX_DEPTH = 3;
+const GROQ_VISION_MODEL = "llama-3.2-90b-vision-preview";
 
 // ─── Specialist registry ──────────────────────────────────────────────────────
 // Maps task types to agent IDs (matches agents seeded in migration)
@@ -27,6 +31,7 @@ const SPECIALIST_MAP: Record<string, { agentId: string; name: string }> = {
   research:   { agentId: "researcher-001",  name: "Research Agent" },
   write:      { agentId: "writer-001",       name: "Writer Agent" },
   code:       { agentId: "coder-001",        name: "Code Agent" },
+  image:      { agentId: "image-001",        name: "Image Agent" },
   factcheck:  { agentId: "factcheck-001",    name: "FactCheck Agent" },
   format:     { agentId: "formatter-001",    name: "Formatter Agent" },
   general:    { agentId: "researcher-001",   name: "Research Agent" },
@@ -82,7 +87,8 @@ async function decomposeTask(
 
   const systemPrompt = `You are an AI orchestrator. Given a user request, decompose it into 2-4 subtasks that can be executed by specialist agents in parallel or sequence.
 
-Available agent types: research, write, code, factcheck, format, general
+Available agent types: research, write, code, image, factcheck, format, general
+- Use "image" for any task that involves generating, creating, or drawing images/pictures/illustrations/diagrams.
 
 Respond ONLY with valid JSON array. No markdown, no explanation:
 [
@@ -169,6 +175,17 @@ function fallbackDecompose(prompt: string): SubTask[] {
     });
   }
 
+  if (lower.includes("image") || lower.includes("picture") || lower.includes("draw")
+      || lower.includes("illustration") || lower.includes("generate an image")
+      || lower.includes("photo") || lower.includes("diagram")) {
+    tasks.push({
+      id: "task-image", type: "image",
+      description: `Generate an image for: ${prompt}`,
+      estimatedTokens: 500, maxBudget: 2000, dependsOn: [],
+      depth: 1, parentAgentId: ORCHESTRATOR_ID,
+    });
+  }
+
   if (tasks.length === 0) {
     tasks.push({
       id: "task-1", type: "research",
@@ -187,6 +204,153 @@ function fallbackDecompose(prompt: string): SubTask[] {
   return tasks;
 }
 
+// ─── Image generation via Together AI (Flux) ─────────────────────────────────
+const TOGETHER_IMAGE_URL = "https://api.together.xyz/v1/images/generations";
+
+async function executeImageGeneration(
+  sessionId: string,
+  task: SubTask,
+  previousResults: Map<string, string>,
+): Promise<{ result: string; tokensUsed: number }> {
+  const specialist = SPECIALIST_MAP.image;
+
+  // Build context from dependencies for richer prompts
+  const context = (task.dependsOn ?? [])
+    .map((id) => previousResults.get(id))
+    .filter(Boolean)
+    .join("\n");
+
+  const imagePrompt = context
+    ? `${task.description}\n\nAdditional context: ${context.slice(0, 200)}`
+    : task.description;
+
+  emitNegotiationEvent(sessionId, {
+    type: "agent_executing",
+    depth: task.depth,
+    agentId: specialist.agentId,
+    agentName: specialist.name,
+    taskType: "image",
+    taskDescription: task.description,
+    timestamp: new Date().toISOString(),
+  });
+
+  if (!IMAGE_GEN_API_KEY) {
+    // Simulation mode — return a placeholder
+    await sleep(1200);
+    const placeholder = `[Image generated for: "${task.description.slice(0, 80)}"]\nhttps://placehold.co/1024x1024/1a1a2e/b4a9ff?text=Monocle+Image+Agent`;
+    return { result: placeholder, tokensUsed: task.estimatedTokens };
+  }
+
+  try {
+    const response = await fetch(TOGETHER_IMAGE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${IMAGE_GEN_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: "black-forest-labs/FLUX.1-schnell-Free",
+        prompt: imagePrompt.slice(0, 1000),
+        width: 1024,
+        height: 1024,
+        n: 1,
+        response_format: "url",
+      }),
+    });
+
+    const data = await response.json();
+    const imageUrl = data.data?.[0]?.url;
+
+    if (!imageUrl) {
+      return {
+        result: `[Image generation failed: ${data.error?.message ?? "No URL returned"}]`,
+        tokensUsed: task.estimatedTokens,
+      };
+    }
+
+    const result = `![Generated Image](${imageUrl})\n\nPrompt: ${imagePrompt.slice(0, 200)}`;
+    // Trigger multimodal verification sub-delegation for images
+    if (task.depth < MAX_DEPTH - 1) {
+      await maybeSubDelegate(sessionId, task, result, SPECIALIST_MAP.image.agentId);
+    }
+    return { result, tokensUsed: task.estimatedTokens };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      result: `[Image generation error: ${msg}]`,
+      tokensUsed: task.estimatedTokens,
+    };
+  }
+}
+
+// ─── Multimodal verification via Groq Vision ─────────────────────────────────
+async function executeMultimodalVerification(
+  sessionId: string,
+  task: SubTask,
+  imageUrl: string,
+): Promise<{ result: string; tokensUsed: number }> {
+  const specialist = SPECIALIST_MAP.factcheck;
+
+  emitNegotiationEvent(sessionId, {
+    type: "agent_executing",
+    depth: task.depth,
+    agentId: specialist.agentId,
+    agentName: specialist.name,
+    taskType: "factcheck",
+    taskDescription: task.description,
+    timestamp: new Date().toISOString(),
+  });
+
+  if (!GROQ_API_KEY) {
+    await sleep(800);
+    return {
+      result: `[Vision review of image: alignment 8/10, no issues detected]`,
+      tokensUsed: task.estimatedTokens,
+    };
+  }
+
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_VISION_MODEL,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: task.description,
+              },
+              {
+                type: "image_url",
+                image_url: { url: imageUrl },
+              },
+            ],
+          },
+        ],
+        max_tokens: 512,
+        temperature: 0.3,
+      }),
+    });
+
+    const data = await response.json();
+    const result = data.choices?.[0]?.message?.content ?? "Vision review unavailable";
+    const tokensUsed = data.usage?.total_tokens ?? task.estimatedTokens;
+    return { result, tokensUsed };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      result: `[Vision verification error: ${msg}]`,
+      tokensUsed: task.estimatedTokens,
+    };
+  }
+}
+
 // ─── Execute a single subtask via Groq ────────────────────────────────────────
 async function executeSubtask(
   sessionId: string,
@@ -194,6 +358,11 @@ async function executeSubtask(
   previousResults: Map<string, string>,
   callerAgentId: string
 ): Promise<{ result: string; tokensUsed: number }> {
+  // Route image tasks to the image generation pipeline
+  if (task.type === "image") {
+    return executeImageGeneration(sessionId, task, previousResults);
+  }
+
   const specialist = SPECIALIST_MAP[task.type];
 
   // Build context from dependencies
@@ -254,13 +423,29 @@ async function executeSubtask(
   const result = data.choices?.[0]?.message?.content ?? "No response";
   const tokensUsed = data.usage?.total_tokens ?? task.estimatedTokens;
 
-  // Depth-2 sub-delegation: researcher might request fact-checking
-  if (task.depth < MAX_DEPTH - 1 && task.type === "research" && tokensUsed > 500) {
+  // Depth-2 sub-delegation: verification for research, code, writing, and image tasks
+  const VERIFIABLE_TYPES: Set<string> = new Set(["research", "code", "write", "image"]);
+  if (task.depth < MAX_DEPTH - 1 && VERIFIABLE_TYPES.has(task.type) && tokensUsed > 500) {
     await maybeSubDelegate(sessionId, task, result, specialist.agentId);
   }
 
   return { result, tokensUsed };
 }
+
+// ─── Verification prompt templates per task type ─────────────────────────────
+const VERIFICATION_PROMPTS: Record<string, (result: string) => string> = {
+  research: (r) => `Verify key claims in this research for factual accuracy: ${r.slice(0, 300)}`,
+  code:     (r) => `Review this code for bugs, security vulnerabilities, and correctness: ${r.slice(0, 300)}`,
+  write:    (r) => `Check this text for factual accuracy, grammar issues, and tone consistency: ${r.slice(0, 300)}`,
+  image:    (r) => `Review this generated image for alignment with the original prompt, visual quality, and any artifacts or inappropriate content. Original request: ${r.slice(0, 200)}`,
+};
+
+const DELEGATION_MESSAGES: Record<string, (from: string) => string> = {
+  research: (from) => `${from} is delegating fact-checking to FactCheck Agent`,
+  code:     (from) => `${from} is delegating code review to FactCheck Agent`,
+  write:    (from) => `${from} is delegating quality review to FactCheck Agent`,
+  image:    (from) => `${from} is delegating visual verification to FactCheck Agent (vision model)`,
+};
 
 // ─── Optional sub-delegation (depth 2) ───────────────────────────────────────
 async function maybeSubDelegate(
@@ -269,10 +454,16 @@ async function maybeSubDelegate(
   parentResult: string,
   parentAgentId: string
 ): Promise<void> {
+  const promptFn = VERIFICATION_PROMPTS[parentTask.type];
+  const msgFn = DELEGATION_MESSAGES[parentTask.type];
+  if (!promptFn || !msgFn) return; // unsupported type — skip
+
+  const fromName = SPECIALIST_MAP[parentTask.type]?.name ?? parentAgentId;
+
   const subTask: SubTask = {
     id: `${parentTask.id}-factcheck`,
     type: "factcheck",
-    description: `Verify key claims in this research: ${parentResult.slice(0, 300)}`,
+    description: promptFn(parentResult),
     estimatedTokens: 400,
     maxBudget: 1000,
     dependsOn: [parentTask.id],
@@ -285,7 +476,7 @@ async function maybeSubDelegate(
     depth: 2,
     fromAgent: { id: parentAgentId },
     toAgent: SPECIALIST_MAP.factcheck,
-    message: "Research Agent is delegating fact-checking to FactCheck Agent",
+    message: msgFn(fromName),
     timestamp: new Date().toISOString(),
   });
 
@@ -301,9 +492,29 @@ async function maybeSubDelegate(
       depth: 2,
     });
 
-    const { result, tokensUsed } = await executeSubtask(
-      sessionId, subTask, new Map(), parentAgentId
-    );
+    let result: string;
+    let tokensUsed: number;
+
+    if (parentTask.type === "image") {
+      // Extract image URL from the parent result (markdown image or raw URL)
+      const urlMatch = parentResult.match(/https?:\/\/[^\s)]+/);
+      const imageUrl = urlMatch?.[0] ?? "";
+
+      if (imageUrl) {
+        ({ result, tokensUsed } = await executeMultimodalVerification(
+          sessionId, subTask, imageUrl
+        ));
+      } else {
+        // No URL found — fall back to text-based review
+        ({ result, tokensUsed } = await executeSubtask(
+          sessionId, subTask, new Map(), parentAgentId
+        ));
+      }
+    } else {
+      ({ result, tokensUsed } = await executeSubtask(
+        sessionId, subTask, new Map(), parentAgentId
+      ));
+    }
 
     const cost = BigInt(neg.agreedLamports);
     await logResultMessage(
@@ -323,6 +534,9 @@ export async function orchestrateTask(
   userId: string = "anonymous"
 ): Promise<OrchestrationResult> {
   const startTime = Date.now();
+
+  // Initialize agent identities (generates keypairs, stores public keys)
+  await initializeAgentIdentities();
 
   // Create session record
   await query(
@@ -390,6 +604,15 @@ export async function orchestrateTask(
     const specialist = SPECIALIST_MAP[task.type];
 
     try {
+      // Reputation-adjusted budget: high-rep agents get higher budgets
+      let adjustedBudget = task.maxBudget;
+      try {
+        const [rep] = await getAgentReputations([specialist.agentId]);
+        if (rep) {
+          adjustedBudget = reputationAdjustedBudget(task.maxBudget, rep.reputationScore);
+        }
+      } catch (_) { /* fallback to base budget */ }
+
       // Negotiate price
       const negotiation = await negotiateAndPay({
         sessionId,
@@ -398,7 +621,7 @@ export async function orchestrateTask(
         taskType: task.type,
         taskDescription: task.description,
         estimatedTokens: task.estimatedTokens,
-        maxBudgetLamports: task.maxBudget,
+        maxBudgetLamports: adjustedBudget,
         depth: task.depth,
       });
 
@@ -417,6 +640,46 @@ export async function orchestrateTask(
         sessionId, specialist.agentId, ORCHESTRATOR_ID,
         result, actualCost, tokensUsed, task.depth
       );
+
+      // Verify agent identity — sign result and verify signature
+      const signed = signMessage(specialist.agentId, {
+        sessionId,
+        taskId: task.id,
+        resultHash: require("crypto").createHash("sha256").update(result).digest("hex").slice(0, 16),
+      });
+      const verification = await verifyAgentMessage(specialist.agentId, signed);
+
+      emitNegotiationEvent(sessionId, {
+        type: "identity_verified",
+        depth: task.depth,
+        agentId: specialist.agentId,
+        agentName: specialist.name,
+        publicKey: signed.signerPublicKey,
+        verified: verification.valid,
+        reason: verification.reason,
+        timestamp: new Date().toISOString(),
+      });
+
+      // ── Reputation updates ──────────────────────────────────────────
+      const repSuccess = await updateReputation(
+        specialist.agentId, sessionId, task.id, "success"
+      );
+      if (verification.valid) {
+        await updateReputation(specialist.agentId, sessionId, task.id, "verified");
+      } else {
+        await updateReputation(specialist.agentId, sessionId, task.id, "verification_fail");
+      }
+      emitNegotiationEvent(sessionId, {
+        type: "reputation_updated",
+        depth: task.depth,
+        agentId: specialist.agentId,
+        agentName: specialist.name,
+        previousScore: repSuccess.previousScore,
+        newScore: repSuccess.newScore,
+        delta: repSuccess.delta + (verification.valid ? 5 : -10),
+        reputationTxSignature: repSuccess.txSignature,
+        timestamp: new Date().toISOString(),
+      });
 
       subtaskResults.push({
         taskId: task.id,
@@ -441,6 +704,24 @@ export async function orchestrateTask(
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`Subtask ${task.id} failed:`, errMsg);
+
+      // Reputation penalty for failure
+      try {
+        const repFail = await updateReputation(
+          specialist.agentId, sessionId, task.id, "failure"
+        );
+        emitNegotiationEvent(sessionId, {
+          type: "reputation_updated",
+          depth: task.depth,
+          agentId: specialist.agentId,
+          agentName: specialist.name,
+          previousScore: repFail.previousScore,
+          newScore: repFail.newScore,
+          delta: repFail.delta,
+          reputationTxSignature: repFail.txSignature,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (_) { /* reputation update failure is non-fatal */ }
 
       emitNegotiationEvent(sessionId, {
         type: "subtask_failed",
