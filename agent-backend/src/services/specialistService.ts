@@ -2,11 +2,12 @@
 // SPECIALIST AGENT SERVICE: Execute AI Requests
 // =============================================================================
 // Handles execution of requests through different AI providers:
+// - Groq (Llama 3.3 70B — free tier, fast)
 // - OpenAI (GPT-4, DALL-E)
 // - Anthropic (Claude)
 // - Google (Gemini)
 //
-// Integrates with AgentPay for metering and payment.
+// Integrates with Monocle for metering and payment.
 // Includes escrow-based payment protection.
 // =============================================================================
 
@@ -154,6 +155,10 @@ function truncateConversation(
 // import Anthropic from '@anthropic-ai/sdk';
 
 const PROVIDER_CONFIGS = {
+  groq: {
+    baseUrl: "https://api.groq.com/openai/v1",
+    apiKeyEnv: "GROQ_API_KEY"
+  },
   openai: {
     baseUrl: "https://api.openai.com/v1",
     apiKeyEnv: "OPENAI_API_KEY"
@@ -171,6 +176,64 @@ const PROVIDER_CONFIGS = {
 // =============================================================================
 // AI PROVIDER EXECUTION
 // =============================================================================
+
+async function executeGroq(
+  model: string,
+  messages: ConversationMessage[],
+  systemPrompt?: string
+): Promise<ExecutionResult> {
+  const apiKey = process.env.GROQ_API_KEY;
+
+  if (!apiKey) {
+    return simulateResponse("groq", model, messages);
+  }
+
+  try {
+    const startTime = Date.now();
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+          ...messages
+        ],
+        max_tokens: 2048
+      })
+    });
+
+    const data = await response.json();
+    const latencyMs = Date.now() - startTime;
+
+    if (!response.ok) {
+      throw new Error(data.error?.message || `Groq API error ${response.status}`);
+    }
+
+    return {
+      success: true,
+      response: data.choices[0].message.content,
+      usage: {
+        inputTokens: data.usage?.prompt_tokens || 0,
+        outputTokens: data.usage?.completion_tokens || 0,
+        totalTokens: data.usage?.total_tokens || 0
+      },
+      latencyMs
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      response: "",
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      latencyMs: 0,
+      error: error.message
+    };
+  }
+}
 
 async function executeOpenAI(
   model: string,
@@ -361,7 +424,7 @@ async function executeGoogle(
 }
 
 // =============================================================================
-// SIMULATED RESPONSES (FOR DEMO WITHOUT API KEYS)
+// SIMULATED RESPONSES (FALLBACK WHEN NO API KEYS ARE CONFIGURED)
 // =============================================================================
 
 function simulateResponse(
@@ -372,14 +435,10 @@ function simulateResponse(
   const lastMessage = messages[messages.length - 1];
   const query = lastMessage?.content || "";
   
-  // Simulate processing time
-  const latencyMs = 500 + Math.random() * 1500;
-  
-  // Estimate tokens
+  const latencyMs = 300 + Math.random() * 700;
   const inputTokens = messages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);
   
-  // Generate contextual demo response
-  let response = generateDemoResponse(query, provider, model);
+  let response = generateDemoResponse(query);
   const outputTokens = Math.ceil(response.length / 4);
 
   return {
@@ -394,110 +453,72 @@ function simulateResponse(
   };
 }
 
-function generateDemoResponse(query: string, provider: string, model: string): string {
-  const lowerQuery = query.toLowerCase();
+function generateDemoResponse(query: string): string {
+  const q = query.toLowerCase();
   
-  // Task-specific demo responses
-  if (lowerQuery.includes("code") || lowerQuery.includes("function") || lowerQuery.includes("program")) {
-    return `Here's a solution using ${model}:
+  if (q.includes("code") || q.includes("function") || q.includes("program") || q.includes("implement")) {
+    return `Here's an implementation:
 
 \`\`\`javascript
-// Example implementation
 function processData(input) {
-  // Validate input
   if (!input || typeof input !== 'object') {
     throw new Error('Invalid input');
   }
   
-  // Process the data
-  const result = Object.entries(input)
-    .filter(([key, value]) => value !== null)
+  return Object.entries(input)
+    .filter(([_, value]) => value !== null)
     .map(([key, value]) => ({ key, value: String(value) }));
-  
-  return result;
 }
 
-// Usage
 const output = processData({ name: "test", value: 42 });
 console.log(output);
 \`\`\`
 
-This implementation handles edge cases and provides type safety. Let me know if you need modifications!`;
+This handles null filtering and type coercion. Want me to adapt it for your specific use case?`;
   }
   
-  if (lowerQuery.includes("research") || lowerQuery.includes("what is") || lowerQuery.includes("explain")) {
-    return `Based on my analysis using ${model}:
+  if (q.includes("what is") || q.includes("explain") || q.includes("how does")) {
+    const topic = query.replace(/^(what is|explain|how does)\s*/i, "").replace(/\?$/, "").trim() || "that";
+    return `**${topic.charAt(0).toUpperCase() + topic.slice(1)}**
 
-**Key Points:**
+This is a broad topic — here are the key points:
 
-1. **Overview**: The topic you're asking about is an important area with significant implications across multiple domains.
+1. **Core concept** — At its foundation, ${topic} involves understanding how components interact within a larger system.
+2. **Why it matters** — It has significant practical applications in technology, research, and engineering.
+3. **Current state** — Recent developments have expanded what's possible considerably.
 
-2. **Core Concepts**: At its foundation, this involves understanding the relationships between different components and how they interact.
-
-3. **Practical Applications**: This knowledge can be applied in various contexts including technology, business, and research.
-
-4. **Current Developments**: Recent advancements have expanded our understanding and opened new possibilities.
-
-**Summary**: This is a nuanced topic that benefits from deeper exploration. Would you like me to elaborate on any specific aspect?
-
-*Powered by AgentPay - ${provider}/${model}*`;
+Would you like me to go deeper on any specific aspect?`;
   }
-  
-  if (lowerQuery.includes("image") || lowerQuery.includes("picture") || lowerQuery.includes("generate")) {
-    return `I understand you want to generate an image. Here's what I would create:
 
-**Image Description:**
-A detailed, high-quality image based on your prompt. The composition would include:
-- Primary subject centered with good framing
-- Appropriate lighting and atmosphere
-- Professional artistic style
+  if (q.includes("translate")) {
+    return `I can translate between most major languages — English, Spanish, French, German, Chinese, Japanese, Korean, Portuguese, Italian, Russian, and more.
 
-*Note: Actual image generation requires DALL-E API key. In production, this would return an image URL.*
-
-**Estimated cost:** ~50,000 lamports for high-quality generation
-
-Would you like to proceed with image generation once API keys are configured?`;
+Please provide:\n1. The text you want translated\n2. The target language\n\nI'll preserve meaning, tone, and cultural nuance.`;
   }
-  
-  if (lowerQuery.includes("translate")) {
-    return `**Translation Result** (via ${model}):
 
-I can help translate your text between languages. Please provide:
-1. The text you want translated
-2. The target language
+  if (q.includes("image") || q.includes("picture") || q.includes("draw") || q.includes("generate")) {
+    return `I can describe an image composition for you:
 
-I support translations between:
-- English, Spanish, French, German
-- Chinese, Japanese, Korean
-- Portuguese, Italian, Russian
-- And many more...
+**Suggested composition:**
+- Primary subject centered with balanced framing
+- Soft directional lighting for depth
+- Clean, professional style
 
-*Fast and accurate translation powered by AgentPay*`;
+*Note: Real image generation requires a DALL-E API key. Once configured, this will return an actual generated image.*`;
   }
-  
-  // Default conversational response
-  return `Thank you for your question! I'm ${model}, powered by ${provider} through AgentPay's AI orchestration.
 
-Here's my response:
+  if (q.includes("math") || q.includes("calculate") || q.includes("solve") || /\d+\s*[\+\-\*\/]/.test(q)) {
+    return `I'd be happy to help with the math. Could you provide the specific equation or problem? I'll show my work step-by-step so you can follow the reasoning.`;
+  }
 
-${query.length > 50 ? "Based on your detailed query, " : ""}I can help you with this. The AgentPay system automatically routed your request to me as the best-suited agent for this type of question.
+  // Default: echo back the user's intent naturally
+  if (query.length > 20) {
+    return `That's a good question. Let me break it down:\n\n${query.length > 100
+      ? "Based on what you've described, there are a few angles to consider here. "
+      : ""}The short answer is that this depends on your specific context and requirements. Here's what I'd recommend:\n\n1. **Start with the fundamentals** — make sure you have the core concepts clear before adding complexity.\n2. **Iterate** — try the simplest approach first, then refine based on results.\n3. **Test your assumptions** — what works in theory doesn't always hold in practice.\n\nWant me to drill into any of these in more detail?`;
+  }
 
-**What I can help with:**
-- Answering questions and providing analysis
-- Code generation and debugging
-- Research and information synthesis
-- Creative writing and content
-- Mathematical calculations
-
-**How AgentPay works:**
-1. Your request is classified automatically
-2. The best specialist agent is selected
-3. I process your request
-4. Usage is metered and payment is handled seamlessly
-
-Is there anything specific you'd like me to help you with?
-
-*Response generated by AgentPay AI Router - pay only for what you use*`;
+  return `Hello! I'm ready to help. You can ask me about:\n\n- **Code** — generation, debugging, architecture\n- **Research** — analysis, fact-finding, synthesis\n- **Writing** — drafting, editing, style improvement\n- **Math** — calculations, step-by-step solutions\n- **Translation** — between 20+ languages\n\nWhat would you like to work on?`;
 }
 
 // =============================================================================
@@ -514,6 +535,8 @@ export async function executeSpecialistRequest(
 
   // Route to appropriate provider
   switch (agent.provider) {
+    case "groq":
+      return executeGroq(agent.model, messages, systemPrompt);
     case "openai":
       return executeOpenAI(agent.model, messages, systemPrompt);
     case "anthropic":
@@ -527,16 +550,16 @@ export async function executeSpecialistRequest(
 }
 
 function buildSystemPrompt(agent: SpecialistAgent, taskType: TaskType): string {
-  const basePrompt = `You are ${agent.name}, a specialized AI assistant powered by AgentPay.`;
+  const basePrompt = `You are Monocle, an AI agent marketplace that automatically routes requests to the best specialist agent. You are currently powered by the ${agent.name} specialist. When asked to introduce yourself, say you are Monocle — an intelligent AI router that connects users to the best AI agent for any task. Mention you can help with: code generation & debugging, research & analysis, creative writing, math & reasoning, translation, and image generation. You settle payments on Solana using the x402 protocol. Be helpful, concise, and conversational. Never say you are a "language model" — you are Monocle.`;
   
   const taskPrompts: Record<TaskType, string> = {
-    research: `${basePrompt} You excel at research, fact-finding, and providing accurate, well-sourced information. Be thorough but concise.`,
-    image: `${basePrompt} You help users create and describe images. Provide detailed descriptions and guidance for image generation.`,
-    code: `${basePrompt} You are an expert programmer. Write clean, well-documented code. Explain your solutions clearly.`,
-    reasoning: `${basePrompt} You provide thoughtful analysis and balanced perspectives. Help users think through problems.`,
-    writing: `${basePrompt} You are a skilled writer. Help users craft compelling content with proper structure and style.`,
-    math: `${basePrompt} You excel at mathematics. Show your work step-by-step and verify calculations.`,
-    translation: `${basePrompt} You are a precise translator. Maintain meaning, tone, and cultural nuances in translations.`,
+    research: `${basePrompt} For this task, lean into research skills: fact-finding, synthesis, and well-sourced information.`,
+    image: `${basePrompt} For this task, help with image creation: detailed descriptions and guidance for image generation.`,
+    code: `${basePrompt} For this task, be an expert programmer: clean code, clear explanations, best practices.`,
+    reasoning: `${basePrompt} For this task, provide thoughtful analysis and balanced perspectives.`,
+    writing: `${basePrompt} For this task, craft compelling content with proper structure and style.`,
+    math: `${basePrompt} For this task, show work step-by-step and verify calculations.`,
+    translation: `${basePrompt} For this task, translate precisely while maintaining meaning, tone, and cultural nuance.`,
     unknown: basePrompt
   };
 

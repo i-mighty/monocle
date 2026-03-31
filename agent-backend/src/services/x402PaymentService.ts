@@ -102,11 +102,14 @@ export async function createPayingFetch(): Promise<typeof globalThis.fetch> {
     const { SOLANA_DEVNET_CAIP2, SOLANA_MAINNET_CAIP2 } = await import("@x402/svm");
     const { createKeyPairSignerFromBytes } = await import("@solana/kit");
 
-    // Parse private key (supports base58 or JSON byte array)
+    // Parse private key (supports JSON byte array, hex, or base58)
     let keyBytes: Uint8Array;
     if (privateKeyEnv.startsWith("[")) {
       const parsed = JSON.parse(privateKeyEnv) as number[];
       keyBytes = new Uint8Array(parsed);
+    } else if (/^[0-9a-fA-F]{128}$/.test(privateKeyEnv)) {
+      // 64-byte hex-encoded secret key
+      keyBytes = new Uint8Array(Buffer.from(privateKeyEnv, "hex"));
     } else {
       // Base58 encoded
       const bs58 = await import("bs58");

@@ -1,4 +1,4 @@
-export type AgentProvider = 'openai' | 'anthropic' | 'google' | 'custom';
+export type AgentProvider = 'openai' | 'anthropic' | 'google' | 'groq' | 'custom';
 
 export interface Agent {
   agentId: string;
@@ -29,6 +29,7 @@ export interface StreamChunk {
   // routing events
   taskType?: string;
   confidence?: number;
+  estimatedCostLamports?: number;
   agent?: { id: string; name: string; model: string };
   // done events
   done?: boolean;
@@ -39,6 +40,7 @@ export interface StreamChunk {
   routing?: { taskType: string; confidence: number };
   latencyMs?: number;
   txSignature?: string;
+  x402AmountUsdc?: number | null;
   // error events
   error?: { code: string; message: string } | string;
   partialContent?: string;
@@ -63,6 +65,7 @@ export interface Message {
   latencyMs?: number;
   costLamports?: number;
   txSignature?: string;
+  x402AmountUsdc?: number | null;
   timestamp: Date;
   streaming?: boolean;
   attachments?: Attachment[];

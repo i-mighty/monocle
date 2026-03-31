@@ -27,6 +27,7 @@ function inferProvider(model: string): AgentProvider {
   if (m.includes('gpt') || m.includes('openai') || m.includes('o1') || m.includes('o3') || m.includes('o4')) return 'openai';
   if (m.includes('claude') || m.includes('anthropic') || m.includes('sonnet') || m.includes('opus') || m.includes('haiku')) return 'anthropic';
   if (m.includes('gemini') || m.includes('google') || m.includes('palm')) return 'google';
+  if (m.includes('llama') || m.includes('groq') || m.includes('mixtral')) return 'groq';
   return 'custom';
 }
 
@@ -127,7 +128,7 @@ export function useStreamChat(
           }
 
           // ── routing event ─────────────────────────────────
-          // Backend sends: { type: "routing", taskType, confidence, agent: { id, name, model } }
+          // Backend sends: { type: "routing", taskType, confidence, estimatedCostLamports, agent: { id, name, model } }
           if (chunk.type === 'routing' && chunk.agent) {
             const provider = inferProvider(chunk.agent.model);
             routingDecision = {
@@ -146,7 +147,7 @@ export function useStreamChat(
               classificationMethod: 'keyword',
               candidatesConsidered: 1,
               latencyMs: 0,
-              estimatedCostLamports: 0,
+              estimatedCostLamports: chunk.estimatedCostLamports || 0,
             };
 
             options.onRoutingDecision?.(routingDecision);
@@ -206,6 +207,7 @@ export function useStreamChat(
                       latencyMs: latency,
                       costLamports,
                       txSignature: chunk.txSignature,
+                      x402AmountUsdc: chunk.x402AmountUsdc ?? null,
                       routing: routingDecision,
                     }
                   : m
