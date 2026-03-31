@@ -13,7 +13,8 @@ import { adminAuth } from "../middleware/adminAuth";
 import { routeRequest, classifyTask, getSpecialistAgents, logRoutingDecision, TaskType } from "../services/routerService";
 import { executeChat, calculateCost } from "../services/specialistService";
 import { logRequest, buildLogEntry, getAgentStats, getClassificationStats, getTaskTypeStats, getRecentFailures, explainRoutingDecision } from "../services/requestLogger";
-import { query } from "../db/client";
+import { query as dbQuery } from "../db/client";
+import { needsOrchestration, executeOrchestration } from "../services/orchestratorService";
 
 const router = Router();
 
@@ -168,6 +169,20 @@ router.post("/stream", apiKeyAuth, async (req: Request, res: Response) => {
   let accumulatedContent = "";
 
   try {
+    // ─── Check for multi-agent orchestration ──────────────────
+    if (needsOrchestration(message)) {
+      console.log(`[Chat] Multi-agent orchestration triggered for: "${message.slice(0, 80)}..."`);
+
+      await executeOrchestration(message, userId, (event) => {
+        sendEvent(event);
+      });
+
+      res.write("data: [DONE]\n\n");
+      res.end();
+      return;
+    }
+
+    // ─── Single-agent path (existing behavior) ────────────────
     // 1. Route the request
     const routingDecision = await routeRequest(message, {
       preferredTaskType,
@@ -454,7 +469,7 @@ router.get("/conversations/:conversationId", apiKeyAuth, async (req: Request, re
     const { conversationId } = req.params;
     const userId = (req as any).apiKeyData?.developerId || "anonymous";
 
-    const result = await query(`
+    const result = await dbQuery(`
       SELECT * FROM conversations_ai 
       WHERE id = $1 AND user_id = $2
     `, [conversationId, userId]);
@@ -498,7 +513,7 @@ router.get("/history", apiKeyAuth, async (req: Request, res: Response) => {
     const userId = (req as any).apiKeyData?.developerId || "anonymous";
     const limit = parseInt(req.query.limit as string) || 20;
 
-    const result = await query(`
+    const result = await dbQuery(`
       SELECT id, total_tokens, total_cost_lamports, created_at, updated_at,
              (SELECT COUNT(*) FROM jsonb_array_elements(messages::jsonb)) as message_count
       FROM conversations_ai 
@@ -537,7 +552,7 @@ router.get("/stats", apiKeyAuth, async (req: Request, res: Response) => {
     const userId = (req as any).apiKeyData?.developerId || "anonymous";
 
     // Get aggregate stats
-    const result = await query(`
+    const result = await dbQuery(`
       SELECT 
         COUNT(*) as conversation_count,
         COALESCE(SUM(total_tokens), 0) as total_tokens,

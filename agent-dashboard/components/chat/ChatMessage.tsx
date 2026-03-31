@@ -145,6 +145,7 @@ export default function ChatMessage({ message, onCopy }: ChatMessageProps) {
   const agentStyle = AGENT_STYLES[provider];
   const latency = message.latencyMs;
   const cost = message.costLamports ? (message.costLamports / 1e9).toFixed(6) : null;
+  const isChainStep = message.isOrchestration && message.taskIndex != null;
 
   return (
     <div className="flex gap-3 mb-5 animate-[msgIn_0.28s_cubic-bezier(0.4,0,0.2,1)_both] group">
@@ -153,11 +154,32 @@ export default function ChatMessage({ message, onCopy }: ChatMessageProps) {
         @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
       `}</style>
 
-      <AgentAvatar provider={provider} />
+      {/* Chain connector line for orchestration steps */}
+      {isChainStep ? (
+        <div className="flex flex-col items-center flex-shrink-0">
+          {/* Vertical connector from previous agent */}
+          {(message.taskIndex ?? 0) > 0 && (
+            <div className="w-px h-3 bg-gradient-to-b from-violet-500/30 to-violet-500/10 -mt-5 mb-1" />
+          )}
+          <AgentAvatar provider={provider} />
+          {/* Vertical connector to next agent */}
+          {(message.taskIndex ?? 0) < (message.totalTasks ?? 1) - 1 && (
+            <div className="w-px flex-1 bg-gradient-to-b from-violet-500/20 to-transparent mt-1" />
+          )}
+        </div>
+      ) : (
+        <AgentAvatar provider={provider} />
+      )}
 
       <div className="flex-1 min-w-0">
         {/* header row */}
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
+          {/* Chain step badge */}
+          {isChainStep && (
+            <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-400/20">
+              Step {(message.taskIndex ?? 0) + 1}/{message.totalTasks}
+            </span>
+          )}
           <span className="text-[12px] font-medium text-white/50">
             {message.agent?.name ?? 'Agent'}
           </span>

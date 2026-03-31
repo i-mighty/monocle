@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import type { Message, StreamChunk, RoutingDecision, AgentProvider } from '../types/chat';
+import type { Message, StreamChunk, RoutingDecision, AgentProvider, OrchestrationTask } from '../types/chat';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3001';
 
@@ -20,7 +20,6 @@ interface UseStreamChatReturn {
 
 /**
  * Map a model name or agent ID to a provider.
- * The backend sends agent.model (e.g. "gpt-4", "claude-3") not a provider enum.
  */
 function inferProvider(model: string): AgentProvider {
   const m = model.toLowerCase();
@@ -65,6 +64,11 @@ export function useStreamChat(
 
     abortRef.current = new AbortController();
 
+    // Orchestration state: tracks which message ID belongs to which agent task
+    let isOrchestrationMode = false;
+    let currentAgentMsgId = assistantId;
+    const agentMsgAccumulated: Record<string, string> = {};
+
     try {
       const res = await fetch(`${BASE_URL}/v1/chat/stream`, {
         method: 'POST',
@@ -90,7 +94,7 @@ export function useStreamChat(
       let accumulatedContent = '';
       let routingDecision: RoutingDecision | undefined;
 
-      // Insert placeholder assistant message
+      // Insert placeholder assistant message (used for single-agent path)
       setMessages(prev => [
         ...prev,
         {
@@ -127,8 +131,110 @@ export function useStreamChat(
             continue;
           }
 
-          // ── routing event ─────────────────────────────────
-          // Backend sends: { type: "routing", taskType, confidence, estimatedCostLamports, agent: { id, name, model } }
+          // ═══════════════════════════════════════════════════
+          // ORCHESTRATION EVENTS (multi-agent)
+          // ═══════════════════════════════════════════════════
+
+          if (chunk.type === 'orchestration_start' && chunk.plan) {
+            isOrchestrationMode = true;
+
+            // Replace the placeholder message with an orchestration plan message
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === assistantId
+                  ? {
+                      ...m,
+                      content: `🔀 **Multi-Agent Pipeline** — ${chunk.plan!.tasks.length} agents collaborating\n\n${chunk.plan!.tasks.map((t: OrchestrationTask, i: number) => `${i + 1}. **${t.agentName}** — ${t.description}`).join('\n')}`,
+                      streaming: false,
+                      isOrchestration: true,
+                      orchestrationPlan: { chainId: chunk.plan!.chainId, tasks: chunk.plan!.tasks },
+                      agent: { name: 'Orchestrator', provider: 'custom' as AgentProvider, model: 'monocle-router' },
+                    }
+                  : m
+              )
+            );
+            continue;
+          }
+
+          if (chunk.type === 'agent_start' && chunk.agent && isOrchestrationMode) {
+            // Create a NEW message for this agent
+            const agentMsgId = crypto.randomUUID();
+            currentAgentMsgId = agentMsgId;
+            agentMsgAccumulated[agentMsgId] = '';
+
+            const provider = chunk.agent.provider
+              ? (chunk.agent.provider as AgentProvider)
+              : inferProvider(chunk.agent.model);
+
+            setMessages(prev => [
+              ...prev,
+              {
+                id: agentMsgId,
+                role: 'assistant',
+                content: '',
+                timestamp: new Date(),
+                streaming: true,
+                agent: {
+                  name: chunk.agent!.name,
+                  provider,
+                  model: chunk.agent!.model,
+                },
+                isOrchestration: true,
+                taskId: chunk.taskId,
+                taskIndex: chunk.taskIndex,
+                totalTasks: chunk.totalTasks,
+              },
+            ]);
+
+            options.onAgentActivated?.(provider);
+            continue;
+          }
+
+          if (chunk.type === 'agent_chunk' && chunk.text != null && isOrchestrationMode) {
+            agentMsgAccumulated[currentAgentMsgId] =
+              (agentMsgAccumulated[currentAgentMsgId] || '') + chunk.text;
+
+            const content = agentMsgAccumulated[currentAgentMsgId];
+            const targetId = currentAgentMsgId;
+
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === targetId ? { ...m, content, streaming: true } : m
+              )
+            );
+            continue;
+          }
+
+          if (chunk.type === 'agent_complete' && isOrchestrationMode) {
+            const targetId = currentAgentMsgId;
+
+            setMessages(prev =>
+              prev.map(m =>
+                m.id === targetId
+                  ? {
+                      ...m,
+                      streaming: false,
+                      costLamports: chunk.costLamports || 0,
+                      txSignature: chunk.txSignature,
+                      latencyMs: chunk.latencyMs,
+                    }
+                  : m
+              )
+            );
+            continue;
+          }
+
+          if (chunk.type === 'orchestration_complete' && isOrchestrationMode) {
+            // All agents done — no additional message needed,
+            // UI already shows all agent messages with their badges
+            setIsStreaming(false);
+            continue;
+          }
+
+          // ═══════════════════════════════════════════════════
+          // SINGLE-AGENT EVENTS (existing behavior)
+          // ═══════════════════════════════════════════════════
+
           if (chunk.type === 'routing' && chunk.agent) {
             const provider = inferProvider(chunk.agent.model);
             routingDecision = {
@@ -170,9 +276,7 @@ export function useStreamChat(
             );
           }
 
-          // ── chunk (token) event ───────────────────────────
-          // Backend sends: { type: "chunk", text: "...", accumulated: "..." }
-          if (chunk.type === 'chunk' && chunk.text != null) {
+          if (chunk.type === 'chunk' && chunk.text != null && !isOrchestrationMode) {
             accumulatedContent += chunk.text;
             setMessages(prev =>
               prev.map(m =>
@@ -183,13 +287,10 @@ export function useStreamChat(
             );
           }
 
-          // ── done event ────────────────────────────────────
-          // Backend sends: { type: "done", done: true, conversationId, usage, cost, agent, routing, latencyMs }
           if (chunk.type === 'done') {
             const latency = chunk.latencyMs || (Date.now() - startTime);
             const costLamports = chunk.cost?.totalLamports || 0;
 
-            // Update routing with final info if available
             if (routingDecision && chunk.routing) {
               routingDecision.latencyMs = latency;
               routingDecision.estimatedCostLamports = costLamports;

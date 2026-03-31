@@ -19,7 +19,7 @@ import { createEscrowHold, releaseEscrowHold, refundEscrowHold } from "./escrowS
 // TYPES
 // =============================================================================
 
-interface ConversationMessage {
+export interface ConversationMessage {
   role: "user" | "assistant" | "system";
   content: string;
 }
@@ -528,10 +528,11 @@ Please provide:\n1. The text you want translated\n2. The target language\n\nI'll
 export async function executeSpecialistRequest(
   agent: SpecialistAgent,
   messages: ConversationMessage[],
-  taskType: TaskType
+  taskType: TaskType,
+  systemPromptOverride?: string
 ): Promise<ExecutionResult> {
-  // Build system prompt based on task type
-  const systemPrompt = buildSystemPrompt(agent, taskType);
+  // Build system prompt based on task type (or use override for orchestration)
+  const systemPrompt = systemPromptOverride || buildSystemPrompt(agent, taskType);
 
   // Route to appropriate provider
   switch (agent.provider) {
