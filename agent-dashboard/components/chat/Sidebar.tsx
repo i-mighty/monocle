@@ -7,6 +7,7 @@ const PROVIDER_PILL: Record<AgentProvider, { label: string; cls: string }> = {
   openai:    { label: 'gpt-4o',    cls: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/15' },
   anthropic: { label: 'claude-4',  cls: 'text-violet-300 bg-violet-400/10 border-violet-400/15' },
   google:    { label: 'gemini-2',  cls: 'text-blue-400 bg-blue-400/10 border-blue-400/15' },
+  groq:      { label: 'llama-3.3', cls: 'text-orange-400 bg-orange-400/10 border-orange-400/15' },
   custom:    { label: 'custom',    cls: 'text-amber-400 bg-amber-400/10 border-amber-400/15' },
 };
 

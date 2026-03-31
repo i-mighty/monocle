@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import type { Message, AgentProvider, Attachment } from '../../types/chat';
+import { X402Badge } from './X402Badge';
 
 const AGENT_STYLES: Record<AgentProvider, { bg: string; text: string; border: string; short: string }> = {
   openai:    { bg: 'bg-emerald-400/10',  text: 'text-emerald-400',  border: 'border-emerald-400/20', short: 'G4' },
   anthropic: { bg: 'bg-violet-400/10',   text: 'text-violet-300',   border: 'border-violet-400/20',  short: 'C4' },
   google:    { bg: 'bg-blue-400/10',     text: 'text-blue-400',     border: 'border-blue-400/20',    short: 'GM' },
+  groq:      { bg: 'bg-orange-400/10',   text: 'text-orange-400',   border: 'border-orange-400/20',  short: 'GQ' },
   custom:    { bg: 'bg-amber-400/10',    text: 'text-amber-400',    border: 'border-amber-400/20',   short: 'CX' },
 };
 
@@ -188,19 +190,13 @@ export default function ChatMessage({ message, onCopy }: ChatMessageProps) {
           </>
         )}
 
-        {/* x402 transaction link */}
-        {message.txSignature && (
-          <a
-            href={`https://explorer.solana.com/tx/${message.txSignature}?cluster=devnet`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 text-xs font-mono text-green-400 bg-green-400/[0.05] border border-green-400/[0.15] rounded-md px-3 py-1.5 mb-2.5 hover:bg-green-400/[0.10] transition-colors no-underline"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse flex-shrink-0" />
-            <span>x402 settled · {message.txSignature.slice(0, 8)}...{message.txSignature.slice(-6)}</span>
-            <span className="ml-auto opacity-50">↗</span>
-          </a>
-        )}
+        {/* x402 transaction badge */}
+        <X402Badge
+          txSignature={message.txSignature}
+          amountUsdc={message.x402AmountUsdc}
+          agentName={message.agent?.name}
+          network="devnet"
+        />
 
         {/* attachments */}
         {message.attachments && message.attachments.length > 0 && (

@@ -141,6 +141,7 @@ export function getX402Middleware(): ((req: Request, res: Response, next: NextFu
 /**
  * Express middleware that applies x402 payment protection.
  * If x402 is not configured, requests pass through freely.
+ * Dashboard requests authenticated via API key bypass x402 (operator doesn't pay themselves).
  *
  * The x402 middleware buffers the response, settles with the facilitator
  * after res.end(), then replays. We hook res.end to capture the settlement
@@ -149,6 +150,13 @@ export function getX402Middleware(): ((req: Request, res: Response, next: NextFu
 export function x402ProtectMiddleware(req: Request, res: Response, next: NextFunction) {
   const mw = getX402Middleware();
   if (!mw) return next();
+
+  // Bypass x402 for authenticated dashboard / operator requests
+  const apiKey = req.header("x-api-key");
+  const expectedKey = process.env.AGENTPAY_API_KEY;
+  if (apiKey && expectedKey && apiKey === expectedKey) {
+    return next();
+  }
 
   const paymentHeader = req.header("X-PAYMENT") || req.header("x-payment") ||
                         req.header("payment-signature") || req.header("Payment-Signature");
@@ -175,7 +183,7 @@ export function x402ProtectMiddleware(req: Request, res: Response, next: NextFun
 
       (req as any).x402TxSignature = txSignature || null;
 
-      if (txSignature || settleHeader) {
+      if (txSignature || settleHeaderRaw) {
         emitX402Event({
           type: "payment_settled",
           timestamp: new Date().toISOString(),

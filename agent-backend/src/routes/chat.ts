@@ -180,6 +180,7 @@ router.post("/stream", apiKeyAuth, async (req: Request, res: Response) => {
       type: "routing",
       taskType: routingDecision.taskType,
       confidence: routingDecision.confidence,
+      estimatedCostLamports: Math.max(Math.ceil(2000 / 1000) * routingDecision.selectedAgent.ratePer1kTokens, 100),
       agent: {
         id: routingDecision.selectedAgent.agentId,
         name: routingDecision.selectedAgent.name,
@@ -243,6 +244,7 @@ router.post("/stream", apiKeyAuth, async (req: Request, res: Response) => {
       latencyMs,
       // x402 transaction signature (populated when x402 payment was settled)
       txSignature: (req as any).x402TxSignature || null,
+      x402AmountUsdc: (req as any).x402TxSignature ? parseFloat(process.env.X402_CHAT_PRICE || "0.001") : null,
     });
 
     // Log for analytics
