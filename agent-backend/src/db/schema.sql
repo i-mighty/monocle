@@ -45,6 +45,8 @@ create table if not exists agents (
   website_url text,
   logo_url text,
   categories text,
+  provider text not null default 'custom',
+  auth_header text,
   version text not null default '1.0.0',
   owner_email text,
   support_url text,
