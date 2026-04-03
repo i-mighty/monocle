@@ -14,6 +14,7 @@
 import { query } from "../db/client";
 import { SpecialistAgent, RoutingDecision, ChatResponse, TaskType } from "./routerService";
 import { createEscrowHold, releaseEscrowHold, refundEscrowHold } from "./escrowService";
+import { executeCustomAgent } from "./customAgentAdapter";
 
 // =============================================================================
 // TYPES
@@ -544,6 +545,44 @@ export async function executeSpecialistRequest(
       return executeAnthropic(agent.model, messages, systemPrompt);
     case "google":
       return executeGoogle(agent.model, messages, systemPrompt);
+    case "custom": {
+      if (!agent.endpointUrl) {
+        throw new Error(`Custom agent ${agent.agentId} has no endpointUrl registered`);
+      }
+      const startMs = Date.now();
+      try {
+        const customResult = await executeCustomAgent(
+          {
+            endpointUrl: agent.endpointUrl,
+            agentId: agent.agentId,
+            agentName: agent.name,
+            authHeader: agent.authHeader,
+            timeoutMs: 30_000,
+          },
+          messages,
+          systemPrompt,
+          taskType
+        );
+        return {
+          success: true,
+          response: customResult.content,
+          usage: {
+            inputTokens: customResult.usage.promptTokens,
+            outputTokens: customResult.usage.completionTokens,
+            totalTokens: customResult.usage.totalTokens,
+          },
+          latencyMs: Date.now() - startMs,
+        };
+      } catch (err) {
+        return {
+          success: false,
+          response: "",
+          usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+          latencyMs: Date.now() - startMs,
+          error: (err as Error).message,
+        };
+      }
+    }
     default:
       // Fallback to simulation for unknown providers
       return simulateResponse(agent.provider, agent.model, messages);

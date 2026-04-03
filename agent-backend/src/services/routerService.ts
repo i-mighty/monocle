@@ -44,13 +44,15 @@ export interface SpecialistAgent {
   name: string;
   description: string;
   taskTypes: TaskType[];
-  provider: string;           // openai, anthropic, google, etc.
+  provider: string;           // openai, anthropic, google, custom, etc.
   model: string;              // gpt-4, claude-3, gemini-pro, etc.
   ratePer1kTokens: number;    // Cost in lamports
   qualityScore: number;       // 0-100 based on user feedback
   reliabilityScore: number;   // 0-100 based on uptime/success rate
   avgLatencyMs: number;       // Average response time
   isActive: boolean;
+  endpointUrl?: string;       // For custom agents (MAP protocol)
+  authHeader?: string;        // Optional Bearer token for custom agents
 }
 
 export interface RoutingDecision {

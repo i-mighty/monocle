@@ -10,6 +10,7 @@ import { rateLimit, ipRateLimit } from "../middleware/rateLimit";
 import { randomUUID } from "crypto";
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { checkEndpointHealth } from "../services/endpointVerifyService";
+import { pingCustomAgent } from "../services/customAgentAdapter";
 
 const router = Router();
 
@@ -94,7 +95,7 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
 router.post("/register/public",
   rateLimit({ maxRequests: 5, windowMs: 60 * 60 * 1000, burstAllowance: 0 }), // 5/hour
   asyncHandler(async (req, res) => {
-    const { name, endpoint, publicKey, ratePer1kTokens, taskTypes, bio, websiteUrl, ownerEmail } = req.body;
+    const { name, endpoint, publicKey, ratePer1kTokens, taskTypes, bio, websiteUrl, ownerEmail, authHeader } = req.body;
 
     // Validate required fields
     if (!name || typeof name !== "string" || name.length < 3 || name.length > 100) {
@@ -132,11 +133,15 @@ router.post("/register/public",
     if (process.env.SKIP_ENDPOINT_VERIFY !== "true") {
       const healthCheck = await checkEndpointHealth(endpoint);
       if (!healthCheck.success) {
-        throw new AppError(
-          ErrorCodes.VALIDATION_INVALID_FORMAT,
-          { field: "endpoint", healthCheckError: healthCheck.error, latencyMs: healthCheck.latencyMs },
-          `Endpoint health check failed: ${healthCheck.error}. Your endpoint must respond to GET /health with { "status": "ok" }`
-        );
+        // Fallback: try MAP-style ping (checks /health, /, and endpoint itself)
+        const ping = await pingCustomAgent(endpoint, 5000);
+        if (!ping.alive) {
+          throw new AppError(
+            ErrorCodes.VALIDATION_INVALID_FORMAT,
+            { field: "endpoint", healthCheckError: healthCheck.error, latencyMs: ping.latencyMs },
+            `Endpoint health check failed: ${healthCheck.error}. Ensure your endpoint is publicly accessible and returns non-500 on GET /health`
+          );
+        }
       }
     }
 
@@ -193,10 +198,10 @@ router.post("/register/public",
     const agentResult = await query(
       `INSERT INTO agents (
         id, name, public_key, default_rate_per_1k_tokens, balance_lamports, pending_lamports,
-        bio, website_url, owner_email, categories, verified_status, created_at
-      ) VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7, $8, 'unverified', NOW())
+        bio, website_url, owner_email, categories, verified_status, provider, auth_header, created_at
+      ) VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7, $8, 'unverified', 'custom', $9, NOW())
       RETURNING id, name, public_key, default_rate_per_1k_tokens, created_at`,
-      [agentId, name, publicKey, rate, agentBio, websiteUrl || null, ownerEmail || null, JSON.stringify(agentTaskTypes)]
+      [agentId, name, publicKey, rate, agentBio, websiteUrl || null, ownerEmail || null, JSON.stringify(agentTaskTypes), authHeader || null]
     );
 
     // Create API key for this agent
