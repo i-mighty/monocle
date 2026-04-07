@@ -11,6 +11,7 @@
 import { query } from "../db/client";
 import { EventEmitter } from "events";
 import { signMessage, verifyAgentMessage, SignedPayload } from "./agentIdentityService";
+import { getSolName } from "./snsIdentityService";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -156,11 +157,16 @@ export async function requestQuote(req: QuoteRequest): Promise<QuoteResponse> {
   }, req.depth, req.parentMessageId);
 
   // Emit for UI — include identity info
+  const [requesterSolName, providerSolName] = await Promise.all([
+    getSolName(req.requesterId),
+    getSolName(req.providerId),
+  ]);
+
   emitNegotiationEvent(req.sessionId, {
     type: "quote_requested",
     depth: req.depth,
-    fromAgent: { id: req.requesterId },
-    toAgent: { id: req.providerId, name: provider.name },
+    fromAgent: { id: req.requesterId, solName: requesterSolName },
+    toAgent: { id: req.providerId, name: provider.name, solName: providerSolName },
     taskType: req.taskType,
     taskDescription: req.taskDescription,
     negotiationId,
@@ -184,8 +190,8 @@ export async function requestQuote(req: QuoteRequest): Promise<QuoteResponse> {
   emitNegotiationEvent(req.sessionId, {
     type: "quote_received",
     depth: req.depth,
-    fromAgent: { id: req.providerId, name: provider.name },
-    toAgent: { id: req.requesterId },
+    fromAgent: { id: req.providerId, name: provider.name, solName: providerSolName },
+    toAgent: { id: req.requesterId, solName: requesterSolName },
     negotiationId,
     quotedLamports: quotedLamports.toString(),
     ratePer1kTokens: provider.default_rate_per_1k_tokens.toString(),
@@ -265,11 +271,16 @@ export async function acceptQuote(
   );
 
   // Emit for UI — include identity verification
+  const [requesterSolName, providerSolName] = await Promise.all([
+    getSolName(requesterId),
+    getSolName(neg.provider_agent_id),
+  ]);
+
   emitNegotiationEvent(sessionId, {
     type: "quote_accepted",
     depth,
-    fromAgent: { id: requesterId },
-    toAgent: { id: neg.provider_agent_id, name: neg.provider_name },
+    fromAgent: { id: requesterId, solName: requesterSolName },
+    toAgent: { id: neg.provider_agent_id, name: neg.provider_name, solName: providerSolName },
     negotiationId,
     agreedLamports: neg.quoted_lamports,
     identity: {
@@ -366,11 +377,16 @@ export async function logResultMessage(
     txSignature,
   }, depth);
 
+  const [fromSolName, toSolName] = await Promise.all([
+    getSolName(fromAgentId),
+    getSolName(toAgentId),
+  ]);
+
   emitNegotiationEvent(sessionId, {
     type: "result_delivered",
     depth,
-    fromAgent: { id: fromAgentId },
-    toAgent: { id: toAgentId },
+    fromAgent: { id: fromAgentId, solName: fromSolName },
+    toAgent: { id: toAgentId, solName: toSolName },
     resultPreview: result.slice(0, 120) + (result.length > 120 ? "..." : ""),
     costLamports: costLamports.toString(),
     tokensUsed,

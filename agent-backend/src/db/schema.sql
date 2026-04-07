@@ -39,6 +39,7 @@ create table if not exists agents (
   verified_status text not null default 'unverified',
   verified_at timestamptz,
   verified_by text,
+  sol_name text unique,            -- .sol domain identity (e.g. researcher.monocle.sol)
   
   -- Agent profile
   bio text,

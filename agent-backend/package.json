@@ -19,6 +19,7 @@
     "test:pricing": "node src/tests/pricing-unit-test.js"
   },
   "dependencies": {
+    "@bonfida/spl-name-service": "^3.0.20",
     "@solana/web3.js": "^1.95.0",
     "@x402/express": "^2.8.0",
     "@x402/fetch": "^2.8.0",
