@@ -32,6 +32,16 @@ const AGENT_NAMES: Record<string, string> = {
   "formatter-001":    "Formatter Agent",
 };
 
+const AGENT_SOL_NAMES: Record<string, string> = {
+  "orchestrator-001": "orchestrator.monocle.sol",
+  "researcher-001":   "researcher.monocle.sol",
+  "writer-001":       "writer.monocle.sol",
+  "coder-001":        "coder.monocle.sol",
+  "image-001":        "image.monocle.sol",
+  "factcheck-001":    "factcheck.monocle.sol",
+  "formatter-001":    "formatter.monocle.sol",
+};
+
 function getAgent(id?: string) {
   if (!id) return AGENT_CONFIG.default;
   return AGENT_CONFIG[id] ?? AGENT_CONFIG.default;
@@ -40,6 +50,12 @@ function getAgent(id?: string) {
 function getAgentName(id?: string, fallback?: string) {
   if (!id) return fallback ?? "Agent";
   return AGENT_NAMES[id] ?? fallback ?? id;
+}
+
+function getAgentSolName(id?: string, eventSolName?: string): string | null {
+  if (eventSolName) return eventSolName;
+  if (!id) return null;
+  return AGENT_SOL_NAMES[id] ?? null;
 }
 
 function lamportsToSol(lam?: string | null): string {
@@ -132,6 +148,25 @@ function IdentityBadge({ identity }: { identity?: AgentEvent["identity"] }) {
   );
 }
 
+// ─── .sol name badge ──────────────────────────────────────────────────────────
+function SolBadge({ agentId, solName }: { agentId?: string; solName?: string }) {
+  const name = solName || getAgentSolName(agentId);
+  if (!name) return null;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: "3px", marginLeft: "4px",
+      fontSize: "10px", fontFamily: "'JetBrains Mono',monospace",
+      color: "rgba(180,169,255,0.85)",
+      padding: "1px 6px",
+      background: "rgba(180,169,255,0.08)",
+      border: "1px solid rgba(180,169,255,0.18)",
+      borderRadius: "3px",
+    }} title={`Solana Name: ${name}`}>
+      ◎ {name}
+    </span>
+  );
+}
+
 // ─── Individual event card ─────────────────────────────────────────────────────
 function EventCard({ event }: { event: AgentEvent }) {
   const [expanded, setExpanded] = useState(false);
@@ -196,6 +231,7 @@ function EventCard({ event }: { event: AgentEvent }) {
               padding: "1px 6px", background: "rgba(251,191,36,0.08)",
               border: "1px solid rgba(251,191,36,0.15)", borderRadius: "4px",
             }}>{event.taskType}</span>
+            <SolBadge agentId={event.toAgent?.id} solName={event.toAgent?.solName} />
             <IdentityBadge identity={event.identity} />
           </div>
         );
@@ -211,6 +247,7 @@ function EventCard({ event }: { event: AgentEvent }) {
             <span style={{ color: "rgba(241,241,245,0.3)" }}>
               ({event.ratePer1kTokens} lam/1k tokens)
             </span>
+            <SolBadge agentId={event.fromAgent?.id} solName={event.fromAgent?.solName} />
             <IdentityBadge identity={event.identity} />
           </div>
         );
@@ -225,6 +262,7 @@ function EventCard({ event }: { event: AgentEvent }) {
               color: "#4ade80", fontFamily: "'JetBrains Mono',monospace", fontWeight: 600,
             }}>{event.agreedLamports} lam</span>
             <span style={{ color: "rgba(241,241,245,0.3)" }}>— payment escrowed</span>
+            <SolBadge agentId={event.fromAgent?.id} solName={event.fromAgent?.solName} />
             <IdentityBadge identity={event.identity} />
           </div>
         );
@@ -269,6 +307,7 @@ function EventCard({ event }: { event: AgentEvent }) {
               <span style={{ color: "#4ade80", fontFamily: "'JetBrains Mono',monospace", fontSize: "11px" }}>
                 {event.costLamports} lam · {event.tokensUsed} tokens
               </span>
+              <SolBadge agentId={event.fromAgent?.id} solName={event.fromAgent?.solName} />
               <IdentityBadge identity={event.identity} />
               {event.txSignature && (
                 <a
@@ -317,6 +356,7 @@ function EventCard({ event }: { event: AgentEvent }) {
             <span style={{ color: event.verified ? "rgba(74,222,128,0.8)" : "#f87171" }}>
               {event.verified ? "identity verified" : "identity verification failed"}
             </span>
+            <SolBadge agentId={event.agentId} solName={event.solName} />
             {event.publicKey && (
               <span style={{
                 fontFamily: "'JetBrains Mono',monospace", fontSize: "10px",
@@ -343,6 +383,7 @@ function EventCard({ event }: { event: AgentEvent }) {
           <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
             <span style={{ fontSize: "13px" }}>{isPositive ? "⬆" : "⬇"}</span>
             <AgentChip cfg={fromCfg} name={getAgentName(event.agentId, event.agentName)} />
+            <SolBadge agentId={event.agentId} solName={event.solName} />
             <span style={{ color: "rgba(241,241,245,0.4)" }}>reputation</span>
             <span style={{
               color: isPositive ? "#4ade80" : "#f87171",

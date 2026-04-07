@@ -11,6 +11,7 @@ import { randomUUID } from "crypto";
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { checkEndpointHealth } from "../services/endpointVerifyService";
 import { pingCustomAgent } from "../services/customAgentAdapter";
+import { verifySolOwnership, assignSolName } from "../services/snsIdentityService";
 
 const router = Router();
 
@@ -95,7 +96,7 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
 router.post("/register/public",
   rateLimit({ maxRequests: 5, windowMs: 60 * 60 * 1000, burstAllowance: 0 }), // 5/hour
   asyncHandler(async (req, res) => {
-    const { name, endpoint, publicKey, ratePer1kTokens, taskTypes, bio, websiteUrl, ownerEmail, authHeader } = req.body;
+    const { name, endpoint, publicKey, ratePer1kTokens, taskTypes, bio, websiteUrl, ownerEmail, authHeader, solName } = req.body;
 
     // Validate required fields
     if (!name || typeof name !== "string" || name.length < 3 || name.length > 100) {
@@ -194,15 +195,34 @@ router.post("/register/public",
     // Validate bio
     const agentBio = bio && typeof bio === "string" ? bio.slice(0, 500) : null;
 
+    // Validate and verify .sol name if provided
+    let verifiedSolName: string | null = null;
+    if (solName && typeof solName === "string") {
+      const cleaned = solName.toLowerCase().endsWith(".sol") ? solName.toLowerCase() : `${solName.toLowerCase()}.sol`;
+      // Verify ownership: the .sol domain must resolve to the same publicKey
+      const ownership = await verifySolOwnership(cleaned, publicKey);
+      if (ownership.verified) {
+        verifiedSolName = cleaned;
+      }
+      // If not verified, we still accept registration but don't set verified sol name
+      // Agent can register without a .sol name and add one later
+    }
+
     // Insert agent
     const agentResult = await query(
       `INSERT INTO agents (
         id, name, public_key, default_rate_per_1k_tokens, balance_lamports, pending_lamports,
-        bio, website_url, owner_email, categories, verified_status, provider, auth_header, created_at
-      ) VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7, $8, 'unverified', 'custom', $9, NOW())
-      RETURNING id, name, public_key, default_rate_per_1k_tokens, created_at`,
-      [agentId, name, publicKey, rate, agentBio, websiteUrl || null, ownerEmail || null, JSON.stringify(agentTaskTypes), authHeader || null]
+        bio, website_url, owner_email, categories, verified_status, provider, auth_header, sol_name, created_at
+      ) VALUES ($1, $2, $3, $4, 0, 0, $5, $6, $7, $8, 'unverified', 'custom', $9, $10, NOW())
+      RETURNING id, name, public_key, default_rate_per_1k_tokens, sol_name, created_at`,
+      [agentId, name, publicKey, rate, agentBio, websiteUrl || null, ownerEmail || null, JSON.stringify(agentTaskTypes), authHeader || null, verifiedSolName]
     );
+
+    // If no .sol name provided, auto-assign one based on the agent name
+    if (!verifiedSolName) {
+      const autoSolName = `${name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").slice(0, 30)}.sol`;
+      await assignSolName(agentId, autoSolName);
+    }
 
     // Create API key for this agent
     await query(
@@ -237,6 +257,7 @@ router.post("/register/public",
       apiKey, // One-time display!
       name,
       publicKey,
+      solName: verifiedSolName || agentResult.rows[0].sol_name,
       ratePer1kTokens: rate,
       taskTypes: agentTaskTypes,
       createdAt: agentResult.rows[0].created_at,

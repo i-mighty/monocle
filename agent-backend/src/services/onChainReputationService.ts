@@ -7,15 +7,9 @@
  *   3. Provides reputation queries for agent selection
  */
 
-import {
-  Connection,
-  PublicKey,
-  Transaction,
-  TransactionInstruction,
-  sendAndConfirmTransaction,
-  Keypair,
-} from "@solana/web3.js";
+import { Connection, PublicKey, Transaction, TransactionInstruction, sendAndConfirmTransaction, Keypair } from "@solana/web3.js";
 import { query } from "../db/client";
+import { getSolName } from "./snsIdentityService";
 
 const RPC = process.env.SOLANA_RPC ?? "https://api.devnet.solana.com";
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -82,8 +76,9 @@ export async function updateReputation(
 
   // Anchor on-chain (best-effort, non-blocking)
   let txSignature: string | undefined;
+  const solName = await getSolName(agentId);
   try {
-    txSignature = await anchorReputationOnChain(agentId, sessionId, taskId, outcome, newScore, delta);
+    txSignature = await anchorReputationOnChain(agentId, solName, sessionId, taskId, outcome, newScore, delta);
   } catch (err) {
     console.warn(`On-chain reputation anchor failed (non-fatal):`, err);
   }
@@ -95,6 +90,7 @@ export async function updateReputation(
 
 async function anchorReputationOnChain(
   agentId: string,
+  solName: string,
   sessionId: string,
   taskId: string,
   outcome: string,
@@ -106,6 +102,7 @@ async function anchorReputationOnChain(
   const memo = JSON.stringify({
     protocol: "monocle-reputation-v1",
     agent: agentId,
+    solName,
     session: sessionId.slice(0, 8),
     task: taskId,
     outcome,

@@ -18,6 +18,7 @@ import {
 } from "./agentNegotiationService";
 import { initializeAgentIdentities, signMessage, verifyAgentMessage } from "./agentIdentityService";
 import { updateReputation, getAgentReputations, reputationAdjustedBudget } from "./onChainReputationService";
+import { initializeSolNames, getSolName } from "./snsIdentityService";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const IMAGE_GEN_API_KEY = process.env.TOGETHER_API_KEY ?? process.env.IMAGE_GEN_API_KEY;
@@ -27,14 +28,14 @@ const GROQ_VISION_MODEL = "llama-3.2-90b-vision-preview";
 
 // ─── Specialist registry ──────────────────────────────────────────────────────
 // Maps task types to agent IDs (matches agents seeded in migration)
-const SPECIALIST_MAP: Record<string, { agentId: string; name: string }> = {
-  research:   { agentId: "researcher-001",  name: "Research Agent" },
-  write:      { agentId: "writer-001",       name: "Writer Agent" },
-  code:       { agentId: "coder-001",        name: "Code Agent" },
-  image:      { agentId: "image-001",        name: "Image Agent" },
-  factcheck:  { agentId: "factcheck-001",    name: "FactCheck Agent" },
-  format:     { agentId: "formatter-001",    name: "Formatter Agent" },
-  general:    { agentId: "researcher-001",   name: "Research Agent" },
+const SPECIALIST_MAP: Record<string, { agentId: string; name: string; solName: string }> = {
+  research:   { agentId: "researcher-001",  name: "Research Agent",   solName: "researcher.monocle.sol" },
+  write:      { agentId: "writer-001",       name: "Writer Agent",     solName: "writer.monocle.sol" },
+  code:       { agentId: "coder-001",        name: "Code Agent",       solName: "coder.monocle.sol" },
+  image:      { agentId: "image-001",        name: "Image Agent",      solName: "image.monocle.sol" },
+  factcheck:  { agentId: "factcheck-001",    name: "FactCheck Agent",  solName: "factcheck.monocle.sol" },
+  format:     { agentId: "formatter-001",    name: "Formatter Agent",  solName: "formatter.monocle.sol" },
+  general:    { agentId: "researcher-001",   name: "Research Agent",   solName: "researcher.monocle.sol" },
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -537,6 +538,7 @@ export async function orchestrateTask(
 
   // Initialize agent identities (generates keypairs, stores public keys)
   await initializeAgentIdentities();
+  await initializeSolNames();
 
   // Create session record
   await query(
@@ -551,6 +553,7 @@ export async function orchestrateTask(
     sessionId,
     userPrompt,
     orchestratorId: ORCHESTRATOR_ID,
+    orchestratorSolName: "orchestrator.monocle.sol",
     timestamp: new Date().toISOString(),
   });
 
@@ -654,6 +657,7 @@ export async function orchestrateTask(
         depth: task.depth,
         agentId: specialist.agentId,
         agentName: specialist.name,
+        solName: specialist.solName,
         publicKey: signed.signerPublicKey,
         verified: verification.valid,
         reason: verification.reason,
@@ -674,6 +678,7 @@ export async function orchestrateTask(
         depth: task.depth,
         agentId: specialist.agentId,
         agentName: specialist.name,
+        solName: specialist.solName,
         previousScore: repSuccess.previousScore,
         newScore: repSuccess.newScore,
         delta: repSuccess.delta + (verification.valid ? 5 : -10),
@@ -715,6 +720,7 @@ export async function orchestrateTask(
           depth: task.depth,
           agentId: specialist.agentId,
           agentName: specialist.name,
+          solName: specialist.solName,
           previousScore: repFail.previousScore,
           newScore: repFail.newScore,
           delta: repFail.delta,

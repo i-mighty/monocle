@@ -44,10 +44,11 @@ export interface AgentEvent {
   depth?: number;
 
   // Agent identity
-  fromAgent?: { id: string; name?: string };
-  toAgent?: { id: string; name?: string };
+  fromAgent?: { id: string; name?: string; solName?: string };
+  toAgent?: { id: string; name?: string; solName?: string };
   agentId?: string;
   agentName?: string;
+  solName?: string;
 
   // Negotiation
   negotiationId?: string;
