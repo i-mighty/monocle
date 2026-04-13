@@ -420,6 +420,96 @@ function EventCard({ event }: { event: AgentEvent }) {
           </div>
         );
 
+      case "dwallet_policy_check":
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "13px" }}>{event.policyAllowed ? "🔑" : "🚫"}</span>
+            <AgentChip cfg={fromCfg} name={getAgentName(event.agentId, event.agentName)} />
+            <span style={{ color: event.policyAllowed ? "rgba(180,169,255,0.8)" : "#f87171" }}>
+              dWallet spending policy {event.policyAllowed ? "approved" : "blocked"}
+            </span>
+            {event.dwalletAddress && (
+              <span style={{
+                fontFamily: "'JetBrains Mono',monospace", fontSize: "10px",
+                color: "rgba(139,124,248,0.7)",
+                padding: "1px 6px",
+                background: "rgba(139,124,248,0.08)",
+                border: "1px solid rgba(139,124,248,0.15)",
+                borderRadius: "4px",
+              }}>
+                dWallet {event.dwalletAddress.slice(0, 6)}…{event.dwalletAddress.slice(-4)}
+              </span>
+            )}
+            <span style={{
+              fontFamily: "'JetBrains Mono',monospace", fontSize: "10px",
+              color: "rgba(241,241,245,0.4)",
+              padding: "1px 6px",
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.06)",
+              borderRadius: "4px",
+            }}>
+              limit: {event.maxPerTx} lam/tx · {event.remainingToday}/{event.dailyCap} daily
+            </span>
+          </div>
+        );
+
+      case "dwallet_payment_approved":
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "13px" }}>✅</span>
+            <AgentChip cfg={fromCfg} name={getAgentName(event.agentId, event.agentName)} />
+            <SolBadge agentId={event.agentId} solName={event.solName} />
+            <span style={{ color: "rgba(74,222,128,0.8)" }}>
+              dWallet payment authorized
+            </span>
+            <span style={{
+              color: "#4ade80", fontFamily: "'JetBrains Mono',monospace", fontWeight: 600,
+            }}>
+              {event.amount} lam
+            </span>
+            {event.approvalPda && (
+              <span style={{
+                fontFamily: "'JetBrains Mono',monospace", fontSize: "10px",
+                color: "rgba(139,124,248,0.6)",
+                padding: "1px 6px",
+                background: "rgba(139,124,248,0.06)",
+                border: "1px solid rgba(139,124,248,0.12)",
+                borderRadius: "4px",
+              }} title={`Approval PDA: ${event.approvalPda}`}>
+                approval {event.approvalPda.slice(0, 6)}…{event.approvalPda.slice(-4)}
+              </span>
+            )}
+            {event.approvalTxSignature && !event.approvalTxSignature.startsWith("sim_") && (
+              <a
+                href={`https://explorer.solana.com/tx/${event.approvalTxSignature}?cluster=devnet`}
+                target="_blank" rel="noopener noreferrer"
+                style={{
+                  marginLeft: "auto", fontSize: "10.5px",
+                  color: "rgba(139,124,248,0.7)", fontFamily: "'JetBrains Mono',monospace",
+                  textDecoration: "none", padding: "1px 6px",
+                  background: "rgba(139,124,248,0.08)",
+                  border: "1px solid rgba(139,124,248,0.15)",
+                  borderRadius: "4px",
+                }}
+              >
+                ika {event.approvalTxSignature.slice(0,6)}…{event.approvalTxSignature.slice(-4)} ↗
+              </a>
+            )}
+            {event.approvalTxSignature && event.approvalTxSignature.startsWith("sim_") && (
+              <span style={{
+                marginLeft: "auto", fontSize: "10px",
+                color: "rgba(251,191,36,0.6)", fontFamily: "'JetBrains Mono',monospace",
+                padding: "1px 6px",
+                background: "rgba(251,191,36,0.06)",
+                border: "1px solid rgba(251,191,36,0.12)",
+                borderRadius: "4px",
+              }}>
+                2PC-MPC (pre-alpha)
+              </span>
+            )}
+          </div>
+        );
+
       case "assembling":
         return (
           <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px" }}>
