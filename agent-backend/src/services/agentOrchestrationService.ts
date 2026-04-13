@@ -19,6 +19,7 @@ import {
 import { initializeAgentIdentities, signMessage, verifyAgentMessage } from "./agentIdentityService";
 import { updateReputation, getAgentReputations, reputationAdjustedBudget } from "./onChainReputationService";
 import { initializeSolNames, getSolName } from "./snsIdentityService";
+import { initializeAgentDWallets, getDWalletInfo, approvePayment, checkSpendingPolicy, getSpendingPolicy } from "./ikaDWalletService";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const IMAGE_GEN_API_KEY = process.env.TOGETHER_API_KEY ?? process.env.IMAGE_GEN_API_KEY;
@@ -539,6 +540,7 @@ export async function orchestrateTask(
   // Initialize agent identities (generates keypairs, stores public keys)
   await initializeAgentIdentities();
   await initializeSolNames();
+  await initializeAgentDWallets();
 
   // Create session record
   await query(
@@ -663,6 +665,51 @@ export async function orchestrateTask(
         reason: verification.reason,
         timestamp: new Date().toISOString(),
       });
+
+      // ── dWallet payment authorization ───────────────────────────────
+      const dwallet = await getDWalletInfo(specialist.agentId);
+      const policyCheck = checkSpendingPolicy(specialist.agentId, Number(actualCost));
+      const spendPolicy = getSpendingPolicy(specialist.agentId);
+
+      emitNegotiationEvent(sessionId, {
+        type: "dwallet_policy_check",
+        depth: task.depth,
+        agentId: specialist.agentId,
+        agentName: specialist.name,
+        solName: specialist.solName,
+        dwalletAddress: dwallet?.dwalletAddress,
+        policyAllowed: policyCheck.allowed,
+        policyReason: policyCheck.reason,
+        maxPerTx: spendPolicy.maxPerTransaction,
+        dailyCap: spendPolicy.dailyCap,
+        remainingToday: spendPolicy.remainingToday,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (policyCheck.allowed && dwallet) {
+        const approval = await approvePayment(
+          specialist.agentId,
+          ORCHESTRATOR_ID,
+          Number(actualCost),
+          `task:${task.id}:${task.type}`
+        );
+
+        emitNegotiationEvent(sessionId, {
+          type: "dwallet_payment_approved",
+          depth: task.depth,
+          agentId: specialist.agentId,
+          agentName: specialist.name,
+          solName: specialist.solName,
+          dwalletAddress: dwallet.dwalletAddress,
+          messageHash: approval.messageHash,
+          approvalPda: approval.approvalPda,
+          approvalStatus: approval.status,
+          approvalTxSignature: approval.txSignature,
+          amount: Number(actualCost),
+          recipient: ORCHESTRATOR_ID,
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       // ── Reputation updates ──────────────────────────────────────────
       const repSuccess = await updateReputation(

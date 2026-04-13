@@ -31,6 +31,8 @@ export type AgentEventType =
   | "result_delivered"
   | "identity_verified"
   | "reputation_updated"
+  | "dwallet_policy_check"
+  | "dwallet_payment_approved"
   | "assembling"
   | "session_complete"
   | "session_failed"
@@ -94,6 +96,20 @@ export interface AgentEvent {
   newScore?: number;
   delta?: number;
   reputationTxSignature?: string;
+
+  // dWallet (Ika)
+  dwalletAddress?: string;
+  policyAllowed?: boolean;
+  policyReason?: string;
+  maxPerTx?: number;
+  dailyCap?: number;
+  remainingToday?: number;
+  messageHash?: string;
+  approvalPda?: string;
+  approvalStatus?: string;
+  approvalTxSignature?: string;
+  amount?: number;
+  recipient?: string;
 }
 
 export interface SubtaskPlan {
@@ -191,6 +207,8 @@ export function useOrchestration() {
 
           case "identity_verified":
           case "reputation_updated":
+          case "dwallet_policy_check":
+          case "dwallet_payment_approved":
             addEvent(data);
             break;
 
