@@ -509,7 +509,7 @@ export default function Landing() {
               </div>
             </div>
             <div className="mt-8 pt-8 border-t border-zinc-800/40 text-center text-xs text-zinc-700">
-              &copy; 2025 Monocle. Built for the Solana AI Hackathon.
+              &copy; 2025 Monocle. Built for you.
             </div>
           </div>
         </footer>

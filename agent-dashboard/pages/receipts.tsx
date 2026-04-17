@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getReceipts } from "../lib/api";
+import Layout from "../components/Layout";
 
 type ReceiptRow = { id?: string; sender: string; receiver: string; amount: number; tx_signature: string; timestamp?: string };
 
@@ -12,132 +13,46 @@ export default function Receipts() {
   }, []);
 
   return (
-    <main className="page">
-      <header className="nav">
-        <div className="brand">AgentPay Dashboard</div>
-        <div className="links">
-          <Link href="/usage">Usage</Link>
-          <Link href="/receipts">Receipts</Link>
-          <Link href="/messaging">Messaging</Link>
+    <Layout title="Receipts">
+      <section className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/60">
+          <h2 className="text-[17px] font-semibold text-white">Micropayment Receipts</h2>
+          <span className="text-xs text-zinc-600">Latest 100</span>
         </div>
-      </header>
-
-      <section className="card">
-        <div className="card-header">
-          <h2>Micropayment Receipts</h2>
-          <span className="hint">Latest 100</span>
-        </div>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Sender</th>
-              <th>Receiver</th>
-              <th>Amount (SOL)</th>
-              <th>Tx Signature</th>
-              <th>Timestamp</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="empty">
-                  No receipts yet. Trigger a payment to see entries here.
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-zinc-800/60">
+                <th className="text-left px-6 py-3 text-xs text-zinc-500 uppercase tracking-wider font-medium">Sender</th>
+                <th className="text-left px-6 py-3 text-xs text-zinc-500 uppercase tracking-wider font-medium">Receiver</th>
+                <th className="text-left px-6 py-3 text-xs text-zinc-500 uppercase tracking-wider font-medium">Amount (SOL)</th>
+                <th className="text-left px-6 py-3 text-xs text-zinc-500 uppercase tracking-wider font-medium">Tx Signature</th>
+                <th className="text-left px-6 py-3 text-xs text-zinc-500 uppercase tracking-wider font-medium">Timestamp</th>
               </tr>
-            ) : (
-              rows.map((r, idx) => (
-                <tr key={r.id ?? idx}>
-                  <td>{r.sender}</td>
-                  <td>{r.receiver}</td>
-                  <td>{r.amount}</td>
-                  <td className="tx">{r.tx_signature}</td>
-                  <td>{r.timestamp ? new Date(r.timestamp).toLocaleString() : "—"}</td>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-zinc-600">
+                    No receipts yet. Trigger a payment to see entries here.
+                  </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                rows.map((r, idx) => (
+                  <tr key={r.id ?? idx} className="border-b border-zinc-800/40 hover:bg-zinc-800/30 transition-colors">
+                    <td className="px-6 py-3 text-sm text-white font-mono">{r.sender}</td>
+                    <td className="px-6 py-3 text-sm text-white font-mono">{r.receiver}</td>
+                    <td className="px-6 py-3 text-sm text-zinc-400">{r.amount}</td>
+                    <td className="px-6 py-3 text-sm text-zinc-500 font-mono max-w-[220px] truncate">{r.tx_signature}</td>
+                    <td className="px-6 py-3 text-sm text-zinc-400">{r.timestamp ? new Date(r.timestamp).toLocaleString() : "—"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
-
-      <style jsx>{`
-        .page {
-          max-width: 1080px;
-          margin: 0 auto;
-          padding: 24px;
-          font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-          background: #f7f8fa;
-          min-height: 100vh;
-        }
-        .nav {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 24px;
-        }
-        .brand {
-          font-weight: 700;
-          font-size: 20px;
-        }
-        .links a {
-          margin-left: 16px;
-          color: #2563eb;
-          text-decoration: none;
-          font-weight: 600;
-        }
-        .card {
-          background: #fff;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          padding: 16px;
-          margin-bottom: 20px;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-        }
-        .card-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          margin-bottom: 12px;
-        }
-        h2 {
-          margin: 0;
-        }
-        .hint {
-          color: #6b7280;
-          font-size: 12px;
-        }
-        .table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        .table th,
-        .table td {
-          text-align: left;
-          padding: 10px 12px;
-          border-bottom: 1px solid #e5e7eb;
-          font-size: 14px;
-        }
-        .table th {
-          background: #f3f4f6;
-          font-weight: 600;
-        }
-        .table tr:hover td {
-          background: #f9fafb;
-        }
-        .empty {
-          text-align: center;
-          color: #6b7280;
-          padding: 16px;
-        }
-        .tx {
-          max-width: 220px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-          font-size: 12px;
-        }
-      `}</style>
-    </main>
+    </Layout>
   );
 }
 

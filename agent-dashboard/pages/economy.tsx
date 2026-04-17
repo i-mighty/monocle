@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
+import Layout from "../components/Layout";
 import {
   registerAgent,
   getDeployedAgents,
@@ -416,187 +416,150 @@ export default function EconomyControlPanel() {
 
   if (!isAuthenticated) {
     return (
-      <main className="page">
-        <style jsx global>{styles}</style>
-        <nav className="nav">
-          <div className="brand">AgentPay</div>
-          <div className="links">
-            <Link href="/">Marketplace</Link>
-            <Link href="/dashboard">Dashboard</Link>
-            <Link href="/economy" className="active">Economy</Link>
-          </div>
-        </nav>
-        <div className="auth-panel">
-          <h1>Agent Economy Control Panel</h1>
-          <p>Enter your API key to access the control panel</p>
-          <form onSubmit={handleLogin} className="auth-form">
-            <input
-              id="apiKeyInput"
-              type="password"
-              placeholder="Enter API Key"
-              className="input-lg"
-            />
-            <button type="submit" className="btn-primary">Login</button>
-          </form>
-        </div>
-      </main>
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <form onSubmit={handleLogin} className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-8 w-[360px]">
+          <h1 className="text-white text-2xl font-bold mb-2">Economy Control Panel</h1>
+          <p className="text-zinc-500 text-sm mb-6">Enter your API key to access the control panel</p>
+          <input
+            id="apiKeyInput"
+            type="password"
+            placeholder="Enter API Key"
+            className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm mb-4 focus:outline-none focus:border-zinc-600 transition-colors"
+          />
+          <button type="submit" className="w-full py-3 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors">
+            Login
+          </button>
+        </form>
+      </div>
     );
   }
 
   return (
-    <main className="page">
-      <style jsx global>{styles}</style>
-      
-      {/* Navigation */}
-      <nav className="nav">
-        <div className="brand">AgentPay</div>
-        <div className="links">
-          <Link href="/">Marketplace</Link>
-          <Link href="/dashboard">Dashboard</Link>
-          <Link href="/economy" className="active">Economy</Link>
-        </div>
-      </nav>
-
+    <Layout title="Economy">
       {/* Message Toast */}
       {message && (
-        <div className={`toast toast-${message.type}`}>
+        <div className={`fixed top-5 right-5 px-6 py-4 rounded-xl font-medium z-50 ${
+          message.type === "success" ? "bg-emerald-500 text-white" : "bg-red-500 text-white"
+        }`}>
           {message.text}
         </div>
       )}
 
       {/* Header */}
-      <header className="hero">
-        <h1>Agent Economy Control Panel</h1>
-        <p>Register agents, execute calls, view economics, and manage settlements</p>
-      </header>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-white">Economy Control Panel</h1>
+        <p className="text-zinc-500 text-sm">Register agents, execute calls, view economics, and manage settlements</p>
+      </div>
 
       {/* Tab Navigation */}
-      <div className="tabs">
-        <button
-          className={`tab ${activeTab === "register" ? "active" : ""}`}
-          onClick={() => setActiveTab("register")}
-        >
-          1. Register Agent
-        </button>
-        <button
-          className={`tab ${activeTab === "state" ? "active" : ""}`}
-          onClick={() => setActiveTab("state")}
-        >
-          2. Economic State
-        </button>
-        <button
-          className={`tab ${activeTab === "execute" ? "active" : ""}`}
-          onClick={() => setActiveTab("execute")}
-        >
-          3. Execute Call
-        </button>
-        <button
-          className={`tab ${activeTab === "pricing" ? "active" : ""}`}
-          onClick={() => setActiveTab("pricing")}
-        >
-          4. Pricing
-        </button>
-        <button
-          className={`tab ${activeTab === "settlements" ? "active" : ""}`}
-          onClick={() => setActiveTab("settlements")}
-        >
-          5. Settlements
-        </button>
-        <button
-          className={`tab ${activeTab === "deposits" ? "active" : ""}`}
-          onClick={() => setActiveTab("deposits")}
-        >
-          6. Deposits
-        </button>
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {(["register", "state", "execute", "pricing", "settlements", "deposits"] as const).map((tab, i) => (
+          <button
+            key={tab}
+            className={`px-4 py-2.5 rounded-lg text-sm transition-colors ${
+              activeTab === tab
+                ? "bg-white text-zinc-900 font-medium"
+                : "bg-zinc-900/50 border border-zinc-800/60 text-zinc-500 hover:text-white hover:border-zinc-600"
+            }`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {i + 1}. {tab === "register" ? "Register" : tab === "state" ? "State" : tab === "execute" ? "Execute" : tab === "pricing" ? "Pricing" : tab === "settlements" ? "Settlements" : "Deposits"}
+          </button>
+        ))}
       </div>
 
       {/* Content Panels */}
-      <div className="panel-container">
+      <div>
         {/* 1. REGISTER AGENT */}
         {activeTab === "register" && (
-          <section className="panel">
-            <h2>Register New Agent</h2>
-            <p className="description">Create an agent that can participate in the token economy</p>
+          <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-white mb-1">Register New Agent</h2>
+            <p className="text-zinc-500 text-sm mb-6">Create an agent that can participate in the token economy</p>
             
-            <form onSubmit={handleRegister} className="form">
-              <div className="form-group">
-                <label>Agent ID *</label>
+            <form onSubmit={handleRegister} className="max-w-lg">
+              <div className="mb-5">
+                <label className="block mb-2 text-zinc-400 text-sm font-medium">Agent ID *</label>
                 <input
                   type="text"
                   placeholder="my-agent-001"
                   value={registerForm.agentId}
                   onChange={(e) => setRegisterForm({ ...registerForm, agentId: e.target.value })}
                   required
+                  className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600 transition-colors"
                 />
-                <span className="hint">Unique identifier for your agent</span>
+                <span className="text-xs text-zinc-600 mt-1 block">Unique identifier for your agent</span>
               </div>
 
-              <div className="form-group">
-                <label>Display Name</label>
+              <div className="mb-5">
+                <label className="block mb-2 text-zinc-400 text-sm font-medium">Display Name</label>
                 <input
                   type="text"
                   placeholder="My Awesome Agent"
                   value={registerForm.name || ""}
                   onChange={(e) => setRegisterForm({ ...registerForm, name: e.target.value })}
+                  className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600 transition-colors"
                 />
               </div>
 
-              <div className="form-group">
-                <label>Wallet Address</label>
+              <div className="mb-5">
+                <label className="block mb-2 text-zinc-400 text-sm font-medium">Wallet Address</label>
                 <input
                   type="text"
                   placeholder="Solana public key for settlements"
                   value={registerForm.publicKey || ""}
                   onChange={(e) => setRegisterForm({ ...registerForm, publicKey: e.target.value })}
+                  className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600 transition-colors"
                 />
-                <span className="hint">Your Solana wallet address for receiving payments</span>
+                <span className="text-xs text-zinc-600 mt-1 block">Your Solana wallet address for receiving payments</span>
               </div>
 
-              <div className="form-group">
-                <label>Rate per 1K Tokens (lamports)</label>
+              <div className="mb-5">
+                <label className="block mb-2 text-zinc-400 text-sm font-medium">Rate per 1K Tokens (lamports)</label>
                 <input
                   type="number"
                   min="1"
                   value={registerForm.ratePer1kTokens || 1000}
                   onChange={(e) => setRegisterForm({ ...registerForm, ratePer1kTokens: parseInt(e.target.value) || 1000 })}
+                  className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600 transition-colors"
                 />
-                <span className="hint">
+                <span className="text-xs text-zinc-600 mt-1 block">
                   {registerForm.ratePer1kTokens || 1000} lamports = {((registerForm.ratePer1kTokens || 1000) / 1e9).toFixed(9)} SOL per 1K tokens
                 </span>
               </div>
 
-              <button type="submit" className="btn-primary" disabled={loading}>
+              <button type="submit" className="px-6 py-3 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-50" disabled={loading}>
                 {loading ? "Registering..." : "Register Agent"}
               </button>
             </form>
 
             {/* Existing Agents */}
-            <div className="agents-list">
-              <h3>Registered Agents ({agents.length})</h3>
+            <div className="mt-8">
+              <h3 className="text-zinc-500 text-sm font-medium mb-4">Registered Agents ({agents.length})</h3>
               {agents.map((agent) => (
-                <div key={agent.id} className="agent-card" onClick={() => setSelectedAgent(agent.id)}>
-                  <div className="agent-name">{agent.name}</div>
-                  <div className="agent-id">{agent.id}</div>
-                  <div className="agent-stats">
+                <div key={agent.id} className="p-4 bg-zinc-950 rounded-lg mb-2 cursor-pointer border border-transparent hover:border-zinc-800/60 transition-colors" onClick={() => setSelectedAgent(agent.id)}>
+                  <div className="text-white font-medium text-sm">{agent.name}</div>
+                  <div className="text-zinc-600 text-xs mb-2">{agent.id}</div>
+                  <div className="flex gap-4 text-xs text-zinc-500">
                     <span>Rate: {agent.rate} lamports/1K</span>
                     <span>Balance: {formatLamports(agent.balance)}</span>
                   </div>
                 </div>
               ))}
             </div>
-          </section>
+          </div>
         )}
 
         {/* 2. ECONOMIC STATE */}
         {activeTab === "state" && (
-          <section className="panel">
-            <h2>Economic State</h2>
+          <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-white mb-4">Economic State</h2>
             
-            <div className="form-group">
-              <label>Select Agent</label>
+            <div className="mb-5">
+              <label className="block mb-2 text-zinc-400 text-sm font-medium">Select Agent</label>
               <select
                 value={selectedAgent}
                 onChange={(e) => setSelectedAgent(e.target.value)}
+                className="w-full max-w-lg px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
               >
                 {agents.map((a) => (
                   <option key={a.id} value={a.id}>{a.name} ({a.id})</option>
@@ -606,64 +569,64 @@ export default function EconomyControlPanel() {
 
             {economicState && (
               <>
-                <div className="stats-grid">
-                  <div className="stat-card primary">
-                    <div className="stat-value">{formatLamports(economicState.balanceLamports)}</div>
-                    <div className="stat-label">Current Balance</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-zinc-950 border border-zinc-800/60 rounded-xl p-5">
+                    <div className="text-xl font-bold text-white">{formatLamports(economicState.balanceLamports)}</div>
+                    <div className="text-zinc-500 text-sm">Current Balance</div>
                   </div>
-                  <div className="stat-card success">
-                    <div className="stat-value">{formatLamports(economicState.pendingLamports)}</div>
-                    <div className="stat-label">Pending Earnings</div>
+                  <div className="bg-zinc-950 border border-zinc-800/60 rounded-xl p-5">
+                    <div className="text-xl font-bold text-white">{formatLamports(economicState.pendingLamports)}</div>
+                    <div className="text-zinc-500 text-sm">Pending Earnings</div>
                   </div>
-                  <div className="stat-card danger">
-                    <div className="stat-value">{formatLamports(economicState.totalSpentLamports || 0)}</div>
-                    <div className="stat-label">Total Spend</div>
+                  <div className="bg-zinc-950 border border-zinc-800/60 rounded-xl p-5">
+                    <div className="text-xl font-bold text-white">{formatLamports(economicState.totalSpentLamports || 0)}</div>
+                    <div className="text-zinc-500 text-sm">Total Spend</div>
                   </div>
-                  <div className="stat-card info">
-                    <div className="stat-value">{formatLamports(economicState.totalEarnedLamports || 0)}</div>
-                    <div className="stat-label">Total Revenue</div>
+                  <div className="bg-zinc-950 border border-zinc-800/60 rounded-xl p-5">
+                    <div className="text-xl font-bold text-white">{formatLamports(economicState.totalEarnedLamports || 0)}</div>
+                    <div className="text-zinc-500 text-sm">Total Revenue</div>
                   </div>
                 </div>
 
-                <div className="metrics-row">
-                  <div className="metric">
-                    <span className="metric-label">Calls Made:</span>
-                    <span className="metric-value">{economicState.totalCallsMade || 0}</span>
+                <div className="flex gap-6 mb-6 flex-wrap text-sm">
+                  <div className="flex gap-2">
+                    <span className="text-zinc-500">Calls Made:</span>
+                    <span className="text-white">{economicState.totalCallsMade || 0}</span>
                   </div>
-                  <div className="metric">
-                    <span className="metric-label">Calls Received:</span>
-                    <span className="metric-value">{economicState.totalCallsReceived || 0}</span>
+                  <div className="flex gap-2">
+                    <span className="text-zinc-500">Calls Received:</span>
+                    <span className="text-white">{economicState.totalCallsReceived || 0}</span>
                   </div>
-                  <div className="metric">
-                    <span className="metric-label">Rate:</span>
-                    <span className="metric-value">{economicState.ratePer1kTokens} lamports/1K</span>
+                  <div className="flex gap-2">
+                    <span className="text-zinc-500">Rate:</span>
+                    <span className="text-white">{economicState.ratePer1kTokens} lamports/1K</span>
                   </div>
                 </div>
 
                 {/* Recent Tool Calls */}
-                <div className="history-section">
-                  <h3>Recent Tool Calls (Outgoing)</h3>
-                  <table className="data-table">
+                <div className="mt-6">
+                  <h3 className="text-zinc-400 text-sm font-medium mb-3">Recent Tool Calls (Outgoing)</h3>
+                  <table className="w-full">
                     <thead>
-                      <tr>
-                        <th>Time</th>
-                        <th>Callee</th>
-                        <th>Tool</th>
-                        <th>Tokens</th>
-                        <th>Cost</th>
+                      <tr className="border-b border-zinc-800/60">
+                        <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Time</th>
+                        <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Callee</th>
+                        <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Tool</th>
+                        <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Tokens</th>
+                        <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Cost</th>
                       </tr>
                     </thead>
                     <tbody>
                       {toolCalls.length === 0 && (
-                        <tr><td colSpan={5} className="empty">No tool calls yet</td></tr>
+                        <tr><td colSpan={5} className="text-center text-zinc-600 py-8 text-sm">No tool calls yet</td></tr>
                       )}
                       {toolCalls.slice(0, 10).map((call, i) => (
-                        <tr key={i}>
-                          <td>{formatTime(call.timestamp)}</td>
-                          <td>{call.calleeId}</td>
-                          <td>{call.toolName}</td>
-                          <td>{call.tokensUsed}</td>
-                          <td className="cost">{formatLamports(call.costLamports)}</td>
+                        <tr key={i} className="border-b border-zinc-800/40">
+                          <td className="px-3 py-3 text-sm text-zinc-400">{formatTime(call.timestamp)}</td>
+                          <td className="px-3 py-3 text-sm text-white">{call.calleeId}</td>
+                          <td className="px-3 py-3 text-sm text-white">{call.toolName}</td>
+                          <td className="px-3 py-3 text-sm text-white">{call.tokensUsed}</td>
+                          <td className="px-3 py-3 text-sm text-red-400">{formatLamports(call.costLamports)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -671,29 +634,29 @@ export default function EconomyControlPanel() {
                 </div>
 
                 {/* Earnings */}
-                <div className="history-section">
-                  <h3>Recent Earnings (Incoming)</h3>
-                  <table className="data-table">
+                <div className="mt-6">
+                  <h3 className="text-zinc-400 text-sm font-medium mb-3">Recent Earnings (Incoming)</h3>
+                  <table className="w-full">
                     <thead>
-                      <tr>
-                        <th>Time</th>
-                        <th>Caller</th>
-                        <th>Tool</th>
-                        <th>Tokens</th>
-                        <th>Earned</th>
+                      <tr className="border-b border-zinc-800/60">
+                        <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Time</th>
+                        <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Caller</th>
+                        <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Tool</th>
+                        <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Tokens</th>
+                        <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Earned</th>
                       </tr>
                     </thead>
                     <tbody>
                       {earnings.length === 0 && (
-                        <tr><td colSpan={5} className="empty">No earnings yet</td></tr>
+                        <tr><td colSpan={5} className="text-center text-zinc-600 py-8 text-sm">No earnings yet</td></tr>
                       )}
                       {earnings.slice(0, 10).map((call, i) => (
-                        <tr key={i}>
-                          <td>{formatTime(call.timestamp)}</td>
-                          <td>{call.callerId}</td>
-                          <td>{call.toolName}</td>
-                          <td>{call.tokensUsed}</td>
-                          <td className="earned">{formatLamports(call.costLamports)}</td>
+                        <tr key={i} className="border-b border-zinc-800/40">
+                          <td className="px-3 py-3 text-sm text-zinc-400">{formatTime(call.timestamp)}</td>
+                          <td className="px-3 py-3 text-sm text-white">{call.callerId}</td>
+                          <td className="px-3 py-3 text-sm text-white">{call.toolName}</td>
+                          <td className="px-3 py-3 text-sm text-white">{call.tokensUsed}</td>
+                          <td className="px-3 py-3 text-sm text-emerald-400">{formatLamports(call.costLamports)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -701,27 +664,28 @@ export default function EconomyControlPanel() {
                 </div>
               </>
             )}
-          </section>
+          </div>
         )}
 
-        {/* 3. EXECUTE CALL - THE KILLER FEATURE */}
+        {/* 3. EXECUTE CALL */}
         {activeTab === "execute" && (
-          <section className="panel">
-            <h2>Execute Tool Call</h2>
-            <p className="description">
-              <strong>The Killer Feature:</strong> Execute a real economic transaction between agents
+          <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-white mb-1">Execute Tool Call</h2>
+            <p className="text-zinc-500 text-sm mb-6">
+              <strong className="text-white">The Killer Feature:</strong> Execute a real economic transaction between agents
             </p>
 
-            <div className="execute-grid">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Call Form */}
-              <div className="execute-form">
+              <div>
                 <form onSubmit={handleExecuteCall}>
-                  <div className="form-group">
-                    <label>Caller Agent (pays)</label>
+                  <div className="mb-5">
+                    <label className="block mb-2 text-zinc-400 text-sm font-medium">Caller Agent (pays)</label>
                     <select
                       value={callForm.callerId}
                       onChange={(e) => setCallForm({ ...callForm, callerId: e.target.value })}
                       required
+                      className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
                     >
                       <option value="">Select caller...</option>
                       {agents.map((a) => (
@@ -732,12 +696,13 @@ export default function EconomyControlPanel() {
                     </select>
                   </div>
 
-                  <div className="form-group">
-                    <label>Callee Agent (receives)</label>
+                  <div className="mb-5">
+                    <label className="block mb-2 text-zinc-400 text-sm font-medium">Callee Agent (receives)</label>
                     <select
                       value={callForm.calleeId}
                       onChange={(e) => setCallForm({ ...callForm, calleeId: e.target.value })}
                       required
+                      className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
                     >
                       <option value="">Select callee...</option>
                       {agents.filter(a => a.id !== callForm.callerId).map((a) => (
@@ -748,219 +713,219 @@ export default function EconomyControlPanel() {
                     </select>
                   </div>
 
-                  <div className="form-group">
-                    <label>Tool Name</label>
+                  <div className="mb-5">
+                    <label className="block mb-2 text-zinc-400 text-sm font-medium">Tool Name</label>
                     <input
                       type="text"
                       value={callForm.toolName}
                       onChange={(e) => setCallForm({ ...callForm, toolName: e.target.value })}
                       required
+                      className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
                     />
                   </div>
 
-                  <div className="form-group">
-                    <label>Tokens Used</label>
+                  <div className="mb-5">
+                    <label className="block mb-2 text-zinc-400 text-sm font-medium">Tokens Used</label>
                     <input
                       type="number"
                       min="1"
                       value={callForm.tokensUsed}
                       onChange={(e) => setCallForm({ ...callForm, tokensUsed: parseInt(e.target.value) || 0 })}
                       required
+                      className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
                     />
                   </div>
 
-                  <button type="submit" className="btn-execute" disabled={loading || !costPreview?.canExecute}>
-                    {loading ? "Executing..." : "⚡ Execute Call"}
+                  <button type="submit" className="w-full py-3 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={loading || !costPreview?.canExecute}>
+                    {loading ? "Executing..." : "Execute Call"}
                   </button>
                 </form>
 
                 {/* Demo Top-up */}
                 {callForm.callerId && (
-                  <div className="topup-section">
-                    <p>Need funds for testing?</p>
+                  <div className="mt-6 pt-4 border-t border-zinc-800/60">
+                    <p className="text-zinc-600 text-xs mb-2">Need funds for testing?</p>
                     <button
-                      className="btn-secondary"
+                      className="px-4 py-2 border border-zinc-800/60 rounded-lg text-zinc-400 text-sm hover:text-white hover:border-zinc-600 transition-colors"
                       onClick={() => handleTopUp(callForm.callerId, 1000000)}
                     >
-                      💰 Add 1M lamports (demo)
+                      Add 1M lamports (demo)
                     </button>
                   </div>
                 )}
               </div>
 
               {/* Cost Preview */}
-              <div className="preview-panel">
-                <h3>Cost Preview</h3>
+              <div className="bg-zinc-950 border border-zinc-800/60 rounded-xl p-5">
+                <h3 className="text-white font-medium mb-4">Cost Preview</h3>
                 {costPreview ? (
-                  <div className={`preview-content ${costPreview.canExecute ? "can-execute" : "cannot-execute"}`}>
-                    <div className="preview-status">
-                      {costPreview.canExecute ? "✅ Can Execute" : "❌ Cannot Execute"}
+                  <div className={`pl-4 ${costPreview.canExecute ? "border-l-4 border-emerald-500" : "border-l-4 border-red-500"}`}>
+                    <div className="text-lg font-semibold mb-4">
+                      {costPreview.canExecute ? <span className="text-emerald-500">Can Execute</span> : <span className="text-red-500">Cannot Execute</span>}
                     </div>
                     
-                    <div className="preview-cost">
-                      <span className="cost-label">Total Cost:</span>
-                      <span className="cost-value">{formatLamports(costPreview.costLamports)}</span>
+                    <div className="mb-4">
+                      <span className="text-zinc-500 text-sm">Total Cost: </span>
+                      <span className="text-xl font-bold text-white ml-2">{formatLamports(costPreview.costLamports)}</span>
                     </div>
 
-                    <div className="preview-breakdown">
-                      <h4>Breakdown</h4>
-                      <div className="breakdown-item">
-                        <span>Rate:</span>
-                        <span>{costPreview.breakdown.ratePer1kTokens} lamports/1K</span>
+                    <div className="mb-4">
+                      <h4 className="text-zinc-500 text-xs uppercase mb-2">Breakdown</h4>
+                      <div className="flex justify-between py-1.5 text-sm">
+                        <span className="text-zinc-500">Rate:</span>
+                        <span className="text-white">{costPreview.breakdown.ratePer1kTokens} lamports/1K</span>
                       </div>
-                      <div className="breakdown-item">
-                        <span>Token Blocks:</span>
-                        <span>{costPreview.breakdown.tokenBlocks}</span>
+                      <div className="flex justify-between py-1.5 text-sm">
+                        <span className="text-zinc-500">Token Blocks:</span>
+                        <span className="text-white">{costPreview.breakdown.tokenBlocks}</span>
                       </div>
-                      <div className="breakdown-item">
-                        <span>Raw Cost:</span>
-                        <span>{costPreview.breakdown.rawCost} lamports</span>
+                      <div className="flex justify-between py-1.5 text-sm">
+                        <span className="text-zinc-500">Raw Cost:</span>
+                        <span className="text-white">{costPreview.breakdown.rawCost} lamports</span>
                       </div>
                       {costPreview.breakdown.minimumApplied && (
-                        <div className="breakdown-item warning">
-                          <span>Minimum applied</span>
-                        </div>
+                        <div className="text-amber-500 text-sm py-1">Minimum applied</div>
                       )}
                     </div>
 
-                    <div className="preview-budget">
-                      <h4>Budget Status</h4>
-                      <div className="budget-item">
-                        <span>Current Balance:</span>
-                        <span>{formatLamports(costPreview.budgetStatus.currentBalance)}</span>
+                    <div className="mb-4">
+                      <h4 className="text-zinc-500 text-xs uppercase mb-2">Budget Status</h4>
+                      <div className="flex justify-between py-1.5 text-sm">
+                        <span className="text-zinc-500">Current Balance:</span>
+                        <span className="text-white">{formatLamports(costPreview.budgetStatus.currentBalance)}</span>
                       </div>
-                      <div className="budget-item">
-                        <span>After Call:</span>
-                        <span>{formatLamports(costPreview.budgetStatus.afterCallBalance)}</span>
+                      <div className="flex justify-between py-1.5 text-sm">
+                        <span className="text-zinc-500">After Call:</span>
+                        <span className="text-white">{formatLamports(costPreview.budgetStatus.afterCallBalance)}</span>
                       </div>
                     </div>
 
                     {costPreview.warnings.length > 0 && (
-                      <div className="preview-warnings">
+                      <div className="mt-3">
                         {costPreview.warnings.map((w, i) => (
-                          <div key={i} className="warning">{w}</div>
+                          <div key={i} className="text-amber-500 text-xs">{w}</div>
                         ))}
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="preview-empty">
+                  <div className="text-zinc-600 text-center py-10 text-sm">
                     Select caller and callee to see cost preview
                   </div>
                 )}
 
                 {/* Call Result */}
                 {callResult && (
-                  <div className="call-result">
-                    <h3>✅ Call Executed!</h3>
-                    <div className="result-item">
-                      <span>Cost:</span>
-                      <span className="success">{formatLamports(callResult.costLamports)}</span>
+                  <div className="mt-6 p-5 bg-emerald-950/30 border border-emerald-500/20 rounded-xl">
+                    <h3 className="text-emerald-500 font-medium mb-3">Call Executed!</h3>
+                    <div className="flex justify-between py-2 text-sm">
+                      <span className="text-zinc-500">Cost:</span>
+                      <span className="text-emerald-400">{formatLamports(callResult.costLamports)}</span>
                     </div>
-                    <div className="result-item">
-                      <span>Pricing Source:</span>
-                      <span>{callResult.pricingSource}</span>
+                    <div className="flex justify-between py-2 text-sm">
+                      <span className="text-zinc-500">Pricing Source:</span>
+                      <span className="text-white">{callResult.pricingSource}</span>
                     </div>
-                    <div className="result-item">
-                      <span>Ledger Updated:</span>
-                      <span className="success">✓ Yes</span>
+                    <div className="flex justify-between py-2 text-sm">
+                      <span className="text-zinc-500">Ledger Updated:</span>
+                      <span className="text-emerald-400">Yes</span>
                     </div>
                   </div>
                 )}
               </div>
             </div>
-          </section>
+          </div>
         )}
 
         {/* 4. PRICING VISIBILITY */}
         {activeTab === "pricing" && (
-          <section className="panel">
-            <h2>Pricing Visibility</h2>
-            <p className="description">Deterministic pricing makes costs predictable</p>
+          <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-white mb-1">Pricing Visibility</h2>
+            <p className="text-zinc-500 text-sm mb-6">Deterministic pricing makes costs predictable</p>
 
             {/* Platform Constants */}
             {pricingConstants && (
-              <div className="pricing-constants">
-                <h3>Platform Constants</h3>
-                <div className="constants-grid">
-                  <div className="constant">
-                    <div className="constant-value">{pricingConstants.minCostLamports}</div>
-                    <div className="constant-label">Min Cost (lamports)</div>
+              <div className="mb-8">
+                <h3 className="text-zinc-400 text-sm font-medium mb-3">Platform Constants</h3>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-zinc-950 rounded-xl p-5 text-center">
+                    <div className="text-xl font-bold text-white">{pricingConstants.minCostLamports}</div>
+                    <div className="text-zinc-500 text-xs mt-1">Min Cost (lamports)</div>
                   </div>
-                  <div className="constant">
-                    <div className="constant-value">{pricingConstants.maxTokensPerCall.toLocaleString()}</div>
-                    <div className="constant-label">Max Tokens/Call</div>
+                  <div className="bg-zinc-950 rounded-xl p-5 text-center">
+                    <div className="text-xl font-bold text-white">{pricingConstants.maxTokensPerCall.toLocaleString()}</div>
+                    <div className="text-zinc-500 text-xs mt-1">Max Tokens/Call</div>
                   </div>
-                  <div className="constant">
-                    <div className="constant-value">{(pricingConstants.platformFeePercent * 100).toFixed(1)}%</div>
-                    <div className="constant-label">Platform Fee</div>
+                  <div className="bg-zinc-950 rounded-xl p-5 text-center">
+                    <div className="text-xl font-bold text-white">{(pricingConstants.platformFeePercent * 100).toFixed(1)}%</div>
+                    <div className="text-zinc-500 text-xs mt-1">Platform Fee</div>
                   </div>
-                  <div className="constant">
-                    <div className="constant-value">{formatLamports(pricingConstants.minPayoutLamports)}</div>
-                    <div className="constant-label">Min Payout</div>
+                  <div className="bg-zinc-950 rounded-xl p-5 text-center">
+                    <div className="text-xl font-bold text-white">{formatLamports(pricingConstants.minPayoutLamports)}</div>
+                    <div className="text-zinc-500 text-xs mt-1">Min Payout</div>
                   </div>
                 </div>
               </div>
             )}
 
             {/* Per-Agent Pricing */}
-            <div className="agent-pricing">
-              <h3>Per-Agent Pricing</h3>
-              <div className="pricing-cards">
+            <div>
+              <h3 className="text-zinc-400 text-sm font-medium mb-3">Per-Agent Pricing</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {agents.map((agent) => (
-                  <div key={agent.id} className="pricing-card">
-                    <div className="pricing-header">
-                      <span className="agent-name">{agent.name}</span>
-                      <span className="agent-id">{agent.id}</span>
+                  <div key={agent.id} className="bg-zinc-950 border border-zinc-800/60 rounded-xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800/60 flex justify-between items-center">
+                      <span className="text-white font-medium text-sm">{agent.name}</span>
+                      <span className="text-zinc-600 text-xs">{agent.id}</span>
                     </div>
-                    <div className="pricing-body">
-                      <div className="pricing-rate">
-                        <span className="rate-value">{agent.rate.toLocaleString()}</span>
-                        <span className="rate-unit">lamports / 1K tokens</span>
+                    <div className="p-4">
+                      <div className="mb-2">
+                        <span className="text-2xl font-bold text-white">{agent.rate.toLocaleString()}</span>
+                        <span className="text-zinc-500 text-sm ml-2">lamports / 1K tokens</span>
                       </div>
-                      <div className="pricing-sol">
-                        ≈ {(agent.rate / 1e9).toFixed(9)} SOL / 1K tokens
+                      <div className="text-zinc-600 text-xs mb-3">
+                        â‰ˆ {(agent.rate / 1e9).toFixed(9)} SOL / 1K tokens
                       </div>
                       {pricingConstants && (
-                        <div className="pricing-min">
+                        <div className="text-amber-500/80 text-xs">
                           Min: {pricingConstants.minCostLamports} lamports
                         </div>
                       )}
                     </div>
-                    <div className="pricing-examples">
-                      <div className="example">1K tokens = {formatLamports(Math.max(agent.rate, pricingConstants?.minCostLamports || 0))}</div>
-                      <div className="example">10K tokens = {formatLamports(agent.rate * 10)}</div>
-                      <div className="example">100K tokens = {formatLamports(agent.rate * 100)}</div>
+                    <div className="px-4 py-3 border-t border-zinc-800/60 space-y-1">
+                      <div className="text-zinc-500 text-xs">1K tokens = {formatLamports(Math.max(agent.rate, pricingConstants?.minCostLamports || 0))}</div>
+                      <div className="text-zinc-500 text-xs">10K tokens = {formatLamports(agent.rate * 10)}</div>
+                      <div className="text-zinc-500 text-xs">100K tokens = {formatLamports(agent.rate * 100)}</div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          </section>
+          </div>
         )}
 
         {/* 5. SETTLEMENTS & REVENUE */}
         {activeTab === "settlements" && (
-          <section className="panel">
-            <h2>Settlements & Revenue</h2>
+          <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-white mb-4">Settlements &amp; Revenue</h2>
 
             {/* Pending Payout */}
             {economicState && economicState.pendingLamports > 0 && (
-              <div className="pending-payout">
-                <div className="payout-info">
-                  <h3>Pending Payout</h3>
-                  <div className="payout-amount">{formatLamports(economicState.pendingLamports)}</div>
-                  <p>Ready to settle to your wallet</p>
+              <div className="flex items-center gap-6 p-5 bg-zinc-950 border border-amber-500/20 rounded-xl mb-6">
+                <div className="flex-1">
+                  <h3 className="text-white font-medium mb-1">Pending Payout</h3>
+                  <div className="text-2xl font-bold text-amber-400">{formatLamports(economicState.pendingLamports)}</div>
+                  <p className="text-zinc-500 text-xs mt-1">Ready to settle to your wallet</p>
                 </div>
                 <button
-                  className="btn-settle"
+                  className="px-6 py-3 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-50"
                   onClick={() => handleSettle(selectedAgent)}
                   disabled={loading || !pricingConstants || economicState.pendingLamports < pricingConstants.minPayoutLamports}
                 >
                   Settle Now
                 </button>
                 {pricingConstants && economicState.pendingLamports < pricingConstants.minPayoutLamports && (
-                  <p className="settle-warning">
+                  <p className="text-red-400 text-xs">
                     Minimum payout: {formatLamports(pricingConstants.minPayoutLamports)}
                   </p>
                 )}
@@ -968,39 +933,43 @@ export default function EconomyControlPanel() {
             )}
 
             {/* Settlement History */}
-            <div className="settlements-section">
-              <h3>Settlement History</h3>
-              <table className="data-table">
+            <div className="mt-6">
+              <h3 className="text-zinc-400 text-sm font-medium mb-3">Settlement History</h3>
+              <table className="w-full">
                 <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Gross</th>
-                    <th>Platform Fee</th>
-                    <th>Net Payout</th>
-                    <th>Status</th>
-                    <th>TX</th>
+                  <tr className="border-b border-zinc-800/60">
+                    <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Date</th>
+                    <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Gross</th>
+                    <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Platform Fee</th>
+                    <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Net Payout</th>
+                    <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Status</th>
+                    <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">TX</th>
                   </tr>
                 </thead>
                 <tbody>
                   {settlements.length === 0 && (
-                    <tr><td colSpan={6} className="empty">No settlements yet</td></tr>
+                    <tr><td colSpan={6} className="text-center text-zinc-600 py-8 text-sm">No settlements yet</td></tr>
                   )}
                   {settlements.map((s, i) => (
-                    <tr key={i}>
-                      <td>{formatTime(s.createdAt)}</td>
-                      <td>{formatLamports(s.grossLamports)}</td>
-                      <td className="fee">{formatLamports(s.platformFeeLamports)}</td>
-                      <td className="earned">{formatLamports(s.netLamports)}</td>
-                      <td>
-                        <span className={`status-badge ${s.status}`}>{s.status}</span>
+                    <tr key={i} className="border-b border-zinc-800/40">
+                      <td className="px-3 py-3 text-sm text-zinc-400">{formatTime(s.createdAt)}</td>
+                      <td className="px-3 py-3 text-sm text-white">{formatLamports(s.grossLamports)}</td>
+                      <td className="px-3 py-3 text-sm text-amber-400">{formatLamports(s.platformFeeLamports)}</td>
+                      <td className="px-3 py-3 text-sm text-emerald-400">{formatLamports(s.netLamports)}</td>
+                      <td className="px-3 py-3 text-sm">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          s.status === "completed" ? "bg-emerald-500/10 text-emerald-400" :
+                          s.status === "pending" ? "bg-amber-500/10 text-amber-400" :
+                          "bg-red-500/10 text-red-400"
+                        }`}>{s.status}</span>
                       </td>
-                      <td>
+                      <td className="px-3 py-3 text-sm">
                         {s.txSignature ? (
                           <a 
                             href={`https://solscan.io/tx/${s.txSignature}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="tx-link"
+                            className="text-zinc-400 hover:text-white transition-colors"
                           >
                             {s.txSignature.slice(0, 8)}...
                           </a>
@@ -1014,35 +983,36 @@ export default function EconomyControlPanel() {
 
             {/* Platform Revenue (Admin View) */}
             {platformRevenue && (
-              <div className="platform-revenue">
-                <h3>Platform Revenue</h3>
-                <div className="revenue-stats">
-                  <div className="revenue-stat">
-                    <div className="revenue-value">{formatLamports(platformRevenue.totalFeesLamports)}</div>
-                    <div className="revenue-label">Total Platform Fees</div>
+              <div className="mt-8">
+                <h3 className="text-zinc-400 text-sm font-medium mb-3">Platform Revenue</h3>
+                <div className="flex gap-6">
+                  <div className="bg-zinc-950 rounded-xl p-5 text-center">
+                    <div className="text-xl font-bold text-white">{formatLamports(platformRevenue.totalFeesLamports)}</div>
+                    <div className="text-zinc-500 text-xs mt-1">Total Platform Fees</div>
                   </div>
-                  <div className="revenue-stat">
-                    <div className="revenue-value">{platformRevenue.settlementCount}</div>
-                    <div className="revenue-label">Total Settlements</div>
+                  <div className="bg-zinc-950 rounded-xl p-5 text-center">
+                    <div className="text-xl font-bold text-white">{platformRevenue.settlementCount}</div>
+                    <div className="text-zinc-500 text-xs mt-1">Total Settlements</div>
                   </div>
                 </div>
               </div>
             )}
-          </section>
+          </div>
         )}
 
         {/* 6. DEPOSITS */}
         {activeTab === "deposits" && (
-          <section className="panel">
-            <h2>Deposit & Withdraw SOL</h2>
-            <p className="description">Fund your agent account with real SOL or withdraw to your wallet</p>
+          <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6">
+            <h2 className="text-lg font-semibold text-white mb-1">Deposit &amp; Withdraw SOL</h2>
+            <p className="text-zinc-500 text-sm mb-6">Fund your agent account with real SOL or withdraw to your wallet</p>
 
             {/* Agent Selector */}
-            <div className="form-group">
-              <label>Select Agent</label>
+            <div className="mb-5">
+              <label className="block mb-2 text-zinc-400 text-sm font-medium">Select Agent</label>
               <select
                 value={selectedAgent}
                 onChange={(e) => setSelectedAgent(e.target.value)}
+                className="w-full max-w-lg px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
               >
                 {agents.map((a) => (
                   <option key={a.id} value={a.id}>{a.name} ({a.id})</option>
@@ -1052,24 +1022,22 @@ export default function EconomyControlPanel() {
 
             {/* Current Balance */}
             {economicState && (
-              <div className="balance-card">
-                <div className="balance-info">
-                  <span className="balance-label">Current Balance</span>
-                  <span className="balance-value">{formatLamports(economicState.balanceLamports)}</span>
-                </div>
+              <div className="flex justify-between items-center p-5 bg-zinc-950 border border-zinc-800/60 rounded-xl mb-6">
+                <span className="text-zinc-500 text-sm">Current Balance</span>
+                <span className="text-2xl font-bold text-white">{formatLamports(economicState.balanceLamports)}</span>
               </div>
             )}
 
             {/* Treasury Address */}
             {depositAddress && (
-              <div className="deposit-section">
-                <h3>Deposit SOL</h3>
-                <div className="treasury-info">
-                  <label>Treasury Address ({depositAddress.network})</label>
-                  <div className="address-display">
-                    <code>{depositAddress.treasuryAddress}</code>
+              <div className="bg-zinc-950 rounded-xl p-5 mb-6">
+                <h3 className="text-white font-medium mb-4">Deposit SOL</h3>
+                <div className="mb-6">
+                  <label className="block mb-2 text-zinc-500 text-sm">Treasury Address ({depositAddress.network})</label>
+                  <div className="flex gap-3 items-center bg-[#09090b] px-4 py-3 rounded-lg mb-2">
+                    <code className="flex-1 font-mono text-sm text-zinc-400 break-all">{depositAddress.treasuryAddress}</code>
                     <button 
-                      className="btn-copy"
+                      className="px-3 py-1.5 border border-zinc-800/60 rounded text-zinc-400 text-xs hover:text-white transition-colors"
                       onClick={() => {
                         navigator.clipboard.writeText(depositAddress.treasuryAddress);
                         showMessage("success", "Address copied!");
@@ -1078,22 +1046,23 @@ export default function EconomyControlPanel() {
                       Copy
                     </button>
                   </div>
-                  <p className="hint">{depositAddress.instructions}</p>
+                  <p className="text-xs text-zinc-600">{depositAddress.instructions}</p>
                 </div>
 
                 {/* Create Deposit Intent */}
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Expected Amount (optional)</label>
+                <div className="flex gap-4 items-end mb-4">
+                  <div className="flex-1">
+                    <label className="block mb-2 text-zinc-400 text-sm font-medium">Expected Amount (optional)</label>
                     <input
                       type="number"
                       placeholder="Amount in lamports"
                       value={depositAmount}
                       onChange={(e) => setDepositAmount(e.target.value)}
+                      className="w-full px-4 py-3 bg-[#09090b] border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
                     />
                   </div>
                   <button 
-                    className="btn-primary"
+                    className="px-6 py-3 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-50"
                     onClick={handleCreateDepositIntent}
                     disabled={loading}
                   >
@@ -1103,39 +1072,39 @@ export default function EconomyControlPanel() {
 
                 {/* Show Intent if created */}
                 {depositIntent && (
-                  <div className="intent-card">
-                    <h4>Deposit Intent Created</h4>
-                    <div className="intent-details">
-                      <p><strong>Reference:</strong> {depositIntent.reference}</p>
-                      <p><strong>Expires:</strong> {formatTime(depositIntent.expiresAt)}</p>
+                  <div className="bg-zinc-900 border border-zinc-800/60 rounded-xl p-5 mt-4">
+                    <h4 className="text-white font-medium mb-3">Deposit Intent Created</h4>
+                    <div className="space-y-2 text-sm">
+                      <p className="text-zinc-500"><strong className="text-zinc-400">Reference:</strong> {depositIntent.reference}</p>
+                      <p className="text-zinc-500"><strong className="text-zinc-400">Expires:</strong> {formatTime(depositIntent.expiresAt)}</p>
                       {depositIntent.expectedAmountLamports && (
-                        <p><strong>Expected:</strong> {formatLamports(depositIntent.expectedAmountLamports)}</p>
+                        <p className="text-zinc-500"><strong className="text-zinc-400">Expected:</strong> {formatLamports(depositIntent.expectedAmountLamports)}</p>
                       )}
                     </div>
-                    <div className="qr-code">
-                      <img src={depositIntent.qrCodeData} alt="Deposit QR Code" />
+                    <div className="text-center my-5 inline-block p-4 bg-white rounded-lg">
+                      <img src={depositIntent.qrCodeData} alt="Deposit QR Code" className="max-w-[200px]" />
                     </div>
-                    <ul className="instructions">
+                    <ol className="list-decimal pl-5 text-zinc-500 text-sm space-y-2">
                       {depositIntent.instructions.map((inst, i) => (
                         <li key={i}>{inst}</li>
                       ))}
-                    </ul>
+                    </ol>
                   </div>
                 )}
 
                 {/* Verify Transaction */}
-                <div className="verify-section">
-                  <h4>Verify a Transaction</h4>
-                  <div className="form-row">
+                <div className="mt-6 pt-6 border-t border-zinc-800/60">
+                  <h4 className="text-zinc-400 text-sm font-medium mb-3">Verify a Transaction</h4>
+                  <div className="flex gap-4 items-end">
                     <input
                       type="text"
                       placeholder="Solana transaction signature"
                       value={verifyTxSignature}
                       onChange={(e) => setVerifyTxSignature(e.target.value)}
-                      className="input-wide"
+                      className="flex-1 px-4 py-3 bg-[#09090b] border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
                     />
                     <button 
-                      className="btn-primary"
+                      className="px-6 py-3 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-50"
                       onClick={handleVerifyDeposit}
                       disabled={loading || !verifyTxSignature}
                     >
@@ -1147,28 +1116,30 @@ export default function EconomyControlPanel() {
             )}
 
             {/* Withdraw Section */}
-            <div className="deposit-section">
-              <h3>Withdraw SOL</h3>
-              <div className="form-group">
-                <label>Amount (lamports)</label>
+            <div className="bg-zinc-950 rounded-xl p-5 mb-6">
+              <h3 className="text-white font-medium mb-4">Withdraw SOL</h3>
+              <div className="mb-5">
+                <label className="block mb-2 text-zinc-400 text-sm font-medium">Amount (lamports)</label>
                 <input
                   type="number"
                   placeholder="Amount to withdraw"
                   value={withdrawForm.amount}
                   onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
+                  className="w-full px-4 py-3 bg-[#09090b] border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
                 />
               </div>
-              <div className="form-group">
-                <label>Destination Wallet Address</label>
+              <div className="mb-5">
+                <label className="block mb-2 text-zinc-400 text-sm font-medium">Destination Wallet Address</label>
                 <input
                   type="text"
                   placeholder="Solana wallet address"
                   value={withdrawForm.toAddress}
                   onChange={(e) => setWithdrawForm({ ...withdrawForm, toAddress: e.target.value })}
+                  className="w-full px-4 py-3 bg-[#09090b] border border-zinc-800/60 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-600"
                 />
               </div>
               <button 
-                className="btn-danger"
+                className="px-6 py-3 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 transition-colors disabled:opacity-50"
                 onClick={handleWithdraw}
                 disabled={loading || !withdrawForm.amount || !withdrawForm.toAddress}
               >
@@ -1178,24 +1149,30 @@ export default function EconomyControlPanel() {
 
             {/* Pending Intents */}
             {pendingIntents.length > 0 && (
-              <div className="deposits-history">
-                <h3>Pending Deposit Intents</h3>
-                <table className="data-table">
+              <div className="mt-8">
+                <h3 className="text-zinc-400 text-sm font-medium mb-3">Pending Deposit Intents</h3>
+                <table className="w-full">
                   <thead>
-                    <tr>
-                      <th>Reference</th>
-                      <th>Expected Amount</th>
-                      <th>Expires</th>
-                      <th>Status</th>
+                    <tr className="border-b border-zinc-800/60">
+                      <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Reference</th>
+                      <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Expected Amount</th>
+                      <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Expires</th>
+                      <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {pendingIntents.map((pi, i) => (
-                      <tr key={i}>
-                        <td><code>{pi.reference}</code></td>
-                        <td>{pi.expectedAmountLamports ? formatLamports(pi.expectedAmountLamports) : "-"}</td>
-                        <td>{formatTime(pi.expiresAt)}</td>
-                        <td><span className={`status-badge ${pi.status}`}>{pi.status}</span></td>
+                      <tr key={i} className="border-b border-zinc-800/40">
+                        <td className="px-3 py-3 text-sm"><code className="text-zinc-400">{pi.reference}</code></td>
+                        <td className="px-3 py-3 text-sm text-white">{pi.expectedAmountLamports ? formatLamports(pi.expectedAmountLamports) : "-"}</td>
+                        <td className="px-3 py-3 text-sm text-zinc-400">{formatTime(pi.expiresAt)}</td>
+                        <td className="px-3 py-3 text-sm">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            pi.status === "completed" ? "bg-emerald-500/10 text-emerald-400" :
+                            pi.status === "pending" ? "bg-amber-500/10 text-amber-400" :
+                            "bg-red-500/10 text-red-400"
+                          }`}>{pi.status}</span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1204,32 +1181,38 @@ export default function EconomyControlPanel() {
             )}
 
             {/* Deposit History */}
-            <div className="deposits-history">
-              <h3>Deposit History</h3>
-              <table className="data-table">
+            <div className="mt-8">
+              <h3 className="text-zinc-400 text-sm font-medium mb-3">Deposit History</h3>
+              <table className="w-full">
                 <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Amount</th>
-                    <th>Status</th>
-                    <th>TX Signature</th>
+                  <tr className="border-b border-zinc-800/60">
+                    <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Date</th>
+                    <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Amount</th>
+                    <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">Status</th>
+                    <th className="text-left px-3 py-2 text-zinc-500 text-xs font-medium">TX Signature</th>
                   </tr>
                 </thead>
                 <tbody>
                   {depositHistory.length === 0 && (
-                    <tr><td colSpan={4} className="empty">No deposits yet</td></tr>
+                    <tr><td colSpan={4} className="text-center text-zinc-600 py-8 text-sm">No deposits yet</td></tr>
                   )}
                   {depositHistory.map((d, i) => (
-                    <tr key={i}>
-                      <td>{formatTime(d.createdAt)}</td>
-                      <td className="earned">{formatLamports(d.amountLamports)}</td>
-                      <td><span className={`status-badge ${d.status}`}>{d.status}</span></td>
-                      <td>
+                    <tr key={i} className="border-b border-zinc-800/40">
+                      <td className="px-3 py-3 text-sm text-zinc-400">{formatTime(d.createdAt)}</td>
+                      <td className="px-3 py-3 text-sm text-emerald-400">{formatLamports(d.amountLamports)}</td>
+                      <td className="px-3 py-3 text-sm">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          d.status === "completed" ? "bg-emerald-500/10 text-emerald-400" :
+                          d.status === "pending" ? "bg-amber-500/10 text-amber-400" :
+                          "bg-red-500/10 text-red-400"
+                        }`}>{d.status}</span>
+                      </td>
+                      <td className="px-3 py-3 text-sm">
                         <a 
                           href={`https://solscan.io/tx/${d.txSignature}?cluster=devnet`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="tx-link"
+                          className="text-zinc-400 hover:text-white transition-colors"
                         >
                           {d.txSignature.slice(0, 12)}...
                         </a>
@@ -1239,565 +1222,9 @@ export default function EconomyControlPanel() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </div>
         )}
       </div>
-    </main>
+    </Layout>
   );
 }
-
-// =============================================================================
-// STYLES
-// =============================================================================
-
-const styles = `
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { 
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-    min-height: 100vh;
-    color: #e2e8f0;
-  }
-  .page { max-width: 1400px; margin: 0 auto; padding: 20px; }
-  
-  /* Navigation */
-  .nav {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px 24px;
-    background: rgba(30, 27, 75, 0.8);
-    border-radius: 16px;
-    margin-bottom: 24px;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(139, 92, 246, 0.2);
-  }
-  .brand {
-    font-size: 24px;
-    font-weight: 700;
-    background: linear-gradient(135deg, #8b5cf6, #06b6d4);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .links { display: flex; gap: 8px; }
-  .links a {
-    color: #a5b4fc;
-    text-decoration: none;
-    padding: 8px 16px;
-    border-radius: 8px;
-    transition: all 0.2s;
-  }
-  .links a:hover, .links a.active {
-    background: rgba(139, 92, 246, 0.2);
-    color: #c4b5fd;
-  }
-
-  /* Auth Panel */
-  .auth-panel {
-    text-align: center;
-    padding: 80px 24px;
-    background: rgba(30, 27, 75, 0.6);
-    border-radius: 24px;
-    border: 1px solid rgba(139, 92, 246, 0.2);
-  }
-  .auth-panel h1 { font-size: 32px; margin-bottom: 16px; }
-  .auth-panel p { color: #94a3b8; margin-bottom: 32px; }
-  .auth-form { display: flex; gap: 16px; justify-content: center; }
-  .input-lg {
-    padding: 16px 24px;
-    font-size: 16px;
-    background: rgba(15, 23, 42, 0.8);
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    border-radius: 12px;
-    color: #e2e8f0;
-    width: 300px;
-  }
-
-  /* Hero */
-  .hero {
-    text-align: center;
-    padding: 32px;
-    background: rgba(30, 27, 75, 0.6);
-    border-radius: 24px;
-    margin-bottom: 24px;
-    border: 1px solid rgba(139, 92, 246, 0.2);
-  }
-  .hero h1 { font-size: 28px; margin-bottom: 8px; }
-  .hero p { color: #94a3b8; }
-
-  /* Tabs */
-  .tabs {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-  }
-  .tab {
-    padding: 12px 20px;
-    background: rgba(30, 27, 75, 0.6);
-    border: 1px solid rgba(139, 92, 246, 0.2);
-    border-radius: 12px;
-    color: #a5b4fc;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-size: 14px;
-  }
-  .tab:hover { border-color: rgba(139, 92, 246, 0.5); }
-  .tab.active {
-    background: rgba(139, 92, 246, 0.2);
-    border-color: #8b5cf6;
-    color: #c4b5fd;
-  }
-
-  /* Panels */
-  .panel {
-    background: rgba(30, 27, 75, 0.6);
-    border-radius: 24px;
-    padding: 32px;
-    border: 1px solid rgba(139, 92, 246, 0.2);
-  }
-  .panel h2 { font-size: 24px; margin-bottom: 8px; }
-  .description { color: #94a3b8; margin-bottom: 24px; }
-
-  /* Forms */
-  .form { max-width: 500px; }
-  .form-group { margin-bottom: 20px; }
-  .form-group label {
-    display: block;
-    margin-bottom: 8px;
-    color: #c4b5fd;
-    font-weight: 500;
-  }
-  .form-group input,
-  .form-group select {
-    width: 100%;
-    padding: 12px 16px;
-    background: rgba(15, 23, 42, 0.8);
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    border-radius: 8px;
-    color: #e2e8f0;
-    font-size: 14px;
-  }
-  .form-group input:focus,
-  .form-group select:focus {
-    outline: none;
-    border-color: #8b5cf6;
-  }
-  .hint { font-size: 12px; color: #64748b; margin-top: 4px; display: block; }
-
-  /* Buttons */
-  .btn-primary {
-    padding: 14px 28px;
-    background: linear-gradient(135deg, #8b5cf6, #6366f1);
-    border: none;
-    border-radius: 12px;
-    color: white;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(139, 92, 246, 0.4); }
-  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-  .btn-secondary {
-    padding: 10px 20px;
-    background: rgba(139, 92, 246, 0.2);
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    border-radius: 8px;
-    color: #c4b5fd;
-    cursor: pointer;
-  }
-  .btn-secondary:hover { background: rgba(139, 92, 246, 0.3); }
-
-  .btn-execute {
-    width: 100%;
-    padding: 16px 28px;
-    background: linear-gradient(135deg, #22c55e, #16a34a);
-    border: none;
-    border-radius: 12px;
-    color: white;
-    font-weight: 700;
-    font-size: 16px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .btn-execute:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(34, 197, 94, 0.4); }
-  .btn-execute:disabled { opacity: 0.5; cursor: not-allowed; background: #64748b; transform: none; }
-
-  .btn-settle {
-    padding: 14px 28px;
-    background: linear-gradient(135deg, #f59e0b, #d97706);
-    border: none;
-    border-radius: 12px;
-    color: white;
-    font-weight: 600;
-    cursor: pointer;
-  }
-
-  /* Toast */
-  .toast {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 16px 24px;
-    border-radius: 12px;
-    font-weight: 500;
-    z-index: 1000;
-    animation: slideIn 0.3s ease;
-  }
-  .toast-success { background: #22c55e; color: white; }
-  .toast-error { background: #ef4444; color: white; }
-  @keyframes slideIn {
-    from { transform: translateX(100%); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-  }
-
-  /* Stats Grid */
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
-  }
-  .stat-card {
-    background: rgba(15, 23, 42, 0.6);
-    padding: 20px;
-    border-radius: 16px;
-    border: 1px solid rgba(139, 92, 246, 0.2);
-  }
-  .stat-card.primary { border-color: #8b5cf6; }
-  .stat-card.success { border-color: #22c55e; }
-  .stat-card.danger { border-color: #ef4444; }
-  .stat-card.info { border-color: #06b6d4; }
-  .stat-value { font-size: 24px; font-weight: 700; margin-bottom: 4px; }
-  .stat-label { color: #94a3b8; font-size: 14px; }
-
-  /* Metrics Row */
-  .metrics-row {
-    display: flex;
-    gap: 24px;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-  }
-  .metric {
-    display: flex;
-    gap: 8px;
-  }
-  .metric-label { color: #94a3b8; }
-  .metric-value { color: #c4b5fd; font-weight: 500; }
-
-  /* Data Tables */
-  .data-table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-  .data-table th,
-  .data-table td {
-    padding: 12px;
-    text-align: left;
-    border-bottom: 1px solid rgba(139, 92, 246, 0.1);
-  }
-  .data-table th {
-    color: #94a3b8;
-    font-weight: 500;
-    font-size: 12px;
-    text-transform: uppercase;
-  }
-  .data-table .empty { text-align: center; color: #64748b; padding: 32px; }
-  .data-table .cost { color: #f87171; }
-  .data-table .earned { color: #4ade80; }
-  .data-table .fee { color: #fbbf24; }
-  .tx-link { color: #60a5fa; text-decoration: none; }
-  .tx-link:hover { text-decoration: underline; }
-
-  /* Status Badges */
-  .status-badge {
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 500;
-  }
-  .status-badge.completed { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
-  .status-badge.pending { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
-  .status-badge.failed { background: rgba(239, 68, 68, 0.2); color: #f87171; }
-
-  /* Execute Grid */
-  .execute-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 32px;
-  }
-  @media (max-width: 900px) {
-    .execute-grid { grid-template-columns: 1fr; }
-  }
-
-  /* Preview Panel */
-  .preview-panel {
-    background: rgba(15, 23, 42, 0.6);
-    padding: 24px;
-    border-radius: 16px;
-    border: 1px solid rgba(139, 92, 246, 0.2);
-  }
-  .preview-panel h3 { margin-bottom: 16px; }
-  .preview-empty { color: #64748b; text-align: center; padding: 40px; }
-  .preview-content.can-execute { border-left: 4px solid #22c55e; padding-left: 16px; }
-  .preview-content.cannot-execute { border-left: 4px solid #ef4444; padding-left: 16px; }
-  .preview-status { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
-  .preview-cost { margin-bottom: 16px; }
-  .cost-label { color: #94a3b8; }
-  .cost-value { font-size: 24px; font-weight: 700; color: #c4b5fd; margin-left: 12px; }
-  .preview-breakdown,
-  .preview-budget { margin-bottom: 16px; }
-  .preview-breakdown h4,
-  .preview-budget h4 { font-size: 14px; color: #94a3b8; margin-bottom: 8px; }
-  .breakdown-item,
-  .budget-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 6px 0;
-    font-size: 14px;
-  }
-  .breakdown-item.warning { color: #fbbf24; }
-  .preview-warnings { margin-top: 12px; }
-  .preview-warnings .warning { color: #fbbf24; font-size: 13px; }
-
-  /* Call Result */
-  .call-result {
-    margin-top: 24px;
-    padding: 20px;
-    background: rgba(34, 197, 94, 0.1);
-    border-radius: 12px;
-    border: 1px solid rgba(34, 197, 94, 0.3);
-  }
-  .call-result h3 { color: #4ade80; margin-bottom: 12px; }
-  .result-item {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 0;
-  }
-  .result-item .success { color: #4ade80; }
-
-  /* Top-up Section */
-  .topup-section {
-    margin-top: 24px;
-    padding-top: 16px;
-    border-top: 1px solid rgba(139, 92, 246, 0.2);
-  }
-  .topup-section p { color: #64748b; font-size: 13px; margin-bottom: 8px; }
-
-  /* Agents List */
-  .agents-list { margin-top: 32px; }
-  .agents-list h3 { margin-bottom: 16px; color: #94a3b8; }
-  .agent-card {
-    padding: 16px;
-    background: rgba(15, 23, 42, 0.6);
-    border-radius: 12px;
-    margin-bottom: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-    border: 1px solid transparent;
-  }
-  .agent-card:hover { border-color: rgba(139, 92, 246, 0.3); }
-  .agent-name { font-weight: 600; margin-bottom: 4px; }
-  .agent-id { color: #64748b; font-size: 12px; margin-bottom: 8px; }
-  .agent-stats { display: flex; gap: 16px; font-size: 13px; color: #94a3b8; }
-
-  /* Pricing */
-  .pricing-constants { margin-bottom: 32px; }
-  .constants-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 16px;
-  }
-  .constant {
-    background: rgba(15, 23, 42, 0.6);
-    padding: 20px;
-    border-radius: 12px;
-    text-align: center;
-  }
-  .constant-value { font-size: 20px; font-weight: 700; color: #8b5cf6; }
-  .constant-label { color: #94a3b8; font-size: 12px; margin-top: 4px; }
-
-  .pricing-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
-  }
-  .pricing-card {
-    background: rgba(15, 23, 42, 0.6);
-    border-radius: 16px;
-    overflow: hidden;
-    border: 1px solid rgba(139, 92, 246, 0.2);
-  }
-  .pricing-header {
-    padding: 16px;
-    background: rgba(139, 92, 246, 0.1);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .pricing-header .agent-name { font-weight: 600; }
-  .pricing-header .agent-id { color: #64748b; font-size: 12px; }
-  .pricing-body { padding: 20px; }
-  .pricing-rate { margin-bottom: 8px; }
-  .rate-value { font-size: 28px; font-weight: 700; color: #8b5cf6; }
-  .rate-unit { color: #94a3b8; font-size: 14px; margin-left: 8px; }
-  .pricing-sol { color: #64748b; font-size: 13px; margin-bottom: 12px; }
-  .pricing-min { color: #fbbf24; font-size: 12px; }
-  .pricing-examples {
-    padding: 16px;
-    border-top: 1px solid rgba(139, 92, 246, 0.1);
-  }
-  .pricing-examples .example {
-    padding: 6px 0;
-    font-size: 13px;
-    color: #94a3b8;
-  }
-
-  /* Settlements */
-  .pending-payout {
-    display: flex;
-    align-items: center;
-    gap: 24px;
-    padding: 24px;
-    background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(245, 158, 11, 0.1));
-    border-radius: 16px;
-    border: 1px solid rgba(251, 191, 36, 0.3);
-    margin-bottom: 24px;
-  }
-  .payout-info { flex: 1; }
-  .payout-info h3 { margin-bottom: 8px; }
-  .payout-amount { font-size: 28px; font-weight: 700; color: #fbbf24; }
-  .settle-warning { color: #f87171; font-size: 12px; margin-top: 8px; }
-
-  .settlements-section,
-  .history-section { margin-top: 24px; }
-  .settlements-section h3,
-  .history-section h3 { margin-bottom: 16px; color: #c4b5fd; }
-
-  .platform-revenue { margin-top: 32px; }
-  .platform-revenue h3 { margin-bottom: 16px; }
-  .revenue-stats { display: flex; gap: 24px; }
-  .revenue-stat {
-    background: rgba(15, 23, 42, 0.6);
-    padding: 24px;
-    border-radius: 12px;
-    text-align: center;
-  }
-  .revenue-value { font-size: 24px; font-weight: 700; color: #8b5cf6; }
-  .revenue-label { color: #94a3b8; font-size: 14px; margin-top: 4px; }
-
-  /* Deposit Section Styles */
-  .balance-card {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(6, 182, 212, 0.2));
-    padding: 24px;
-    border-radius: 16px;
-    margin-bottom: 24px;
-    border: 1px solid rgba(139, 92, 246, 0.3);
-  }
-  .balance-info {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .balance-label { color: #a5b4fc; font-size: 14px; }
-  .balance-value { font-size: 28px; font-weight: 700; color: #8b5cf6; }
-
-  .deposit-section {
-    background: rgba(15, 23, 42, 0.6);
-    padding: 24px;
-    border-radius: 16px;
-    margin-bottom: 24px;
-  }
-  .deposit-section h3 { margin-bottom: 16px; color: #c4b5fd; }
-  .deposit-section h4 { margin: 24px 0 12px; color: #a5b4fc; }
-
-  .treasury-info { margin-bottom: 24px; }
-  .treasury-info label { display: block; margin-bottom: 8px; color: #94a3b8; }
-  .address-display {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    background: rgba(0, 0, 0, 0.3);
-    padding: 12px 16px;
-    border-radius: 8px;
-    margin-bottom: 8px;
-  }
-  .address-display code {
-    flex: 1;
-    font-family: monospace;
-    font-size: 14px;
-    color: #06b6d4;
-    word-break: break-all;
-  }
-  .btn-copy {
-    background: rgba(139, 92, 246, 0.3);
-    color: #c4b5fd;
-    border: none;
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .btn-copy:hover { background: rgba(139, 92, 246, 0.5); }
-
-  .form-row {
-    display: flex;
-    gap: 16px;
-    align-items: flex-end;
-    margin-bottom: 16px;
-  }
-  .form-row .form-group { flex: 1; margin-bottom: 0; }
-  .input-wide { flex: 1; }
-
-  .intent-card {
-    background: rgba(139, 92, 246, 0.1);
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    border-radius: 12px;
-    padding: 20px;
-    margin-top: 16px;
-  }
-  .intent-card h4 { color: #8b5cf6; margin-bottom: 12px; }
-  .intent-details p { margin: 8px 0; color: #94a3b8; }
-  .intent-details strong { color: #c4b5fd; }
-  .qr-code {
-    text-align: center;
-    margin: 20px 0;
-    padding: 16px;
-    background: white;
-    border-radius: 8px;
-    display: inline-block;
-  }
-  .qr-code img { max-width: 200px; height: auto; }
-  .instructions {
-    list-style: decimal;
-    padding-left: 20px;
-    color: #94a3b8;
-  }
-  .instructions li { margin: 8px 0; }
-
-  .verify-section {
-    margin-top: 24px;
-    padding-top: 24px;
-    border-top: 1px solid rgba(139, 92, 246, 0.2);
-  }
-
-  .btn-danger {
-    background: linear-gradient(135deg, #dc2626, #b91c1c);
-    color: white;
-    border: none;
-    padding: 12px 24px;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s;
-  }
-  .btn-danger:hover { filter: brightness(1.1); }
-  .btn-danger:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .deposits-history { margin-top: 32px; }
-  .deposits-history h3 { margin-bottom: 16px; color: #c4b5fd; }
-`;
