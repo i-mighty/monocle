@@ -38,19 +38,19 @@ export default function PaymentsPage() {
       <Head>
         <title>x402 Payments — Monocle</title>
       </Head>
-      <div className="min-h-screen bg-gray-950 text-white">
+      <div className="min-h-screen bg-[#09090b] text-white">
         <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold">x402 Payments</h1>
-              <p className="text-gray-400 text-sm mt-1">
+              <p className="text-zinc-500 text-sm mt-1">
                 Real&ndash;time Solana USDC micropayments via the x402 protocol
               </p>
             </div>
             <a
               href="/"
-              className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+              className="text-sm text-zinc-400 hover:text-white transition-colors"
             >
               &larr; Marketplace
             </a>
@@ -62,18 +62,17 @@ export default function PaymentsPage() {
               <StatusCard
                 label="x402 Status"
                 value={status.x402Enabled ? "Active" : "Inactive"}
-                color={status.x402Enabled ? "green" : "gray"}
+                active={status.x402Enabled}
               />
-              <StatusCard label="Network" value={status.network} color="blue" />
+              <StatusCard label="Network" value={status.network} />
               <StatusCard
                 label="Chat Price"
                 value={`$${status.chatPrice} USDC`}
-                color="purple"
               />
               <StatusCard
                 label="Paying Client"
                 value={status.clientConfigured ? "Configured" : "Disabled"}
-                color={status.clientConfigured ? "green" : "gray"}
+                active={status.clientConfigured}
               />
             </div>
           )}
@@ -83,15 +82,15 @@ export default function PaymentsPage() {
 
           {/* Setup instructions if not configured */}
           {status && !status.x402Enabled && (
-            <div className="bg-gray-900 border border-yellow-800 rounded-lg p-5 space-y-3">
-              <h3 className="text-yellow-400 font-semibold">
+            <div className="bg-zinc-900/50 border border-amber-500/20 rounded-xl p-5 space-y-3">
+              <h3 className="text-amber-400 font-semibold">
                 x402 is not configured
               </h3>
-              <p className="text-gray-400 text-sm">
+              <p className="text-zinc-500 text-sm">
                 To enable real x402 Solana USDC payments, add these to your{" "}
-                <code className="bg-gray-800 px-1 rounded">.env</code>:
+                <code className="bg-zinc-800 px-1 rounded">.env</code>:
               </p>
-              <pre className="bg-gray-800 text-green-300 text-xs p-3 rounded overflow-x-auto">
+              <pre className="bg-[#0a0a0a] text-zinc-400 text-xs p-3 rounded-lg overflow-x-auto font-mono">
 {`# Your Solana wallet address (receives USDC payments)
 X402_PAY_TO=<your-solana-wallet-address>
 
@@ -115,29 +114,16 @@ X402_CLIENT_PRIVATE_KEY=<base58-private-key>`}
 function StatusCard({
   label,
   value,
-  color,
+  active,
 }: {
   label: string;
   value: string;
-  color: string;
+  active?: boolean;
 }) {
-  const colorMap: Record<string, string> = {
-    green: "border-green-800 bg-green-950/30",
-    blue: "border-blue-800 bg-blue-950/30",
-    purple: "border-purple-800 bg-purple-950/30",
-    gray: "border-gray-700 bg-gray-900",
-  };
-  const textMap: Record<string, string> = {
-    green: "text-green-400",
-    blue: "text-blue-400",
-    purple: "text-purple-400",
-    gray: "text-gray-400",
-  };
-
   return (
-    <div className={`border rounded-lg p-3 ${colorMap[color] || colorMap.gray}`}>
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      <div className={`text-sm font-semibold ${textMap[color] || textMap.gray}`}>
+    <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-3">
+      <div className="text-xs text-zinc-600 mb-1">{label}</div>
+      <div className={`text-sm font-semibold ${active === true ? "text-emerald-400" : active === false ? "text-zinc-500" : "text-white"}`}>
         {value}
       </div>
     </div>

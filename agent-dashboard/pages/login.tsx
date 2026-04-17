@@ -18,130 +18,43 @@ export default function Login() {
   };
 
   return (
-    <main className="login-page">
-      <style jsx>{`
-        .login-page {
-          min-height: 100vh;
-          background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        .login-card {
-          background: rgba(30, 27, 75, 0.8);
-          padding: 48px;
-          border-radius: 24px;
-          border: 1px solid rgba(139, 92, 246, 0.2);
-          text-align: center;
-          max-width: 400px;
-          width: 100%;
-        }
-        .brand {
-          font-size: 32px;
-          font-weight: 700;
-          background: linear-gradient(135deg, #8b5cf6, #06b6d4);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          margin-bottom: 8px;
-        }
-        .subtitle {
-          color: #94a3b8;
-          margin-bottom: 32px;
-        }
-        h2 {
-          color: #e2e8f0;
-          font-size: 20px;
-          margin-bottom: 16px;
-        }
-        .form-group {
-          margin-bottom: 24px;
-        }
-        input {
-          width: 100%;
-          padding: 14px 18px;
-          background: rgba(15, 23, 42, 0.8);
-          border: 1px solid rgba(139, 92, 246, 0.3);
-          border-radius: 12px;
-          color: #e2e8f0;
-          font-size: 14px;
-        }
-        input:focus {
-          outline: none;
-          border-color: #8b5cf6;
-        }
-        .btn-primary {
-          width: 100%;
-          padding: 14px 28px;
-          background: linear-gradient(135deg, #8b5cf6, #6366f1);
-          border: none;
-          border-radius: 12px;
-          color: white;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .btn-primary:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(139, 92, 246, 0.4);
-        }
-        .success {
-          color: #4ade80;
-          margin-top: 16px;
-        }
-        .links {
-          margin-top: 24px;
-          display: flex;
-          gap: 16px;
-          justify-content: center;
-        }
-        .links a {
-          color: #a5b4fc;
-          text-decoration: none;
-          font-size: 14px;
-        }
-        .links a:hover {
-          color: #c4b5fd;
-        }
-        .hint {
-          color: #64748b;
-          font-size: 12px;
-          margin-top: 8px;
-        }
-      `}</style>
-      
-      <div className="login-card">
-        <div className="brand">AgentPay</div>
-        <p className="subtitle">Agent Economy Control Panel</p>
-        
-        <h2>Enter API Key</h2>
-        
-        <div className="form-group">
+    <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+      <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-2xl p-12 text-center max-w-[400px] w-full">
+        <h1 className="text-3xl font-bold text-white mb-2">Monocle</h1>
+        <p className="text-zinc-500 mb-8">Agent Economy Control Panel</p>
+
+        <h2 className="text-white text-lg font-semibold mb-4">Enter API Key</h2>
+
+        <div className="mb-6">
           <input
             type="password"
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="Paste your API key"
             onKeyDown={(e) => e.key === "Enter" && handleSave()}
+            className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
           />
-          <p className="hint">Your API key from the backend .env file</p>
+          <p className="text-zinc-600 text-xs mt-2">Your API key from the backend .env file</p>
         </div>
-        
-        <button className="btn-primary" onClick={handleSave}>
+
+        <button
+          className="w-full py-3 bg-white text-zinc-900 font-semibold rounded-xl hover:bg-zinc-200 transition-colors"
+          onClick={handleSave}
+        >
           Login
         </button>
-        
+
         {saved && (
-          <p className="success">✅ Saved! Redirecting to control panel...</p>
+          <p className="text-emerald-400 mt-4 text-sm">Saved! Redirecting to control panel...</p>
         )}
-        
-        <div className="links">
-          <Link href="/">Marketplace</Link>
-          <Link href="/dashboard">Dashboard</Link>
-          <Link href="/economy">Economy</Link>
+
+        <div className="mt-6 flex gap-4 justify-center">
+          <Link href="/" className="text-zinc-500 text-sm hover:text-white transition-colors">Marketplace</Link>
+          <Link href="/dashboard" className="text-zinc-500 text-sm hover:text-white transition-colors">Dashboard</Link>
+          <Link href="/economy" className="text-zinc-500 text-sm hover:text-white transition-colors">Economy</Link>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 

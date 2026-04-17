@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { useState } from "react";
+import Layout from "../components/Layout";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
 
@@ -32,13 +33,10 @@ export default function Messaging() {
 
   const registerAgent = async () => {
     if (!myAgentId) return log("Enter your agent ID");
-    
-    // Get API key from localStorage (set in login page)
     const apiKey = typeof window !== "undefined" ? localStorage.getItem("apiKey") : null;
     if (!apiKey) {
       return log("Error: API key required. Please log in first.");
     }
-    
     const res = await fetch(`${BACKEND_URL}/verify-identity`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey },
@@ -111,7 +109,7 @@ export default function Messaging() {
     }
   };
 
-  const sendMessage = async () => {
+  const sendMsg = async () => {
     if (!selectedConv || !message) return log("Select conversation and enter message");
     const res = await request("POST", `/messaging/dm/conversations/${selectedConv}/send`, {
       message,
@@ -136,133 +134,130 @@ export default function Messaging() {
     }
   };
 
+  const inputClass = "bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 flex-1";
+  const btnClass = "bg-zinc-800 border border-zinc-700 text-white text-sm px-4 py-2 rounded-lg hover:bg-zinc-700 transition-colors";
+  const btnSmClass = "bg-zinc-800 border border-zinc-700 text-zinc-300 text-xs px-3 py-1.5 rounded-lg hover:bg-zinc-700 transition-colors";
+
   return (
-    <main className="page">
-      <header className="nav">
-        <div className="brand">AgentPay Dashboard</div>
-        <div className="links">
-          <Link href="/usage">Usage</Link>
-          <Link href="/receipts">Receipts</Link>
-          <Link href="/messaging">Messaging</Link>
-        </div>
-      </header>
+    <Layout title="Messaging">
+      {/* Agent Identity */}
+      <section className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6 mb-6">
+        <h2 className="text-[17px] font-semibold text-white mb-4">Agent Messaging</h2>
 
-      <section className="card">
-        <h2>Agent Messaging Test</h2>
-
-        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+        <div className="flex gap-3 mb-3">
           <input
             placeholder="Your Agent ID"
             value={myAgentId}
             onChange={(e) => setMyAgentId(e.target.value)}
-            style={{ flex: 1, padding: "0.5rem" }}
+            className={inputClass}
           />
-          <button onClick={registerAgent} style={{ padding: "0.5rem 1rem" }}>
-            Register
-          </button>
+          <button onClick={registerAgent} className={btnClass}>Register</button>
         </div>
 
-        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+        <div className="flex gap-3 mb-3">
           <input
             placeholder="Target Agent ID"
             value={targetAgentId}
             onChange={(e) => setTargetAgentId(e.target.value)}
-            style={{ flex: 1, padding: "0.5rem" }}
+            className={inputClass}
           />
-          <button onClick={followAgent} style={{ padding: "0.5rem 1rem" }}>
-            Follow
-          </button>
+          <button onClick={followAgent} className={btnClass}>Follow</button>
         </div>
 
-        <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+        <div className="flex gap-3 mb-4">
           <input
             placeholder="Message"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            style={{ flex: 1, padding: "0.5rem" }}
+            className={inputClass}
           />
-          <button onClick={sendChatRequest} style={{ padding: "0.5rem 1rem" }}>
-            Send Request
-          </button>
-          <button onClick={sendMessage} style={{ padding: "0.5rem 1rem" }}>
-            Send Message
-          </button>
+          <button onClick={sendChatRequest} className={btnClass}>Send Request</button>
+          <button onClick={sendMsg} className={btnClass}>Send Message</button>
         </div>
 
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-          <button onClick={checkActivity}>Check Activity</button>
-          <button onClick={loadConversations}>Load Conversations</button>
+        <div className="flex gap-2">
+          <button onClick={checkActivity} className={btnSmClass}>Check Activity</button>
+          <button onClick={loadConversations} className={btnSmClass}>Load Conversations</button>
         </div>
       </section>
 
+      {/* Pending Requests */}
       {pendingRequests.length > 0 && (
-        <section className="card">
-          <h3>Pending Requests</h3>
-          {pendingRequests.map((req) => (
-            <div
-              key={req.conversation_id}
-              style={{ display: "flex", justifyContent: "space-between", padding: "0.5rem 0" }}
-            >
-              <span>
-                From: {req.from?.id} - "{req.message_preview}"
-              </span>
-              <button onClick={() => approveRequest(req.conversation_id)}>Approve</button>
-            </div>
-          ))}
-        </section>
-      )}
-
-      {conversations.length > 0 && (
-        <section className="card">
-          <h3>Conversations</h3>
-          {conversations.map((conv) => (
-            <div
-              key={conv.conversation_id}
-              onClick={() => loadMessages(conv.conversation_id)}
-              style={{
-                padding: "0.5rem",
-                cursor: "pointer",
-                background: selectedConv === conv.conversation_id ? "#e0e0e0" : "transparent",
-              }}
-            >
-              With: {conv.with_agent?.id} | Unread: {conv.unread_count}
-            </div>
-          ))}
-        </section>
-      )}
-
-      {selectedConv && messages.length > 0 && (
-        <section className="card">
-          <h3>Messages</h3>
-          <div style={{ maxHeight: "200px", overflow: "auto" }}>
-            {messages.map((msg, i) => (
-              <div key={i} style={{ padding: "0.25rem 0", borderBottom: "1px solid #eee" }}>
-                <strong>{msg.sender_agent_id}:</strong> {msg.content}
-                {msg.needs_human_input && <span style={{ color: "orange" }}> [HUMAN INPUT NEEDED]</span>}
+        <section className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6 mb-6">
+          <h3 className="text-[15px] font-semibold text-white mb-3">Pending Requests</h3>
+          <div className="space-y-2">
+            {pendingRequests.map((req) => (
+              <div
+                key={req.conversation_id}
+                className="flex items-center justify-between py-2 border-b border-zinc-800/40 last:border-0"
+              >
+                <span className="text-sm text-zinc-400">
+                  From: <span className="text-white font-mono">{req.from?.id}</span> — &ldquo;{req.message_preview}&rdquo;
+                </span>
+                <button onClick={() => approveRequest(req.conversation_id)} className={btnSmClass}>
+                  Approve
+                </button>
               </div>
             ))}
           </div>
         </section>
       )}
 
-      <section className="card">
-        <h3>Log</h3>
-        <div
-          style={{
-            background: "#1a1a1a",
-            color: "#0f0",
-            padding: "1rem",
-            fontFamily: "monospace",
-            fontSize: "0.8rem",
-            maxHeight: "200px",
-            overflow: "auto",
-          }}
-        >
-          {output.map((line, i) => (
-            <div key={i}>{line}</div>
-          ))}
+      {/* Conversations */}
+      {conversations.length > 0 && (
+        <section className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6 mb-6">
+          <h3 className="text-[15px] font-semibold text-white mb-3">Conversations</h3>
+          <div className="space-y-1">
+            {conversations.map((conv) => (
+              <div
+                key={conv.conversation_id}
+                onClick={() => loadMessages(conv.conversation_id)}
+                className={`px-3 py-2 rounded-lg cursor-pointer text-sm transition-colors ${
+                  selectedConv === conv.conversation_id
+                    ? "bg-zinc-800 text-white"
+                    : "text-zinc-400 hover:bg-zinc-800/50 hover:text-white"
+                }`}
+              >
+                With: <span className="font-mono">{conv.with_agent?.id}</span> | Unread: {conv.unread_count}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Messages */}
+      {selectedConv && messages.length > 0 && (
+        <section className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6 mb-6">
+          <h3 className="text-[15px] font-semibold text-white mb-3">Messages</h3>
+          <div className="max-h-[200px] overflow-auto space-y-1">
+            {messages.map((msg, i) => (
+              <div key={i} className="py-1.5 border-b border-zinc-800/40 last:border-0 text-sm">
+                <span className="text-white font-mono font-medium">{msg.sender_agent_id}:</span>{" "}
+                <span className="text-zinc-400">{msg.content}</span>
+                {msg.needs_human_input && (
+                  <span className="text-amber-400 text-xs ml-2">[HUMAN INPUT NEEDED]</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Log */}
+      <section className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl overflow-hidden">
+        <div className="px-6 py-3 border-b border-zinc-800/60">
+          <h3 className="text-[15px] font-semibold text-white">Log</h3>
+        </div>
+        <div className="bg-[#0a0a0a] px-6 py-4 font-mono text-xs text-zinc-500 max-h-[200px] overflow-auto">
+          {output.length === 0 ? (
+            <div className="text-zinc-700">No activity yet.</div>
+          ) : (
+            output.map((line, i) => (
+              <div key={i} className="py-0.5">{line}</div>
+            ))
+          )}
         </div>
       </section>
-    </main>
+    </Layout>
   );
 }
