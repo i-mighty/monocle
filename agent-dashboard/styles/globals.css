@@ -8,3 +8,33 @@
   background: rgba(255,255,255,0.05);
   border-radius: 3px;
 }
+
+/* ── Landing page animations ──────────────────────── */
+
+@keyframes hero-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-animate {
+  animation: hero-fade-in 0.8s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.hero-animate-1 { animation-delay: 0.1s; }
+.hero-animate-2 { animation-delay: 0.25s; }
+.hero-animate-3 { animation-delay: 0.4s; }
+.hero-animate-4 { animation-delay: 0.55s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-animate {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
