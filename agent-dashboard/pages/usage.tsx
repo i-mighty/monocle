@@ -1,32 +1,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getUsage, getToolLogs, getEarnings, getEarningsByAgent } from "../lib/api";
-
-type UsageRow = { agent_id: string; calls: number; spend: number };
-type LogRow = { agent_id: string; tool_name: string; tokens_used: number; timestamp: string };
-type EarningsRow = { receiver: string; total_sol: string | number; payments: number };
-
-export default function Usage() {
-  const [rows, setRows] = useState<UsageRow[]>([]);
-  const [logs, setLogs] = useState<LogRow[]>([]);
-  const [totalEarned, setTotalEarned] = useState<number>(0);
-  const [earningsByAgent, setEarningsByAgent] = useState<EarningsRow[]>([]);
-
-  useEffect(() => {
-    getUsage().then(setRows).catch(console.error);
-    getToolLogs().then(setLogs).catch(console.error);
-    getEarnings()
-      .then((r) => setTotalEarned(Number(r.total_sol || 0)))
-      .catch(console.error);
-    getEarningsByAgent()
-      .then((r) => setEarningsByAgent(r || []))
-      .catch(console.error);
-  }, []);
-
-  return (
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { getUsage, getToolLogs, getEarnings, getEarningsByAgent } from "../lib/api";
 import Layout from "../components/Layout";
 
 type UsageRow = { agent_id: string; calls: number; spend: number };
