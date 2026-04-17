@@ -30,12 +30,10 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Copy built files
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/next-env.d.ts ./
+# Copy standalone build
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
