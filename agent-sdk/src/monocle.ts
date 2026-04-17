@@ -25,6 +25,7 @@
 import { ChatModule, StreamChunk, ChatOptions, ChatResponse, StreamOptions } from "./modules/chat";
 import { AgentsModule } from "./modules/agents";
 import { ConversationsModule } from "./modules/conversations";
+import { WalletModule } from "./modules/wallet";
 import { 
   MonocleError, 
   MonocleNetworkError, 
@@ -67,6 +68,9 @@ export class MonocleClient {
   /** Conversations module - history, search, export */
   public readonly conversations: ConversationsModule;
 
+  /** Wallet module - dWallet custody, spending policies, audit log */
+  public readonly wallet: WalletModule;
+
   constructor(options: MonocleClientOptions) {
     this.apiKey = options.apiKey;
     this.baseUrl = options.baseUrl || process.env.MONOCLE_API_URL || "http://localhost:3001/v1";
@@ -80,6 +84,7 @@ export class MonocleClient {
     );
     this.agents = new AgentsModule(this.request.bind(this));
     this.conversations = new ConversationsModule(this.request.bind(this));
+    this.wallet = new WalletModule(this.request.bind(this));
 
     // Create callable chat that streams by default
     // This allows: for await (const chunk of client.chat("Hello")) { ... }

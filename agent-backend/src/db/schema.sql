@@ -720,3 +720,24 @@ create table if not exists withdrawals (
 create index idx_withdrawals_agent on withdrawals(agent_id);
 create index idx_withdrawals_status on withdrawals(status);
 create index idx_withdrawals_created on withdrawals(created_at desc);
+
+-- =============================================================================
+-- WALLET_AUDIT_LOG: Immutable audit trail for agent wallet actions
+-- =============================================================================
+create table if not exists wallet_audit_log (
+  id uuid primary key default gen_random_uuid(),
+  agent_id text not null,
+  action text not null,           -- authorization_approved, authorization_rejected,
+                                  -- policy_updated, spending_paused, spending_resumed,
+                                  -- payment_sent, payment_received, settlement,
+                                  -- wallet_created, tool_execution
+  counterparty text,              -- Recipient or sender agent ID
+  amount bigint,                  -- Amount in lamports (if applicable)
+  details text,                   -- JSON details of the action
+  tx_signature text,              -- Solana tx signature (if on-chain)
+  created_at timestamptz default now()
+);
+
+create index idx_wallet_audit_agent on wallet_audit_log(agent_id);
+create index idx_wallet_audit_action on wallet_audit_log(action);
+create index idx_wallet_audit_created on wallet_audit_log(created_at desc);
