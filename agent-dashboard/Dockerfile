@@ -11,10 +11,14 @@ COPY next.config.js* ./
 # Install dependencies
 RUN npm ci
 
-# Copy source code
+# Copy source code and config
+COPY tailwind.config.js ./
+COPY postcss.config.js ./
 COPY pages ./pages
 COPY components ./components
 COPY lib ./lib
+COPY styles ./styles
+COPY hooks ./hooks
 
 # Build Next.js
 RUN npm run build
