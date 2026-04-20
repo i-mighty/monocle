@@ -34,6 +34,11 @@ create table if not exists agents (
   is_paused text not null default 'false',
   allowed_callees text,
 
+  -- Ika dWallet (programmable cross-chain wallet)
+  dwallet_id text,                -- Ika dWallet object ID
+  dwallet_cap_id text,            -- DWalletCap object ID (controls signing authority)
+  dwallet_status text not null default 'none',  -- none | creating | active | failed
+
   -- Reputation & Trust fields
   reputation_score integer not null default 500,
   verified_status text not null default 'unverified',

@@ -3,10 +3,12 @@
  *
  * Implements guardrails for agent-to-agent delegation:
  * 1. Cycle Detection - Prevents A → B → A delegation loops
- * 2. Budget Limits - Prevents runaway spending
+ * 2. Budget Limits - Prevents runaway spending (backed by Ika dWallet policies)
  * 3. Depth Limits - Prevents excessive delegation chains
  * 4. Rate Limits - Prevents abuse
  */
+
+import { checkSpendingPolicy, recordSpend as recordDWalletSpend } from "./ikaDWalletService";
 
 // =============================================================================
 // CONSTANTS
@@ -135,6 +137,15 @@ export function validateDelegation(request: DelegationRequest): DelegationValida
     };
   }
 
+  // 3b. dWallet Spending Policy - Enforce Ika dWallet per-tx and daily limits
+  const dwalletCheck = checkSpendingPolicy(fromAgentId, estimatedCostLamports);
+  if (!dwalletCheck.allowed) {
+    return {
+      allowed: false,
+      reason: `dWallet policy: ${dwalletCheck.reason}`
+    };
+  }
+
   // 4. Timeout Check
   const elapsed = Date.now() - context.startTime.getTime();
   if (elapsed > context.timeoutMs) {
@@ -207,6 +218,13 @@ export function recordDelegationComplete(
     actualCost: actualCostLamports,
     durationMs: elapsed
   });
+
+  // Record spend against each agent's dWallet daily budget
+  if (success && actualCostLamports > 0) {
+    for (const agentId of context.visitedAgents) {
+      recordDWalletSpend(agentId, Math.ceil(actualCostLamports / context.visitedAgents.length));
+    }
+  }
 }
 
 /**
