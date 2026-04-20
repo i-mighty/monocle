@@ -200,9 +200,12 @@ export async function createAgentDWallet(agentId: string): Promise<DWalletInfo> 
   try {
     await query(
       `UPDATE agents
-       SET updated_at = NOW()
-       WHERE id = $1`,
-      [agentId]
+       SET dwallet_id = $1,
+           dwallet_cap_id = $2,
+           dwallet_status = 'active',
+           updated_at = NOW()
+       WHERE id = $3`,
+      [dwalletPDA.toBase58(), authorityKey, agentId]
     );
   } catch (_) { /* DB update is non-critical */ }
 
@@ -279,7 +282,7 @@ export function checkSpendingPolicy(
 /**
  * Record a spend against the agent's daily budget.
  */
-function recordSpend(agentId: string, amountLamports: number): void {
+export function recordSpend(agentId: string, amountLamports: number): void {
   const now = Date.now();
   const existing = dailySpend.get(agentId) ?? { total: 0, resetAt: now };
   existing.total += amountLamports;

@@ -12,6 +12,7 @@ import { Connection, PublicKey, Transaction, SystemProgram, Keypair, sendAndConf
 import { checkEndpointHealth } from "../services/endpointVerifyService";
 import { pingCustomAgent } from "../services/customAgentAdapter";
 import { verifySolOwnership, assignSolName } from "../services/snsIdentityService";
+import { createAgentDWallet, getDWalletInfo, getSpendingPolicy } from "../services/ikaDWalletService";
 
 const router = Router();
 
@@ -251,6 +252,11 @@ router.post("/register/public",
 
     // Log registration
     logAgentRegistered(agentId, name as string, rate, { publicKey, endpoint, taskTypes: agentTaskTypes });
+
+    // Create Ika dWallet asynchronously (don't block registration)
+    createAgentDWallet(agentId).catch((err) => {
+      console.warn(`[Agents] dWallet creation failed for ${agentId}:`, err.message);
+    });
 
     sendSuccess(res, {
       agentId,
@@ -976,6 +982,35 @@ router.get("/:agentId/balance", apiKeyAuth, asyncHandler(async (req, res) => {
   sendSuccess(res, {
     agentId,
     balance: Number(result.rows[0].balance_lamports),
+  });
+}));
+
+/**
+ * GET /agents/:agentId/dwallet
+ *
+ * Get agent's Ika dWallet info and spending policy.
+ */
+router.get("/:agentId/dwallet", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+
+  const dwallet = await getDWalletInfo(agentId);
+  const policy = getSpendingPolicy(agentId);
+
+  sendSuccess(res, {
+    agentId,
+    dwallet: dwallet ? {
+      address: dwallet.dwalletAddress,
+      publicKey: dwallet.publicKey,
+      authority: dwallet.authority,
+      curve: dwallet.curve,
+      createdAt: dwallet.createdAt,
+    } : null,
+    spendingPolicy: {
+      maxPerTransaction: policy.maxPerTransaction,
+      dailyCap: policy.dailyCap,
+      spentToday: policy.spentToday,
+      remainingToday: policy.remainingToday,
+    },
   });
 }));
 
