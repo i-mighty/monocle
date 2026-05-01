@@ -216,9 +216,9 @@ create table if not exists api_keys_v2 (
 );
 
 -- Index for fast key lookup by prefix
-create index idx_api_keys_v2_prefix on api_keys_v2(key_prefix);
-create index idx_api_keys_v2_developer on api_keys_v2(developer_id);
-create index idx_api_keys_v2_active on api_keys_v2(is_active) where is_active = true;
+create index if not exists idx_api_keys_v2_prefix on api_keys_v2(key_prefix);
+create index if not exists idx_api_keys_v2_developer on api_keys_v2(developer_id);
+create index if not exists idx_api_keys_v2_active on api_keys_v2(is_active) where is_active = true;
 
 -- =============================================================================
 -- RATE_LIMIT_BUCKETS: Persistent rate limit tracking (for Redis migration)
@@ -235,7 +235,7 @@ create table if not exists rate_limit_buckets (
   updated_at timestamptz default now()
 );
 
-create index idx_rate_limit_window_end on rate_limit_buckets(window_end);
+create index if not exists idx_rate_limit_window_end on rate_limit_buckets(window_end);
 
 -- =============================================================================
 -- TOOL_USAGE: Immutable execution ledger (append-only, auditable, replayable)
@@ -320,46 +320,46 @@ create table if not exists x402_payments (
 -- =============================================================================
 -- INDEXES: Optimized query paths
 -- =============================================================================
-create index idx_tools_agent_id on tools(agent_id);
-create index idx_tools_category on tools(category);
-create index idx_tools_is_active on tools(is_active);
+create index if not exists idx_tools_agent_id on tools(agent_id);
+create index if not exists idx_tools_category on tools(category);
+create index if not exists idx_tools_is_active on tools(is_active);
 
-create index idx_tool_usage_caller on tool_usage(caller_agent_id);
-create index idx_tool_usage_callee on tool_usage(callee_agent_id);
-create index idx_tool_usage_tool_id on tool_usage(tool_id);
-create index idx_tool_usage_created_at on tool_usage(created_at desc);
+create index if not exists idx_tool_usage_caller on tool_usage(caller_agent_id);
+create index if not exists idx_tool_usage_callee on tool_usage(callee_agent_id);
+create index if not exists idx_tool_usage_tool_id on tool_usage(tool_id);
+create index if not exists idx_tool_usage_created_at on tool_usage(created_at desc);
 
-create index idx_settlements_from on settlements(from_agent_id);
-create index idx_settlements_to on settlements(to_agent_id);
-create index idx_settlements_status on settlements(status);
-create index idx_settlements_created_at on settlements(created_at desc);
+create index if not exists idx_settlements_from on settlements(from_agent_id);
+create index if not exists idx_settlements_to on settlements(to_agent_id);
+create index if not exists idx_settlements_status on settlements(status);
+create index if not exists idx_settlements_created_at on settlements(created_at desc);
 
-create index idx_platform_revenue_settlement on platform_revenue(settlement_id);
-create index idx_platform_revenue_created_at on platform_revenue(created_at desc);
+create index if not exists idx_platform_revenue_settlement on platform_revenue(settlement_id);
+create index if not exists idx_platform_revenue_created_at on platform_revenue(created_at desc);
 
-create index idx_api_keys_key on api_keys(key);
+create index if not exists idx_api_keys_key on api_keys(key);
 
-create index idx_x402_payments_signature on x402_payments(tx_signature);
-create index idx_x402_payments_nonce on x402_payments(nonce);
-create index idx_x402_payments_payer on x402_payments(payer_wallet);
-create index idx_x402_payments_created_at on x402_payments(created_at desc);
+create index if not exists idx_x402_payments_signature on x402_payments(tx_signature);
+create index if not exists idx_x402_payments_nonce on x402_payments(nonce);
+create index if not exists idx_x402_payments_payer on x402_payments(payer_wallet);
+create index if not exists idx_x402_payments_created_at on x402_payments(created_at desc);
 
 -- Agent Registry Enhancement indexes
-create index idx_agent_audits_agent on agent_audits(agent_id);
-create index idx_agent_audits_type on agent_audits(audit_type);
-create index idx_agent_audits_result on agent_audits(result);
-create index idx_agent_audits_valid_until on agent_audits(valid_until);
+create index if not exists idx_agent_audits_agent on agent_audits(agent_id);
+create index if not exists idx_agent_audits_type on agent_audits(audit_type);
+create index if not exists idx_agent_audits_result on agent_audits(result);
+create index if not exists idx_agent_audits_valid_until on agent_audits(valid_until);
 
-create index idx_agent_version_history_agent on agent_version_history(agent_id);
-create index idx_agent_version_history_version on agent_version_history(version);
-create index idx_agent_version_history_type on agent_version_history(change_type);
-create index idx_agent_version_history_created on agent_version_history(created_at);
+create index if not exists idx_agent_version_history_agent on agent_version_history(agent_id);
+create index if not exists idx_agent_version_history_version on agent_version_history(version);
+create index if not exists idx_agent_version_history_type on agent_version_history(change_type);
+create index if not exists idx_agent_version_history_created on agent_version_history(created_at);
 
-create index idx_agent_capabilities_agent on agent_capabilities(agent_id);
-create index idx_agent_capabilities_capability on agent_capabilities(capability);
+create index if not exists idx_agent_capabilities_agent on agent_capabilities(agent_id);
+create index if not exists idx_agent_capabilities_capability on agent_capabilities(capability);
 
-create index idx_agents_reputation on agents(reputation_score desc);
-create index idx_agents_verified_status on agents(verified_status);
+create index if not exists idx_agents_reputation on agents(reputation_score desc);
+create index if not exists idx_agents_verified_status on agents(verified_status);
 
 -- =============================================================================
 -- CONVERSATIONS: Consent-based agent-to-agent messaging
@@ -441,20 +441,20 @@ create table if not exists agent_follows (
 -- =============================================================================
 -- MESSAGING INDEXES
 -- =============================================================================
-create index idx_conversations_initiator on conversations(initiator_agent_id);
-create index idx_conversations_receiver on conversations(receiver_agent_id);
-create index idx_conversations_status on conversations(status);
-create index idx_conversations_last_message on conversations(last_message_at desc);
+create index if not exists idx_conversations_initiator on conversations(initiator_agent_id);
+create index if not exists idx_conversations_receiver on conversations(receiver_agent_id);
+create index if not exists idx_conversations_status on conversations(status);
+create index if not exists idx_conversations_last_message on conversations(last_message_at desc);
 
-create index idx_messages_conversation on messages(conversation_id);
-create index idx_messages_sender on messages(sender_agent_id);
-create index idx_messages_created_at on messages(created_at);
+create index if not exists idx_messages_conversation on messages(conversation_id);
+create index if not exists idx_messages_sender on messages(sender_agent_id);
+create index if not exists idx_messages_created_at on messages(created_at);
 
-create index idx_agent_blocks_blocker on agent_blocks(blocker_agent_id);
-create index idx_agent_blocks_blocked on agent_blocks(blocked_agent_id);
+create index if not exists idx_agent_blocks_blocker on agent_blocks(blocker_agent_id);
+create index if not exists idx_agent_blocks_blocked on agent_blocks(blocked_agent_id);
 
-create index idx_agent_follows_follower on agent_follows(follower_agent_id);
-create index idx_agent_follows_following on agent_follows(following_agent_id);
+create index if not exists idx_agent_follows_follower on agent_follows(follower_agent_id);
+create index if not exists idx_agent_follows_following on agent_follows(following_agent_id);
 
 -- =============================================================================
 -- ACTIVITY_LOGS: Structured audit trail for critical events
@@ -492,13 +492,13 @@ create table if not exists activity_logs (
 -- =============================================================================
 -- ACTIVITY_LOGS INDEXES: Optimized for common queries
 -- =============================================================================
-create index idx_activity_logs_agent_id on activity_logs(agent_id);
-create index idx_activity_logs_event_type on activity_logs(event_type);
-create index idx_activity_logs_severity on activity_logs(severity);
-create index idx_activity_logs_created_at on activity_logs(created_at desc);
-create index idx_activity_logs_actor_id on activity_logs(actor_id);
-create index idx_activity_logs_resource_type on activity_logs(resource_type);
-create index idx_activity_logs_composite on activity_logs(agent_id, event_type, created_at desc);
+create index if not exists idx_activity_logs_agent_id on activity_logs(agent_id);
+create index if not exists idx_activity_logs_event_type on activity_logs(event_type);
+create index if not exists idx_activity_logs_severity on activity_logs(severity);
+create index if not exists idx_activity_logs_created_at on activity_logs(created_at desc);
+create index if not exists idx_activity_logs_actor_id on activity_logs(actor_id);
+create index if not exists idx_activity_logs_resource_type on activity_logs(resource_type);
+create index if not exists idx_activity_logs_composite on activity_logs(agent_id, event_type, created_at desc);
 
 -- =============================================================================
 -- DEPOSIT INTENTS: Track pending deposit requests
@@ -548,19 +548,19 @@ create table if not exists withdrawals (
 -- =============================================================================
 -- DEPOSIT/WITHDRAWAL INDEXES
 -- =============================================================================
-create index idx_deposit_intents_agent on deposit_intents(agent_id);
-create index idx_deposit_intents_reference on deposit_intents(reference);
-create index idx_deposit_intents_status on deposit_intents(status);
-create index idx_deposit_intents_expires on deposit_intents(expires_at);
+create index if not exists idx_deposit_intents_agent on deposit_intents(agent_id);
+create index if not exists idx_deposit_intents_reference on deposit_intents(reference);
+create index if not exists idx_deposit_intents_status on deposit_intents(status);
+create index if not exists idx_deposit_intents_expires on deposit_intents(expires_at);
 
-create index idx_deposits_agent on deposits(agent_id);
-create index idx_deposits_tx_signature on deposits(tx_signature);
-create index idx_deposits_status on deposits(status);
-create index idx_deposits_created_at on deposits(created_at desc);
+create index if not exists idx_deposits_agent on deposits(agent_id);
+create index if not exists idx_deposits_tx_signature on deposits(tx_signature);
+create index if not exists idx_deposits_status on deposits(status);
+create index if not exists idx_deposits_created_at on deposits(created_at desc);
 
-create index idx_withdrawals_agent on withdrawals(agent_id);
-create index idx_withdrawals_status on withdrawals(status);
-create index idx_withdrawals_created_at on withdrawals(created_at desc);
+create index if not exists idx_withdrawals_agent on withdrawals(agent_id);
+create index if not exists idx_withdrawals_status on withdrawals(status);
+create index if not exists idx_withdrawals_created_at on withdrawals(created_at desc);
 
 -- =============================================================================
 -- CONVERSATIONS_AI: User-AI Chat Conversations (for Router Agent)
@@ -576,8 +576,8 @@ create table if not exists conversations_ai (
   updated_at timestamptz default now()
 );
 
-create index idx_conversations_ai_user on conversations_ai(user_id);
-create index idx_conversations_ai_updated on conversations_ai(updated_at desc);
+create index if not exists idx_conversations_ai_user on conversations_ai(user_id);
+create index if not exists idx_conversations_ai_updated on conversations_ai(updated_at desc);
 
 -- =============================================================================
 -- SPECIALIST_AGENTS: Registered AI Specialist Agents
@@ -598,8 +598,8 @@ create table if not exists specialist_agents (
   updated_at timestamptz default now()
 );
 
-create index idx_specialist_agents_provider on specialist_agents(provider);
-create index idx_specialist_agents_active on specialist_agents(is_active);
+create index if not exists idx_specialist_agents_provider on specialist_agents(provider);
+create index if not exists idx_specialist_agents_active on specialist_agents(is_active);
 
 -- =============================================================================
 -- REQUEST_LOGS: End-to-End Observability for AI Routing
@@ -636,13 +636,13 @@ create table if not exists request_logs (
 );
 
 -- Primary query patterns: time-based analytics, per-agent stats, user session tracing
-create index idx_request_logs_created_at on request_logs(created_at desc);
-create index idx_request_logs_agent_created on request_logs(selected_agent_id, created_at desc);
-create index idx_request_logs_user on request_logs(user_id);
-create index idx_request_logs_hashed_user on request_logs(hashed_user_id);
-create index idx_request_logs_task on request_logs(task_type);
-create index idx_request_logs_success on request_logs(success);
-create index idx_request_logs_method on request_logs(classification_method);
+create index if not exists idx_request_logs_created_at on request_logs(created_at desc);
+create index if not exists idx_request_logs_agent_created on request_logs(selected_agent_id, created_at desc);
+create index if not exists idx_request_logs_user on request_logs(user_id);
+create index if not exists idx_request_logs_hashed_user on request_logs(hashed_user_id);
+create index if not exists idx_request_logs_task on request_logs(task_type);
+create index if not exists idx_request_logs_success on request_logs(success);
+create index if not exists idx_request_logs_method on request_logs(classification_method);
 
 -- =============================================================================
 -- ADMIN_USERS: Platform administrators
@@ -659,8 +659,8 @@ create table if not exists admin_users (
   updated_at timestamptz default now()
 );
 
-create index idx_admin_users_email on admin_users(email);
-create index idx_admin_users_active on admin_users(is_active);
+create index if not exists idx_admin_users_email on admin_users(email);
+create index if not exists idx_admin_users_active on admin_users(is_active);
 
 -- =============================================================================
 -- ESCROW_HOLDS: Payment Protection for AI Requests
@@ -680,9 +680,9 @@ create table if not exists escrow_holds (
   release_reason text
 );
 
-create index idx_escrow_holds_user on escrow_holds(user_id);
-create index idx_escrow_holds_status on escrow_holds(status);
-create index idx_escrow_holds_expires on escrow_holds(expires_at);
+create index if not exists idx_escrow_holds_user on escrow_holds(user_id);
+create index if not exists idx_escrow_holds_status on escrow_holds(status);
+create index if not exists idx_escrow_holds_expires on escrow_holds(expires_at);
 
 -- =============================================================================
 -- AGENT_ENDPOINTS: Endpoint URLs and Health Status
@@ -703,28 +703,8 @@ create table if not exists agent_endpoints (
   updated_at timestamptz default now()
 );
 
-create index idx_agent_endpoints_active_healthy on agent_endpoints(is_active, is_healthy);
-create index idx_agent_endpoints_needs_check on agent_endpoints(last_check_at) where is_active = true;
-
--- =============================================================================
--- WITHDRAWALS: Agent Balance Withdrawal History
--- =============================================================================
--- Tracks all withdrawals from agent balances to Solana wallets
-create table if not exists withdrawals (
-  id text primary key,
-  agent_id text not null references agents(id) on delete cascade,
-  amount_lamports bigint not null,
-  destination_wallet text not null,
-  tx_signature text unique,                -- Solana transaction signature
-  status text not null default 'pending',  -- pending, completed, failed
-  error_message text,
-  created_at timestamptz default now(),
-  completed_at timestamptz
-);
-
-create index idx_withdrawals_agent on withdrawals(agent_id);
-create index idx_withdrawals_status on withdrawals(status);
-create index idx_withdrawals_created on withdrawals(created_at desc);
+create index if not exists idx_agent_endpoints_active_healthy on agent_endpoints(is_active, is_healthy);
+create index if not exists idx_agent_endpoints_needs_check on agent_endpoints(last_check_at) where is_active = true;
 
 -- =============================================================================
 -- WALLET_AUDIT_LOG: Immutable audit trail for agent wallet actions
@@ -743,6 +723,6 @@ create table if not exists wallet_audit_log (
   created_at timestamptz default now()
 );
 
-create index idx_wallet_audit_agent on wallet_audit_log(agent_id);
-create index idx_wallet_audit_action on wallet_audit_log(action);
-create index idx_wallet_audit_created on wallet_audit_log(created_at desc);
+create index if not exists idx_wallet_audit_agent on wallet_audit_log(agent_id);
+create index if not exists idx_wallet_audit_action on wallet_audit_log(action);
+create index if not exists idx_wallet_audit_created on wallet_audit_log(created_at desc);
