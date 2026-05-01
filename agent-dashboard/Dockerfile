@@ -33,6 +33,7 @@ COPY components ./components
 COPY lib ./lib
 COPY styles ./styles
 COPY hooks ./hooks
+COPY types ./types
 
 # Build Next.js
 RUN npm run build
