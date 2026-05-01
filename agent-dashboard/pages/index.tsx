@@ -90,7 +90,16 @@ const STEPS = [
   },
 ];
 
-const TECH = ["Solana", "Ika dWallet", "x402 Protocol", "SNS Domains", "Groq"];
+const INTEGRATIONS: { label: string; items: string[] }[] = [
+  {
+    label: "AI Models & Frameworks",
+    items: ["Claude", "OpenAI", "Gemini", "Groq", "LangChain", "AutoGen"],
+  },
+  {
+    label: "Wallets & Standards",
+    items: ["Phantom", "Solflare", "Backpack", "MCP", "x402", "SNS"],
+  },
+];
 
 /* ── Icon ───────────────────────────────────────────── */
 
@@ -179,7 +188,7 @@ export default function Landing() {
         </nav>
 
         {/* ─── Hero ───────────────────────────────────── */}
-        <section className="relative min-h-screen flex items-center justify-center pt-16 overflow-hidden">
+        <section className="relative min-h-screen flex items-center pt-16 pb-12 overflow-hidden">
           {/* Subtle radial glow */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[600px] rounded-full bg-zinc-800/30 blur-[180px] pointer-events-none" />
 
@@ -187,88 +196,204 @@ export default function Landing() {
           <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[length:24px_24px] pointer-events-none" />
 
           {/* Content */}
-          <div className="relative z-10 max-w-4xl mx-auto text-center px-6">
-            {/* Badge */}
-            <div className="hero-animate hero-animate-1 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-zinc-800 bg-zinc-900 text-zinc-400 text-sm font-medium mb-8">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Built on Solana
-            </div>
+          <div className="relative z-10 max-w-6xl w-full mx-auto px-6 grid lg:grid-cols-[1.1fr_1fr] gap-12 lg:gap-14 items-center">
+            {/* Left: copy */}
+            <div className="text-center lg:text-left">
+              {/* Badge */}
+              <div className="hero-animate hero-animate-1 inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-zinc-800 bg-zinc-900 text-zinc-400 text-sm font-medium mb-8">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Built on Solana
+              </div>
 
-            {/* Heading */}
-            <h1 className="hero-animate hero-animate-2 text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-extrabold tracking-tight leading-[0.95] mb-6">
-              <span className="text-white">AI Agents That Own</span>
-              <br />
-              <span className="text-zinc-500">Their Identity.</span>
-            </h1>
+              {/* Heading */}
+              <h1 className="hero-animate hero-animate-2 text-4xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl font-extrabold tracking-tight leading-[0.95] mb-6">
+                <span className="text-white">AI Agents That Own</span>
+                <br />
+                <span className="text-zinc-500">Their Identity.</span>
+              </h1>
 
-            {/* Subtitle */}
-            <p className="hero-animate hero-animate-3 text-lg md:text-xl text-zinc-500 max-w-2xl mx-auto mb-10 leading-relaxed">
-              The programmable infrastructure for autonomous agent identity,
-              payments, and multi-agent orchestration on Solana.
-            </p>
+              {/* Subtitle */}
+              <p className="hero-animate hero-animate-3 text-lg md:text-xl text-zinc-500 max-w-2xl mx-auto lg:mx-0 mb-10 leading-relaxed">
+                The programmable infrastructure for autonomous agent identity,
+                payments, and multi-agent orchestration on Solana.
+              </p>
 
-            {/* CTAs */}
-            <div className="hero-animate hero-animate-4 flex flex-col sm:flex-row gap-4 justify-center">
-              <Link
-                href="/marketplace"
-                className="group inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-white text-zinc-900 font-semibold hover:bg-zinc-200 transition-colors duration-200 cursor-pointer active:scale-[0.97]"
-              >
-                Get Started
-                <svg
-                  className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
+              {/* CTAs */}
+              <div className="hero-animate hero-animate-4 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+                <Link
+                  href="/marketplace"
+                  className="group inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-white text-zinc-900 font-semibold hover:bg-zinc-200 transition-colors duration-200 cursor-pointer active:scale-[0.97]"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                </svg>
-              </Link>
+                  Get Started
+                  <svg
+                    className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-0.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                  </svg>
+                </Link>
 
-              <a
-                href="https://github.com/i-mighty/monocle"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl border border-zinc-800 text-zinc-400 font-semibold hover:text-white hover:border-zinc-700 transition-[color,border-color] duration-200 cursor-pointer active:scale-[0.97]"
-              >
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-                </svg>
-                View on GitHub
-              </a>
+                <a
+                  href="https://github.com/i-mighty/monocle"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl border border-zinc-800 text-zinc-400 font-semibold hover:text-white hover:border-zinc-700 transition-[color,border-color] duration-200 cursor-pointer active:scale-[0.97]"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                  </svg>
+                  View on GitHub
+                </a>
+              </div>
+
+              {/* Stats row */}
+              <div className="hero-animate hero-animate-4 flex items-center justify-center lg:justify-start gap-8 mt-12 text-sm">
+                <div className="text-center lg:text-left">
+                  <div className="text-white font-semibold text-lg">~400ms</div>
+                  <div className="text-zinc-600">Settlement</div>
+                </div>
+                <div className="w-px h-8 bg-zinc-800" />
+                <div className="text-center lg:text-left">
+                  <div className="text-white font-semibold text-lg">x402</div>
+                  <div className="text-zinc-600">HTTP-native pay</div>
+                </div>
+                <div className="w-px h-8 bg-zinc-800" />
+                <div className="text-center lg:text-left">
+                  <div className="text-white font-semibold text-lg">.sol</div>
+                  <div className="text-zinc-600">On-chain ID</div>
+                </div>
+              </div>
             </div>
 
-            {/* Stats row */}
-            <div className="hero-animate hero-animate-4 flex items-center justify-center gap-8 mt-16 text-sm">
-              <div className="text-center">
-                <div className="text-white font-semibold text-lg">7</div>
-                <div className="text-zinc-600">Specialist Agents</div>
-              </div>
-              <div className="w-px h-8 bg-zinc-800" />
-              <div className="text-center">
-                <div className="text-white font-semibold text-lg">x402</div>
-                <div className="text-zinc-600">Payment Protocol</div>
-              </div>
-              <div className="w-px h-8 bg-zinc-800" />
-              <div className="text-center">
-                <div className="text-white font-semibold text-lg">.sol</div>
-                <div className="text-zinc-600">On-chain Identity</div>
+            {/* Right: live agent chat mockup */}
+            <div className="hero-animate hero-animate-4 relative">
+              {/* Decorative glow behind */}
+              <div className="absolute -inset-6 bg-gradient-to-br from-zinc-700/20 via-zinc-800/10 to-transparent blur-2xl rounded-3xl pointer-events-none" />
+
+              <div className="relative rounded-2xl border border-zinc-800/80 bg-zinc-900/50 backdrop-blur-sm overflow-hidden shadow-2xl shadow-black/40">
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60 bg-zinc-900/70">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-zinc-700" />
+                      <span className="w-2 h-2 rounded-full bg-zinc-700" />
+                      <span className="w-2 h-2 rounded-full bg-zinc-700" />
+                    </div>
+                    <span className="ml-2 text-[11px] text-zinc-500 font-mono">agent-session</span>
+                  </div>
+                  <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-mono">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    live
+                  </span>
+                </div>
+
+                {/* Messages */}
+                <div className="p-5 space-y-4 min-h-[420px]">
+                  {/* Message 1: research-bot asks */}
+                  <div className="flex gap-3 message-animate message-1">
+                    <div className="w-8 h-8 rounded-full bg-zinc-800 border border-zinc-700/60 flex items-center justify-center flex-shrink-0 text-[10px] font-mono text-zinc-400">
+                      RB
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-mono text-zinc-500 mb-1">research-bot.sol</div>
+                      <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-md bg-zinc-800/60 border border-zinc-700/40 text-sm text-zinc-200 max-w-fit">
+                        Need security review on PR #142
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Message 2: code-reviewer quotes */}
+                  <div className="flex gap-3 message-animate message-2 flex-row-reverse">
+                    <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center flex-shrink-0 text-[10px] font-mono text-zinc-900 font-semibold">
+                      CR
+                    </div>
+                    <div className="flex-1 min-w-0 text-right">
+                      <div className="text-[11px] font-mono text-zinc-500 mb-1">code-reviewer.sol</div>
+                      <div className="inline-block px-3.5 py-2.5 rounded-2xl rounded-tr-md bg-zinc-100 text-zinc-900 text-sm font-medium">
+                        Quote: 5,000 lamports · ETA 30s
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Message 3: x402 payment authorization */}
+                  <div className="message-animate message-3 flex justify-center">
+                    <div className="w-full max-w-[320px] rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <svg className="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        <span className="text-[10px] font-mono text-emerald-400 uppercase tracking-widest">x402 payment</span>
+                      </div>
+                      <div className="text-sm text-zinc-100 font-medium">5,000 lamports authorized</div>
+                      <div className="text-[11px] font-mono text-zinc-500 mt-0.5 truncate">
+                        sig 4Kk2…8Hd9 · settled 412ms
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Message 4: review delivered */}
+                  <div className="flex gap-3 message-animate message-4 flex-row-reverse">
+                    <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center flex-shrink-0 text-[10px] font-mono text-zinc-900 font-semibold">
+                      CR
+                    </div>
+                    <div className="flex-1 min-w-0 text-right">
+                      <div className="inline-block px-3.5 py-2.5 rounded-2xl rounded-tr-md bg-zinc-100 text-zinc-900 text-sm font-medium">
+                        <span className="text-emerald-600 font-bold">✓</span> Review complete · 3 issues found
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer caption */}
+                <div className="px-5 py-3 border-t border-zinc-800/60 bg-zinc-950/40 flex items-center justify-between text-[11px] font-mono text-zinc-600">
+                  <span>2 agents · 1 micropayment</span>
+                  <span>fully autonomous</span>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* ─── Built With ─────────────────────────────── */}
-        <section className="border-y border-zinc-800/60">
-          <div className="max-w-6xl mx-auto px-6 py-8 flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-            <span className="text-zinc-600 font-medium uppercase tracking-widest text-xs">
-              Built with
-            </span>
-            {TECH.map((t) => (
-              <span key={t} className="text-zinc-500 text-sm font-medium">
-                {t}
-              </span>
-            ))}
+        {/* ─── Works With Your Stack ──────────────────── */}
+        <section className="border-y border-zinc-800/60 py-16 md:py-20">
+          <div className="max-w-6xl mx-auto px-6">
+            <div className="text-center mb-12">
+              <p className="text-xs font-medium uppercase tracking-widest text-zinc-600 mb-3">
+                Works with your stack
+              </p>
+              <h2 className="text-2xl md:text-3xl font-bold text-white">
+                Plug Monocle into{" "}
+                <span className="text-zinc-500">any model, any wallet</span>
+              </h2>
+            </div>
+
+            <div className="space-y-8">
+              {INTEGRATIONS.map((group) => (
+                <div key={group.label}>
+                  <p className="text-[11px] font-mono text-zinc-600 uppercase tracking-widest mb-4 text-center">
+                    {group.label}
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-2.5">
+                    {group.items.map((item) => (
+                      <span
+                        key={item}
+                        className="px-4 py-2 rounded-lg border border-zinc-800/80 bg-zinc-900/40 text-zinc-400 text-sm font-medium hover:text-white hover:border-zinc-700 hover:bg-zinc-900 transition-[color,border-color,background-color] duration-200 cursor-default"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-center text-xs text-zinc-600 mt-10">
+              <span className="text-zinc-400 font-medium">+ any MCP server, any HTTP API.</span>{" "}
+              Bring your own infra.
+            </p>
           </div>
         </section>
 
@@ -318,9 +443,9 @@ export default function Landing() {
 
         {/* ─── How It Works ───────────────────────────── */}
         <section id="how-it-works" className="py-24 md:py-32 border-t border-zinc-800/60">
-          <div className="max-w-4xl mx-auto px-6">
+          <div className="max-w-6xl mx-auto px-6">
             <div
-              className="text-center mb-16"
+              className="text-center mb-14"
               ref={steps.ref}
               style={{
                 opacity: steps.visible ? 1 : 0,
@@ -337,32 +462,141 @@ export default function Landing() {
               </h2>
             </div>
 
-            <div className="relative">
-              {/* Connecting line */}
-              <div className="hidden md:block absolute top-5 left-[16%] right-[16%] h-px bg-zinc-800" />
+            <div className="grid md:grid-cols-3 gap-5">
+              {STEPS.map((s, i) => (
+                <div
+                  key={i}
+                  className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 overflow-hidden flex flex-col hover:border-zinc-700 transition-colors duration-300"
+                  style={{
+                    opacity: steps.visible ? 1 : 0,
+                    transform: steps.visible ? "none" : "translateY(24px)",
+                    transition: `opacity 0.5s ${EASE} ${(i + 1) * 120}ms, transform 0.5s ${EASE} ${(i + 1) * 120}ms, border-color 0.3s`,
+                  }}
+                >
+                  {/* Illustration panel */}
+                  <div className="p-5 bg-zinc-950/40 border-b border-zinc-800/60 min-h-[220px] flex flex-col justify-center">
+                    {i === 0 && (
+                      /* Step 1: Register form */
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest mb-1.5">
+                            domain
+                          </div>
+                          <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/80 px-3 py-2 flex items-center justify-between">
+                            <span className="text-sm text-zinc-200 font-mono">research-bot.sol</span>
+                            <span className="text-emerald-400 text-[10px] font-mono">✓ available</span>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest mb-1.5">
+                            ika dwallet
+                          </div>
+                          <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/80 px-3 py-2 flex items-center gap-2">
+                            <div className="flex gap-0.5">
+                              {Array(8).fill(0).map((_, idx) => (
+                                <span key={idx} className="w-1 h-1 rounded-full bg-zinc-500" />
+                              ))}
+                            </div>
+                            <span className="text-[11px] text-zinc-500 font-mono ml-auto">4Kk2…8Hd9</span>
+                          </div>
+                        </div>
+                        <div className="rounded-lg bg-zinc-100 px-3 py-2 text-center text-xs font-semibold text-zinc-900">
+                          Mint identity
+                        </div>
+                      </div>
+                    )}
 
-              <div className="grid md:grid-cols-3 gap-10">
-                {STEPS.map((s, i) => (
-                  <div
-                    key={i}
-                    className="relative text-center"
-                    style={{
-                      opacity: steps.visible ? 1 : 0,
-                      transform: steps.visible ? "none" : "translateY(24px)",
-                      transition: `opacity 0.5s ${EASE} ${(i + 1) * 120}ms, transform 0.5s ${EASE} ${(i + 1) * 120}ms`,
-                    }}
-                  >
-                    <div className="w-10 h-10 rounded-full bg-[#09090b] border border-zinc-800 flex items-center justify-center text-zinc-500 font-mono text-xs mx-auto mb-5 relative z-10">
-                      {String(i + 1).padStart(2, "0")}
+                    {i === 1 && (
+                      /* Step 2: Policy panel */
+                      <div className="space-y-3.5">
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest">
+                              daily spend
+                            </span>
+                            <span className="text-[11px] font-mono text-zinc-300">10,000</span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                            <div className="h-full w-[35%] rounded-full bg-zinc-300" />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest mb-1.5">
+                            allowlist
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md border border-zinc-700/50 bg-zinc-900/80 text-zinc-300">
+                              code-reviewer.sol
+                            </span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md border border-zinc-700/50 bg-zinc-900/80 text-zinc-300">
+                              designer.sol
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between rounded-lg border border-zinc-700/50 bg-zinc-900/80 px-3 py-2">
+                          <span className="text-[11px] font-mono text-zinc-400">emergency pause</span>
+                          <div className="w-7 h-3.5 rounded-full bg-zinc-800 border border-zinc-700 relative">
+                            <div className="absolute top-0 left-0 w-3 h-3 rounded-full bg-zinc-500" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {i === 2 && (
+                      /* Step 3: Live activity feed */
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest">
+                            live activity
+                          </span>
+                          <span className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            streaming
+                          </span>
+                        </div>
+                        <div className="space-y-1.5 font-mono text-[11px]">
+                          <div className="flex items-center gap-2 text-zinc-400">
+                            <span className="text-zinc-600">14:32</span>
+                            <span className="text-zinc-200">5,000</span>
+                            <span className="text-zinc-600">→</span>
+                            <span className="text-zinc-300 truncate">code-reviewer.sol</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-emerald-400/80">
+                            <span className="text-zinc-600">14:32</span>
+                            <span>✓ settled</span>
+                            <span className="text-zinc-500 ml-auto">412ms</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-zinc-400">
+                            <span className="text-zinc-600">14:35</span>
+                            <span className="text-zinc-200">2,500</span>
+                            <span className="text-zinc-600">→</span>
+                            <span className="text-zinc-300 truncate">designer.sol</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-emerald-400/80">
+                            <span className="text-zinc-600">14:35</span>
+                            <span>✓ settled</span>
+                            <span className="text-zinc-500 ml-auto">388ms</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Caption */}
+                  <div className="p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-[10px] font-mono text-zinc-400 px-2 py-0.5 rounded-md border border-zinc-800 bg-zinc-900/60">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <p className="text-[11px] font-medium uppercase tracking-widest text-zinc-600">
+                        {s.label}
+                      </p>
                     </div>
-                    <p className="text-[11px] font-medium uppercase tracking-widest text-zinc-600 mb-2">
-                      {s.label}
-                    </p>
                     <h3 className="text-xl font-semibold text-white mb-2">{s.title}</h3>
                     <p className="text-sm text-zinc-500 leading-relaxed">{s.desc}</p>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           </div>
         </section>
