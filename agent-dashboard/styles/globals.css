@@ -31,10 +31,41 @@
 .hero-animate-3 { animation-delay: 0.4s; }
 .hero-animate-4 { animation-delay: 0.55s; }
 
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.message-animate {
+  animation: message-in 0.5s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.message-1 { animation-delay: 1.0s; }
+.message-2 { animation-delay: 1.7s; }
+.message-3 { animation-delay: 2.5s; }
+.message-4 { animation-delay: 3.3s; }
+
+@keyframes typing-dot {
+  0%, 60%, 100% { opacity: 0.2; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
+}
+
+.typing-dot { animation: typing-dot 1.2s infinite; }
+.typing-dot-2 { animation-delay: 0.2s; }
+.typing-dot-3 { animation-delay: 0.4s; }
+
 @media (prefers-reduced-motion: reduce) {
-  .hero-animate {
+  .hero-animate,
+  .message-animate {
     animation: none;
     opacity: 1;
     transform: none;
   }
+  .typing-dot { animation: none; opacity: 0.5; }
 }
