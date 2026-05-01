@@ -10,14 +10,14 @@ import { Request, Response, NextFunction } from "express";
 // Required environment variables for production
 const REQUIRED_PRODUCTION_ENV = [
   "DATABASE_URL",
-  "ENCRYPTION_KEY",
-  "API_KEY",
-  "SOLANA_PRIVATE_KEY"
+  "LOG_ENCRYPTION_KEY",
+  "AGENTPAY_API_KEY",
+  "SOLANA_PAYER_SECRET"
 ] as const;
 
 // Recommended but not required
 const RECOMMENDED_PRODUCTION_ENV = [
-  "SOLANA_RPC_URL",
+  "SOLANA_RPC",
   "SOLANA_NETWORK"
 ] as const;
 
