@@ -34,6 +34,7 @@ COPY lib ./lib
 COPY styles ./styles
 COPY hooks ./hooks
 COPY types ./types
+COPY public ./public
 
 # Build Next.js
 RUN npm run build
@@ -50,6 +51,7 @@ ENV NODE_ENV=production \
 # Copy standalone build
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 
 EXPOSE 3000
 

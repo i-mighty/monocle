@@ -23,7 +23,12 @@ export default function Layout({ children, title }: LayoutProps) {
       {/* Navbar */}
       <header className="border-b border-zinc-800/60">
         <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-          <Link href="/" className="text-lg font-semibold tracking-tight text-white">
+          <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
+            <svg viewBox="0 0 32 32" fill="none" className="w-6 h-6" aria-hidden="true">
+              <circle cx="13" cy="14" r="9" stroke="currentColor" strokeWidth={2} />
+              <circle cx="15.5" cy="14" r="2" fill="currentColor" />
+              <path d="M 21 20 L 27 27" stroke="currentColor" strokeWidth={2} strokeLinecap="round" />
+            </svg>
             Monocle
           </Link>
           <nav className="flex items-center gap-1">
