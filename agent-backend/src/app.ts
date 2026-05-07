@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express, { Router } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import path from "path";
 import fs from "fs";
 import identity from "./routes/identity";
@@ -40,7 +41,31 @@ import { x402ProtectMiddleware, x402Enabled } from "./middleware/x402Official";
 enforceProductionRequirements();
 
 const app = express();
-app.use(cors());
+
+// Security headers (CSP, HSTS, X-Frame-Options, etc.)
+app.use(helmet({
+  // Disable CSP by default — APIs don't render HTML, and a wrong CSP can
+  // break embedded resources. Re-enable per-route if any HTML is served.
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
+
+// CORS: explicit allowlist. Set CORS_ORIGINS=comma,separated,urls to add more.
+const corsAllowlist = [
+  "https://diligent-education-production-aede.up.railway.app",
+  ...((process.env.CORS_ORIGINS ?? "").split(",").map(s => s.trim()).filter(Boolean)),
+  ...(isProduction() ? [] : ["http://localhost:3000", "http://127.0.0.1:3000"]),
+];
+app.use(cors({
+  origin(origin, cb) {
+    // Allow same-origin / non-browser requests (Postman, curl) which send no Origin
+    if (!origin) return cb(null, true);
+    if (corsAllowlist.includes(origin)) return cb(null, true);
+    return cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
+
 app.use(express.json());
 app.use(requestIdMiddleware);
 
