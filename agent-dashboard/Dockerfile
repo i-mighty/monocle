@@ -2,19 +2,17 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Build-time public env (Railway forwards service vars when ARG names match)
+# Build-time public env. NEXT_PUBLIC_* values get inlined into the JS
+# bundle, so NEVER list secrets here — only URLs that are safe to expose.
+# All authenticated calls now go via /api/proxy/* which runs server-side.
 ARG NEXT_PUBLIC_BACKEND_URL
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_MONOCLE_API_URL
-ARG NEXT_PUBLIC_MONOCLE_API_KEY
 ARG NEXT_PUBLIC_REPUTATION_URL
-ARG NEXT_PUBLIC_ADMIN_API_KEY
 ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL \
     NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_MONOCLE_API_URL=$NEXT_PUBLIC_MONOCLE_API_URL \
-    NEXT_PUBLIC_MONOCLE_API_KEY=$NEXT_PUBLIC_MONOCLE_API_KEY \
-    NEXT_PUBLIC_REPUTATION_URL=$NEXT_PUBLIC_REPUTATION_URL \
-    NEXT_PUBLIC_ADMIN_API_KEY=$NEXT_PUBLIC_ADMIN_API_KEY
+    NEXT_PUBLIC_REPUTATION_URL=$NEXT_PUBLIC_REPUTATION_URL
 
 # Copy package files
 COPY package*.json ./
