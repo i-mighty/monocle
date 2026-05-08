@@ -60,8 +60,8 @@ export default function RegisterAgent() {
         throw new Error(data?.error?.message || `Request failed (${res.status})`);
       }
 
-      // Redirect to the agent detail page
-      router.push(`/agents/${agentId}`);
+      // Redirect to dashboard with the new agent highlighted
+      router.push(`/dashboard?registered=${encodeURIComponent(agentId)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
       setSubmitting(false);
