@@ -37,7 +37,7 @@ router.post(
     const { wallet } = req.body ?? {};
     if (!isValidWalletPubkey(wallet)) {
       throw new AppError(
-        ErrorCodes.VALIDATION_INVALID_VALUE,
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
         { field: "wallet" },
         "wallet must be a base58-encoded Solana public key (32 bytes)"
       );
@@ -61,13 +61,13 @@ router.post(
   asyncHandler(async (req, res) => {
     const { wallet, nonce, signature } = req.body ?? {};
     if (!isValidWalletPubkey(wallet)) {
-      throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, { field: "wallet" });
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, { field: "wallet" });
     }
     if (typeof nonce !== "string" || nonce.length !== 64) {
-      throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, { field: "nonce" });
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, { field: "nonce" });
     }
     if (typeof signature !== "string" || signature.length < 64) {
-      throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, { field: "signature" });
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, { field: "signature" });
     }
 
     const result = await verifyChallenge({ wallet, nonce, signature });

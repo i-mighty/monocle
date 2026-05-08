@@ -885,7 +885,7 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
   }
   if (categories !== undefined) {
     if (!Array.isArray(categories)) {
-      throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, { field: "categories" });
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, { field: "categories" });
     }
     const cleaned = Array.from(new Set(
       categories
@@ -902,7 +902,7 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
   }
 
   if (sets.length === 0) {
-    throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, {}, "No editable fields supplied");
+    throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, {}, "No editable fields supplied");
   }
 
   sets.push(`updated_at = now()`);
@@ -956,7 +956,7 @@ router.get("/:agentId/verification-quote", asyncHandler(async (req, res) => {
   const platformWallet = process.env.X402_PAY_TO || process.env.PLATFORM_WALLET || "";
   const network = process.env.SOLANA_NETWORK === "mainnet" ? "mainnet" : "devnet";
   if (!platformWallet) {
-    throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, {}, "Platform wallet not configured");
+    throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, {}, "Platform wallet not configured");
   }
   sendSuccess(res, {
     priceLamports,
@@ -984,7 +984,7 @@ router.post("/:agentId/verify-payment",
     const { agentId } = req.params;
     const { txSignature } = req.body ?? {};
     if (typeof txSignature !== "string" || txSignature.length < 64) {
-      throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, { field: "txSignature" });
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, { field: "txSignature" });
     }
 
     const agentRow = await query("select id, verified_status from agents where id = $1", [agentId]);
@@ -996,7 +996,7 @@ router.post("/:agentId/verify-payment",
 
     const platformWallet = process.env.X402_PAY_TO || process.env.PLATFORM_WALLET || "";
     if (!platformWallet) {
-      throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, {}, "Platform wallet not configured");
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, {}, "Platform wallet not configured");
     }
     const expectedLamports = Number(process.env.VERIFICATION_PRICE_LAMPORTS) || 10_000_000;
     const rpcUrl = process.env.SOLANA_RPC ?? "https://api.devnet.solana.com";
@@ -1008,7 +1008,7 @@ router.post("/:agentId/verify-payment",
     );
     if (dupe.rows.length > 0 && dupe.rows[0].id !== agentId) {
       throw new AppError(
-        ErrorCodes.VALIDATION_INVALID_VALUE,
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
         { txSignature: "already-used" },
         "This transaction was already used to verify a different agent"
       );
@@ -1021,14 +1021,14 @@ router.post("/:agentId/verify-payment",
     });
     if (!tx) {
       throw new AppError(
-        ErrorCodes.VALIDATION_INVALID_VALUE,
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
         { txSignature: "not-found" },
         "Transaction not found on-chain. Ensure it confirmed before sending."
       );
     }
     if (tx.meta?.err) {
       throw new AppError(
-        ErrorCodes.VALIDATION_INVALID_VALUE,
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
         { txSignature: "failed" },
         "Transaction failed on-chain"
       );
@@ -1039,7 +1039,7 @@ router.post("/:agentId/verify-payment",
     const idx = accountKeys.staticAccountKeys.findIndex((k) => k.equals(recipient));
     if (idx === -1) {
       throw new AppError(
-        ErrorCodes.VALIDATION_INVALID_VALUE,
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
         { txSignature: "wrong-recipient" },
         `Transaction does not transfer to platform wallet ${platformWallet}`
       );
@@ -1049,7 +1049,7 @@ router.post("/:agentId/verify-payment",
     const received = post - pre;
     if (received < expectedLamports) {
       throw new AppError(
-        ErrorCodes.VALIDATION_INVALID_VALUE,
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
         { received, expected: expectedLamports },
         `Insufficient payment: received ${received} lamports, expected ${expectedLamports}`
       );
