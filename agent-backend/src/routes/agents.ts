@@ -45,12 +45,12 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
   const rate = ratePer1kTokens ? Math.max(1, Math.floor(Number(ratePer1kTokens))) : 1000;
 
   const result = await query(
-    `insert into agents (id, name, public_key, rate_per_1k_tokens, balance_lamports, pending_lamports)
+    `insert into agents (id, name, public_key, default_rate_per_1k_tokens, balance_lamports, pending_lamports)
      values ($1, $2, $3, $4, 0, 0)
      on conflict (id) do update set
        name = coalesce(excluded.name, agents.name),
        public_key = coalesce(excluded.public_key, agents.public_key)
-     returning id, name, public_key, rate_per_1k_tokens, balance_lamports, pending_lamports`,
+     returning id, name, public_key, default_rate_per_1k_tokens, balance_lamports, pending_lamports`,
     [agentId, name || null, publicKey || null, rate]
   );
 
@@ -59,7 +59,7 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
     agentId: agent.id,
     name: agent.name,
     publicKey: agent.public_key,
-    ratePer1kTokens: Number(agent.rate_per_1k_tokens),
+    ratePer1kTokens: Number(agent.default_rate_per_1k_tokens),
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
   }, 201);
@@ -778,7 +778,7 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
   const { agentId } = req.params;
 
   const result = await query(
-    `select id, name, public_key, rate_per_1k_tokens, balance_lamports, pending_lamports, created_at
+    `select id, name, public_key, default_rate_per_1k_tokens, balance_lamports, pending_lamports, created_at
      from agents where id = $1`,
     [agentId]
   );
@@ -792,7 +792,7 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     agentId: agent.id,
     name: agent.name,
     publicKey: agent.public_key,
-    ratePer1kTokens: Number(agent.rate_per_1k_tokens),
+    ratePer1kTokens: Number(agent.default_rate_per_1k_tokens),
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
     createdAt: agent.created_at,
@@ -823,8 +823,8 @@ router.patch("/:agentId/pricing", apiKeyAuth, asyncHandler(async (req, res) => {
   const rate = Math.max(1, Math.floor(Number(ratePer1kTokens)));
 
   const result = await query(
-    `update agents set rate_per_1k_tokens = $1 where id = $2
-     returning id, rate_per_1k_tokens, balance_lamports, pending_lamports`,
+    `update agents set default_rate_per_1k_tokens = $1 where id = $2
+     returning id, default_rate_per_1k_tokens, balance_lamports, pending_lamports`,
     [rate, agentId]
   );
 
@@ -840,12 +840,12 @@ router.patch("/:agentId/pricing", apiKeyAuth, asyncHandler(async (req, res) => {
     "agent",
     agentId,
     0, // We don't have old rate in this query, could enhance
-    Number(agent.rate_per_1k_tokens)
+    Number(agent.default_rate_per_1k_tokens)
   );
 
   sendSuccess(res, {
     agentId: agent.id,
-    ratePer1kTokens: Number(agent.rate_per_1k_tokens),
+    ratePer1kTokens: Number(agent.default_rate_per_1k_tokens),
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
     message: "Pricing updated. Only future calls will use this rate.",
@@ -897,7 +897,7 @@ router.post("/quote", apiKeyAuth, asyncHandler(async (req, res) => {
 
   // Fetch callee's rate
   const result = await query(
-    "select rate_per_1k_tokens from agents where id = $1",
+    "select default_rate_per_1k_tokens from agents where id = $1",
     [calleeId]
   );
 
@@ -905,7 +905,7 @@ router.post("/quote", apiKeyAuth, asyncHandler(async (req, res) => {
     throw AppError.agentNotFound(calleeId);
   }
 
-  const ratePer1kTokens = Number(result.rows[0].rate_per_1k_tokens);
+  const ratePer1kTokens = Number(result.rows[0].default_rate_per_1k_tokens);
   const costLamports = calculateCost(tokens, ratePer1kTokens);
 
   sendSuccess(res, {
@@ -1047,7 +1047,7 @@ router.get("/", apiKeyAuth, asyncHandler(async (req, res) => {
   const offset = Number(req.query.offset) || 0;
 
   const result = await query(
-    `select id, name, public_key, rate_per_1k_tokens, balance_lamports, pending_lamports, created_at
+    `select id, name, public_key, default_rate_per_1k_tokens, balance_lamports, pending_lamports, created_at
      from agents
      order by created_at desc
      limit $1 offset $2`,
@@ -1058,7 +1058,7 @@ router.get("/", apiKeyAuth, asyncHandler(async (req, res) => {
     agentId: agent.id,
     name: agent.name,
     publicKey: agent.public_key,
-    ratePer1kTokens: Number(agent.rate_per_1k_tokens),
+    ratePer1kTokens: Number(agent.default_rate_per_1k_tokens),
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
     createdAt: agent.created_at,
