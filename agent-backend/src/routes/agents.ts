@@ -71,16 +71,47 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
     if (cleaned.length > 0) categoriesJson = JSON.stringify(cleaned);
   }
 
-  const result = await query(
-    `insert into agents (id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports)
-     values ($1, $2, $3, $4, $5, 0, 0)
-     on conflict (id) do update set
-       name = coalesce(excluded.name, agents.name),
-       public_key = coalesce(excluded.public_key, agents.public_key),
-       categories = coalesce(excluded.categories, agents.categories)
-     returning id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports`,
-    [agentId, name || null, publicKey || null, rate, categoriesJson]
-  );
+  // Pre-check: if a publicKey was supplied, verify it isn't already attached
+  // to a *different* agent before we attempt the insert. This produces a
+  // clean 409 instead of a generic 500 from the unique-constraint violation.
+  if (publicKey) {
+    const owner = await query(
+      "select id from agents where public_key = $1 and id <> $2",
+      [publicKey, agentId]
+    );
+    if (owner.rows.length > 0) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "publicKey", existingAgent: owner.rows[0].id },
+        `This Solana public key is already linked to agent "${owner.rows[0].id}". Each key can only own one agent.`
+      );
+    }
+  }
+
+  let result;
+  try {
+    result = await query(
+      `insert into agents (id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports)
+       values ($1, $2, $3, $4, $5, 0, 0)
+       on conflict (id) do update set
+         name = coalesce(excluded.name, agents.name),
+         public_key = coalesce(excluded.public_key, agents.public_key),
+         categories = coalesce(excluded.categories, agents.categories)
+       returning id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports`,
+      [agentId, name || null, publicKey || null, rate, categoriesJson]
+    );
+  } catch (err: any) {
+    // Postgres unique-violation race: someone took the public_key between our
+    // pre-check and the insert. Return the same friendly error.
+    if (err?.code === "23505" && /public_key/.test(err?.constraint ?? err?.detail ?? "")) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "publicKey" },
+        "This Solana public key is already linked to another agent."
+      );
+    }
+    throw err;
+  }
 
   const agent = result.rows[0];
   let parsedCategories: string[] = [];
@@ -872,8 +903,23 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     params.push(typeof name === "string" && name.trim() ? name.trim() : null);
   }
   if (publicKey !== undefined) {
+    const trimmed = typeof publicKey === "string" && publicKey.trim() ? publicKey.trim() : null;
+    if (trimmed) {
+      // Reject keys already used by a different agent.
+      const owner = await query(
+        "select id from agents where public_key = $1 and id <> $2",
+        [trimmed, agentId]
+      );
+      if (owner.rows.length > 0) {
+        throw new AppError(
+          ErrorCodes.VALIDATION_INVALID_FORMAT,
+          { field: "publicKey", existingAgent: owner.rows[0].id },
+          `This Solana public key is already linked to agent "${owner.rows[0].id}".`
+        );
+      }
+    }
     sets.push(`public_key = $${i++}`);
-    params.push(typeof publicKey === "string" && publicKey.trim() ? publicKey.trim() : null);
+    params.push(trimmed);
   }
   if (ratePer1kTokens !== undefined) {
     const rate = Math.max(1, Math.floor(Number(ratePer1kTokens)));
