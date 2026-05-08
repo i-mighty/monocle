@@ -814,7 +814,9 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
   const { agentId } = req.params;
 
   const result = await query(
-    `select id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports, created_at
+    `select id, name, public_key, default_rate_per_1k_tokens, categories, bio,
+            verified_status, verified_at, sol_name,
+            balance_lamports, pending_lamports, created_at
      from agents where id = $1`,
     [agentId]
   );
@@ -837,11 +839,242 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     publicKey: agent.public_key,
     ratePer1kTokens: Number(agent.default_rate_per_1k_tokens),
     categories: parsedCategories,
+    bio: agent.bio,
+    verifiedStatus: agent.verified_status,
+    verifiedAt: agent.verified_at,
+    solName: agent.sol_name,
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
     createdAt: agent.created_at,
   });
 }));
+
+/**
+ * PATCH /agents/:agentId
+ *
+ * General-purpose update for agent owner-editable fields. Currently
+ * supports: name, publicKey, ratePer1kTokens, categories, bio.
+ *
+ * NOTE: this is apiKeyAuth-gated for now (any platform-key holder can edit
+ * any agent). Per-user ownership comes with SIWS phase 2.
+ */
+router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
+  const { agentId } = req.params;
+  const { name, publicKey, ratePer1kTokens, categories, bio } = req.body ?? {};
+
+  // Build a partial update: only set columns the caller actually sent.
+  const sets: string[] = [];
+  const params: any[] = [];
+  let i = 1;
+
+  if (name !== undefined) {
+    sets.push(`name = $${i++}`);
+    params.push(typeof name === "string" && name.trim() ? name.trim() : null);
+  }
+  if (publicKey !== undefined) {
+    sets.push(`public_key = $${i++}`);
+    params.push(typeof publicKey === "string" && publicKey.trim() ? publicKey.trim() : null);
+  }
+  if (ratePer1kTokens !== undefined) {
+    const rate = Math.max(1, Math.floor(Number(ratePer1kTokens)));
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new AppError(ErrorCodes.PRICING_INVALID_RATE, { ratePer1kTokens });
+    }
+    sets.push(`default_rate_per_1k_tokens = $${i++}`);
+    params.push(rate);
+  }
+  if (categories !== undefined) {
+    if (!Array.isArray(categories)) {
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, { field: "categories" });
+    }
+    const cleaned = Array.from(new Set(
+      categories
+        .filter((c: unknown): c is string => typeof c === "string")
+        .map((c: string) => c.trim().toLowerCase())
+        .filter((c: string) => VALID_CATEGORIES.has(c))
+    )).slice(0, 5);
+    sets.push(`categories = $${i++}`);
+    params.push(cleaned.length > 0 ? JSON.stringify(cleaned) : null);
+  }
+  if (bio !== undefined) {
+    sets.push(`bio = $${i++}`);
+    params.push(typeof bio === "string" ? bio.trim().slice(0, 1000) : null);
+  }
+
+  if (sets.length === 0) {
+    throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, {}, "No editable fields supplied");
+  }
+
+  sets.push(`updated_at = now()`);
+  params.push(agentId);
+
+  const result = await query(
+    `update agents set ${sets.join(", ")}
+     where id = $${i}
+     returning id, name, public_key, default_rate_per_1k_tokens, categories, bio,
+               verified_status, verified_at, sol_name,
+               balance_lamports, pending_lamports, created_at`,
+    params
+  );
+
+  if (result.rows.length === 0) {
+    throw AppError.agentNotFound(agentId);
+  }
+
+  const agent = result.rows[0];
+  let parsed: string[] = [];
+  if (typeof agent.categories === "string") {
+    try { parsed = JSON.parse(agent.categories); } catch { /* legacy */ }
+  } else if (Array.isArray(agent.categories)) {
+    parsed = agent.categories;
+  }
+
+  sendSuccess(res, {
+    agentId: agent.id,
+    name: agent.name,
+    publicKey: agent.public_key,
+    ratePer1kTokens: Number(agent.default_rate_per_1k_tokens),
+    categories: parsed,
+    bio: agent.bio,
+    verifiedStatus: agent.verified_status,
+    verifiedAt: agent.verified_at,
+    solName: agent.sol_name,
+    balanceLamports: Number(agent.balance_lamports),
+    pendingLamports: Number(agent.pending_lamports),
+    createdAt: agent.created_at,
+  });
+}));
+
+/**
+ * GET /agents/:agentId/verification-quote
+ *
+ * Returns the price and platform wallet to send to. Public so the frontend
+ * can render instructions before any payment.
+ */
+router.get("/:agentId/verification-quote", asyncHandler(async (req, res) => {
+  const priceLamports = Number(process.env.VERIFICATION_PRICE_LAMPORTS) || 10_000_000; // 0.01 SOL
+  const platformWallet = process.env.X402_PAY_TO || process.env.PLATFORM_WALLET || "";
+  const network = process.env.SOLANA_NETWORK === "mainnet" ? "mainnet" : "devnet";
+  if (!platformWallet) {
+    throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, {}, "Platform wallet not configured");
+  }
+  sendSuccess(res, {
+    priceLamports,
+    priceSol: priceLamports / LAMPORTS_PER_SOL,
+    platformWallet,
+    network,
+    memo: `monocle-verify-${req.params.agentId}`,
+  });
+}));
+
+/**
+ * POST /agents/:agentId/verify-payment
+ *   { txSignature: string }
+ *
+ * The user pays the verification fee from any Solana wallet to PLATFORM_WALLET,
+ * then sends us the resulting transaction signature. We confirm the transfer
+ * on-chain (recipient + amount) and flip the agent's verified_status to
+ * 'verified'. The signature is stored on the agent record so each tx can
+ * verify exactly one agent.
+ */
+router.post("/:agentId/verify-payment",
+  apiKeyAuth,
+  ipRateLimit({ maxRequests: 10, windowMs: 60_000, burstAllowance: 2 }),
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+    const { txSignature } = req.body ?? {};
+    if (typeof txSignature !== "string" || txSignature.length < 64) {
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, { field: "txSignature" });
+    }
+
+    const agentRow = await query("select id, verified_status from agents where id = $1", [agentId]);
+    if (agentRow.rows.length === 0) throw AppError.agentNotFound(agentId);
+    if (agentRow.rows[0].verified_status === "verified") {
+      sendSuccess(res, { agentId, verifiedStatus: "verified", message: "Already verified" });
+      return;
+    }
+
+    const platformWallet = process.env.X402_PAY_TO || process.env.PLATFORM_WALLET || "";
+    if (!platformWallet) {
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_VALUE, {}, "Platform wallet not configured");
+    }
+    const expectedLamports = Number(process.env.VERIFICATION_PRICE_LAMPORTS) || 10_000_000;
+    const rpcUrl = process.env.SOLANA_RPC ?? "https://api.devnet.solana.com";
+
+    // Reject if signature already used to verify another agent
+    const dupe = await query(
+      "select id from agents where verified_by = $1",
+      [`tx:${txSignature}`]
+    );
+    if (dupe.rows.length > 0 && dupe.rows[0].id !== agentId) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_VALUE,
+        { txSignature: "already-used" },
+        "This transaction was already used to verify a different agent"
+      );
+    }
+
+    const conn = new Connection(rpcUrl, "confirmed");
+    const tx = await conn.getTransaction(txSignature, {
+      commitment: "confirmed",
+      maxSupportedTransactionVersion: 0,
+    });
+    if (!tx) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_VALUE,
+        { txSignature: "not-found" },
+        "Transaction not found on-chain. Ensure it confirmed before sending."
+      );
+    }
+    if (tx.meta?.err) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_VALUE,
+        { txSignature: "failed" },
+        "Transaction failed on-chain"
+      );
+    }
+
+    const recipient = new PublicKey(platformWallet);
+    const accountKeys = tx.transaction.message.getAccountKeys();
+    const idx = accountKeys.staticAccountKeys.findIndex((k) => k.equals(recipient));
+    if (idx === -1) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_VALUE,
+        { txSignature: "wrong-recipient" },
+        `Transaction does not transfer to platform wallet ${platformWallet}`
+      );
+    }
+    const pre = tx.meta?.preBalances?.[idx] ?? 0;
+    const post = tx.meta?.postBalances?.[idx] ?? 0;
+    const received = post - pre;
+    if (received < expectedLamports) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_VALUE,
+        { received, expected: expectedLamports },
+        `Insufficient payment: received ${received} lamports, expected ${expectedLamports}`
+      );
+    }
+
+    const updated = await query(
+      `update agents
+         set verified_status = 'verified',
+             verified_at = now(),
+             verified_by = $1,
+             updated_at = now()
+       where id = $2
+       returning id, verified_status, verified_at`,
+      [`tx:${txSignature}`, agentId]
+    );
+
+    sendSuccess(res, {
+      agentId: updated.rows[0].id,
+      verifiedStatus: updated.rows[0].verified_status,
+      verifiedAt: updated.rows[0].verified_at,
+      txSignature,
+      lamportsReceived: received,
+    });
+  })
+);
 
 /**
  * PATCH /agents/:agentId/pricing

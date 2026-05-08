@@ -11,6 +11,10 @@ interface AgentDetail {
   publicKey: string | null;
   ratePer1kTokens: number;
   categories?: string[];
+  bio?: string | null;
+  verifiedStatus?: string | null;
+  verifiedAt?: string | null;
+  solName?: string | null;
   balanceLamports: number;
   pendingLamports: number;
   createdAt: string;
@@ -82,6 +86,8 @@ export default function AgentProfile() {
     })();
   }, [slug]);
 
+  const verified = agent?.verifiedStatus === "verified";
+
   return (
     <>
       <Head>
@@ -89,7 +95,6 @@ export default function AgentProfile() {
       </Head>
 
       <div className="min-h-screen bg-[#09090b] text-white antialiased font-sans">
-        {/* Nav */}
         <header className="border-b border-zinc-800/60">
           <div className="max-w-4xl mx-auto px-6 h-14 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
@@ -108,7 +113,6 @@ export default function AgentProfile() {
         </header>
 
         <main className="max-w-4xl mx-auto px-6 py-10">
-          {/* Breadcrumb */}
           <div className="flex items-center gap-2 text-xs text-zinc-600 mb-6">
             <Link href="/marketplace" className="hover:text-zinc-400 transition-colors">Marketplace</Link>
             <span>/</span>
@@ -155,10 +159,30 @@ export default function AgentProfile() {
                     {(agent.name || agent.agentId).charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <h1 className="text-3xl font-bold text-white tracking-tight mb-1 truncate">
-                      {agent.name || agent.agentId}
-                    </h1>
-                    <p className="text-sm font-mono text-zinc-500 mb-4">{agent.agentId}</p>
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <h1 className="text-3xl font-bold text-white tracking-tight truncate">
+                        {agent.name || agent.agentId}
+                      </h1>
+                      {verified && (
+                        <span
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 text-xs font-medium"
+                          title="Verified by Monocle"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+                            <path d="M9 12l2 2 4-4" />
+                            <circle cx="12" cy="12" r="9" />
+                          </svg>
+                          Verified
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-mono text-zinc-500 mb-4">
+                      {agent.solName ? `${agent.solName} · ` : ""}
+                      {agent.agentId}
+                    </p>
+                    {agent.bio && (
+                      <p className="text-sm text-zinc-400 leading-relaxed mb-4 max-w-prose">{agent.bio}</p>
+                    )}
                     {agent.categories && agent.categories.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mb-4">
                         {agent.categories.map((c) => (
@@ -179,47 +203,50 @@ export default function AgentProfile() {
                 </div>
               </section>
 
-              {/* Stats grid */}
+              {/* Verify CTA — only when not verified */}
+              {!verified && (
+                <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 mb-6 flex items-center gap-4 flex-wrap">
+                  <div className="flex-1 min-w-[260px]">
+                    <h2 className="text-sm font-semibold text-white mb-1">Get verified</h2>
+                    <p className="text-xs text-zinc-500 leading-relaxed">
+                      Pay a one-time on-chain fee to mint a verification badge. Verified agents rank higher in
+                      marketplace listings.
+                    </p>
+                  </div>
+                  <Link
+                    href={`/agents/${encodeURIComponent(agent.agentId)}/verify`}
+                    className="px-5 py-2.5 rounded-xl bg-white text-zinc-900 font-semibold text-sm hover:bg-zinc-200 transition-colors whitespace-nowrap"
+                  >
+                    Pay & verify →
+                  </Link>
+                </section>
+              )}
+
+              {/* Stats */}
               <div className="grid sm:grid-cols-3 gap-4 mb-6">
                 <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-5">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-2">
-                    Default rate
-                  </div>
-                  <div className="text-xl font-semibold text-white">
-                    {agent.ratePer1kTokens.toLocaleString()}
-                  </div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-2">Default rate</div>
+                  <div className="text-xl font-semibold text-white">{agent.ratePer1kTokens.toLocaleString()}</div>
                   <div className="text-xs text-zinc-500 mt-1">lamports / 1k tokens</div>
                 </div>
-
                 <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-5">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-2">
-                    Balance
-                  </div>
-                  <div className="text-xl font-semibold text-white">
-                    {formatLamports(agent.balanceLamports)}
-                  </div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-2">Balance</div>
+                  <div className="text-xl font-semibold text-white">{formatLamports(agent.balanceLamports)}</div>
                   <div className="text-xs text-zinc-500 mt-1">available to settle</div>
                 </div>
-
                 <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-5">
-                  <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-2">
-                    Pending
-                  </div>
-                  <div className="text-xl font-semibold text-white">
-                    {formatLamports(agent.pendingLamports)}
-                  </div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-2">Pending</div>
+                  <div className="text-xl font-semibold text-white">{formatLamports(agent.pendingLamports)}</div>
                   <div className="text-xs text-zinc-500 mt-1">queued for settlement</div>
                 </div>
               </div>
 
-              {/* Wallet / identity */}
+              {/* Identity */}
               <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 mb-6">
                 <h2 className="text-sm font-semibold text-white mb-4">Identity</h2>
                 <dl className="space-y-4">
                   <div>
-                    <dt className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-1.5">
-                      Solana public key
-                    </dt>
+                    <dt className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-1.5">Solana public key</dt>
                     <dd className="text-sm font-mono text-zinc-300 break-all">
                       {agent.publicKey || (
                         <span className="text-zinc-600 italic font-sans">
@@ -234,10 +261,10 @@ export default function AgentProfile() {
               {/* Actions */}
               <div className="flex flex-wrap items-center gap-3">
                 <Link
-                  href="/dashboard"
+                  href={`/agents/${encodeURIComponent(agent.agentId)}/edit`}
                   className="px-5 py-2.5 rounded-xl bg-white text-zinc-900 font-semibold text-sm hover:bg-zinc-200 transition-colors"
                 >
-                  Open dashboard
+                  Edit agent
                 </Link>
                 <Link
                   href="/marketplace"
