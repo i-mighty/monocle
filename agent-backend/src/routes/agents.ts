@@ -999,7 +999,7 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
  */
 router.get("/:agentId/verification-quote", asyncHandler(async (req, res) => {
   const priceLamports = Number(process.env.VERIFICATION_PRICE_LAMPORTS) || 10_000_000; // 0.01 SOL
-  const platformWallet = process.env.X402_PAY_TO || process.env.PLATFORM_WALLET || "";
+  const platformWallet = process.env.VERIFICATION_WALLET || process.env.X402_PAY_TO || process.env.PLATFORM_WALLET || "";
   const network = process.env.SOLANA_NETWORK === "mainnet" ? "mainnet" : "devnet";
   if (!platformWallet) {
     throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, {}, "Platform wallet not configured");
@@ -1040,7 +1040,7 @@ router.post("/:agentId/verify-payment",
       return;
     }
 
-    const platformWallet = process.env.X402_PAY_TO || process.env.PLATFORM_WALLET || "";
+    const platformWallet = process.env.VERIFICATION_WALLET || process.env.X402_PAY_TO || process.env.PLATFORM_WALLET || "";
     if (!platformWallet) {
       throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, {}, "Platform wallet not configured");
     }
