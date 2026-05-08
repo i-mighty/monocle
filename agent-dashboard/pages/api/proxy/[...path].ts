@@ -32,6 +32,13 @@ const HOP_BY_HOP = new Set([
   "trailers",
   "host",
   "content-length",
+  // Browser-origin headers don't apply to server-to-server calls. Forwarding
+  // them caused the backend's CORS middleware to reject same-server requests.
+  "origin",
+  "referer",
+  // Cookies belong to the dashboard domain, not the backend. Strip to avoid
+  // accidental session leakage.
+  "cookie",
 ]);
 
 export default async function handler(
