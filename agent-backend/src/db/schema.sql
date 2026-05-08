@@ -255,8 +255,18 @@ create table if not exists tool_usage (
   rate_per_1k_tokens bigint not null,
   cost_lamports bigint not null,
 
+  -- Optional quote linkage for "frozen pricing" flow
+  quote_id text,
+  quoted_at timestamptz,
+  quote_expires_at timestamptz,
+
   created_at timestamptz default now()
 );
+
+-- Idempotent column adds for existing databases that pre-date the quote columns.
+alter table tool_usage add column if not exists quote_id text;
+alter table tool_usage add column if not exists quoted_at timestamptz;
+alter table tool_usage add column if not exists quote_expires_at timestamptz;
 
 -- =============================================================================
 -- SETTLEMENTS: On-chain transaction tracking
