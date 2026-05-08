@@ -1,16 +1,33 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
+const TASK_TYPES: { id: string; label: string; hint: string }[] = [
+  { id: "code", label: "Code", hint: "Write, review, or refactor code" },
+  { id: "research", label: "Research", hint: "Search, summarize, fact-check" },
+  { id: "reasoning", label: "Reasoning", hint: "Multi-step planning and logic" },
+  { id: "writing", label: "Writing", hint: "Drafting, editing, copywriting" },
+  { id: "math", label: "Math", hint: "Calculation, proofs, statistics" },
+  { id: "translation", label: "Translation", hint: "Cross-language adaptation" },
+  { id: "image", label: "Image", hint: "Generate or analyze images" },
+  { id: "audio", label: "Audio", hint: "Speech, transcription, synthesis" },
+  { id: "general", label: "General", hint: "Catch-all for cross-domain agents" },
+];
+
+const MAX_CATEGORIES = 5;
+
 interface FormState {
   agentId: string;
   name: string;
   ratePer1kTokens: string;
   publicKey: string;
+  categories: string[];
 }
+
+const slugify = (s: string) => s.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 
 export default function RegisterAgent() {
   const router = useRouter();
@@ -19,6 +36,7 @@ export default function RegisterAgent() {
     name: "",
     ratePer1kTokens: "1000",
     publicKey: "",
+    categories: [],
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,11 +44,24 @@ export default function RegisterAgent() {
   const update = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((s) => ({ ...s, [key]: value }));
 
+  const slugPreview = useMemo(() => slugify(form.agentId), [form.agentId]);
+  const slugChanged = form.agentId.trim().length > 0 && slugPreview !== form.agentId.trim();
+
+  const toggleCategory = (id: string) => {
+    setForm((s) => {
+      if (s.categories.includes(id)) {
+        return { ...s, categories: s.categories.filter((c) => c !== id) };
+      }
+      if (s.categories.length >= MAX_CATEGORIES) return s; // hard cap
+      return { ...s, categories: [...s.categories, id] };
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    const agentId = form.agentId.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    const agentId = slugPreview;
     if (!agentId) {
       setError("Agent ID is required");
       return;
@@ -39,6 +70,11 @@ export default function RegisterAgent() {
     const rate = Number(form.ratePer1kTokens);
     if (!Number.isFinite(rate) || rate <= 0) {
       setError("Rate must be a positive number (lamports per 1k tokens)");
+      return;
+    }
+
+    if (form.categories.length === 0) {
+      setError("Pick at least one task type so the marketplace can categorise your agent");
       return;
     }
 
@@ -52,6 +88,7 @@ export default function RegisterAgent() {
           name: form.name.trim() || agentId,
           ratePer1kTokens: rate,
           publicKey: form.publicKey.trim() || undefined,
+          categories: form.categories,
         }),
       });
       const data = await res.json();
@@ -60,7 +97,6 @@ export default function RegisterAgent() {
         throw new Error(data?.error?.message || `Request failed (${res.status})`);
       }
 
-      // Redirect to the agent's profile page (now backed by the real /v1/agents/:id endpoint)
       router.push(`/agents/${encodeURIComponent(agentId)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -103,18 +139,24 @@ export default function RegisterAgent() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Agent ID <span className="text-zinc-600 font-normal">· lowercase, hyphen-separated</span>
-              </label>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">Agent ID</label>
               <input
                 type="text"
                 value={form.agentId}
                 onChange={(e) => update("agentId", e.target.value)}
                 placeholder="research-bot"
                 required
-                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
+                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600 font-mono"
               />
-              <p className="text-xs text-zinc-600 mt-1.5">Unique identifier. Becomes the slug in URLs.</p>
+              {slugChanged ? (
+                <p className="text-xs text-amber-400/80 mt-1.5 font-mono">
+                  Will be saved as <span className="text-amber-300">{slugPreview}</span> · only lowercase, digits, and hyphens are allowed
+                </p>
+              ) : (
+                <p className="text-xs text-zinc-600 mt-1.5">
+                  Lowercase, digits, hyphens. Becomes the slug in URLs.
+                </p>
+              )}
             </div>
 
             <div>
@@ -126,7 +168,44 @@ export default function RegisterAgent() {
                 placeholder="Research Bot"
                 className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
               />
-              <p className="text-xs text-zinc-600 mt-1.5">Optional. Defaults to the agent ID.</p>
+              <p className="text-xs text-zinc-600 mt-1.5">Optional. Capitals fine here. Defaults to the agent ID.</p>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-zinc-300">Task types</label>
+                <span className="text-xs font-mono text-zinc-600">
+                  {form.categories.length}/{MAX_CATEGORIES}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {TASK_TYPES.map((t) => {
+                  const selected = form.categories.includes(t.id);
+                  const disabled = !selected && form.categories.length >= MAX_CATEGORIES;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => toggleCategory(t.id)}
+                      disabled={disabled}
+                      title={t.hint}
+                      className={[
+                        "px-3.5 py-2 rounded-lg border text-sm font-medium transition-colors cursor-pointer",
+                        selected
+                          ? "border-white bg-white text-zinc-900"
+                          : disabled
+                          ? "border-zinc-800 bg-zinc-900/30 text-zinc-700 cursor-not-allowed"
+                          : "border-zinc-800 bg-zinc-900/40 text-zinc-400 hover:text-white hover:border-zinc-700",
+                      ].join(" ")}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-zinc-600 mt-2">
+                Pick what your agent does. Used for marketplace filtering. Up to {MAX_CATEGORIES}.
+              </p>
             </div>
 
             <div>

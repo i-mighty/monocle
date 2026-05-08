@@ -34,8 +34,21 @@ const router = Router();
  *     agentId, name, publicKey, ratePer1kTokens, balanceLamports, pendingLamports
  *   }
  */
+// Allowed task categories — keep in sync with the dashboard's TASK_TYPE_LABELS
+const VALID_CATEGORIES = new Set([
+  "code",
+  "research",
+  "reasoning",
+  "writing",
+  "math",
+  "translation",
+  "image",
+  "audio",
+  "general",
+]);
+
 router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
-  const { agentId, name, publicKey, ratePer1kTokens } = req.body;
+  const { agentId, name, publicKey, ratePer1kTokens, categories } = req.body;
 
   if (!agentId) {
     throw AppError.required("agentId");
@@ -44,22 +57,45 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
   // Validate rate (must be positive integer)
   const rate = ratePer1kTokens ? Math.max(1, Math.floor(Number(ratePer1kTokens))) : 1000;
 
+  // Validate categories: array of known task types, deduped, max 5
+  let categoriesJson: string | null = null;
+  if (Array.isArray(categories)) {
+    const cleaned = Array.from(
+      new Set(
+        categories
+          .filter((c): c is string => typeof c === "string")
+          .map((c) => c.trim().toLowerCase())
+          .filter((c) => VALID_CATEGORIES.has(c))
+      )
+    ).slice(0, 5);
+    if (cleaned.length > 0) categoriesJson = JSON.stringify(cleaned);
+  }
+
   const result = await query(
-    `insert into agents (id, name, public_key, default_rate_per_1k_tokens, balance_lamports, pending_lamports)
-     values ($1, $2, $3, $4, 0, 0)
+    `insert into agents (id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports)
+     values ($1, $2, $3, $4, $5, 0, 0)
      on conflict (id) do update set
        name = coalesce(excluded.name, agents.name),
-       public_key = coalesce(excluded.public_key, agents.public_key)
-     returning id, name, public_key, default_rate_per_1k_tokens, balance_lamports, pending_lamports`,
-    [agentId, name || null, publicKey || null, rate]
+       public_key = coalesce(excluded.public_key, agents.public_key),
+       categories = coalesce(excluded.categories, agents.categories)
+     returning id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports`,
+    [agentId, name || null, publicKey || null, rate, categoriesJson]
   );
 
   const agent = result.rows[0];
+  let parsedCategories: string[] = [];
+  if (typeof agent.categories === "string") {
+    try { parsedCategories = JSON.parse(agent.categories); } catch { /* tolerate legacy non-JSON */ }
+  } else if (Array.isArray(agent.categories)) {
+    parsedCategories = agent.categories;
+  }
+
   sendSuccess(res, {
     agentId: agent.id,
     name: agent.name,
     publicKey: agent.public_key,
     ratePer1kTokens: Number(agent.default_rate_per_1k_tokens),
+    categories: parsedCategories,
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
   }, 201);
@@ -778,7 +814,7 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
   const { agentId } = req.params;
 
   const result = await query(
-    `select id, name, public_key, default_rate_per_1k_tokens, balance_lamports, pending_lamports, created_at
+    `select id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports, created_at
      from agents where id = $1`,
     [agentId]
   );
@@ -788,11 +824,19 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
   }
 
   const agent = result.rows[0];
+  let parsedCategories: string[] = [];
+  if (typeof agent.categories === "string") {
+    try { parsedCategories = JSON.parse(agent.categories); } catch { /* tolerate legacy */ }
+  } else if (Array.isArray(agent.categories)) {
+    parsedCategories = agent.categories;
+  }
+
   sendSuccess(res, {
     agentId: agent.id,
     name: agent.name,
     publicKey: agent.public_key,
     ratePer1kTokens: Number(agent.default_rate_per_1k_tokens),
+    categories: parsedCategories,
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
     createdAt: agent.created_at,

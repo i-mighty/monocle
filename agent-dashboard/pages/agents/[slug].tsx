@@ -10,10 +10,23 @@ interface AgentDetail {
   name: string | null;
   publicKey: string | null;
   ratePer1kTokens: number;
+  categories?: string[];
   balanceLamports: number;
   pendingLamports: number;
   createdAt: string;
 }
+
+const TASK_TYPE_LABELS: Record<string, string> = {
+  code: "Code",
+  research: "Research",
+  reasoning: "Reasoning",
+  writing: "Writing",
+  math: "Math",
+  translation: "Translation",
+  image: "Image",
+  audio: "Audio",
+  general: "General",
+};
 
 const formatLamports = (n: number): string => {
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(4)} SOL`;
@@ -146,6 +159,18 @@ export default function AgentProfile() {
                       {agent.name || agent.agentId}
                     </h1>
                     <p className="text-sm font-mono text-zinc-500 mb-4">{agent.agentId}</p>
+                    {agent.categories && agent.categories.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mb-4">
+                        {agent.categories.map((c) => (
+                          <span
+                            key={c}
+                            className="px-2.5 py-1 rounded-md border border-zinc-800 bg-zinc-900/60 text-zinc-300 text-xs font-medium"
+                          >
+                            {TASK_TYPE_LABELS[c] ?? c}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 text-xs text-zinc-600">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                       Registered {formatRelative(agent.createdAt)}
@@ -209,10 +234,10 @@ export default function AgentProfile() {
               {/* Actions */}
               <div className="flex flex-wrap items-center gap-3">
                 <Link
-                  href={`/deploy/${agent.agentId}`}
+                  href="/dashboard"
                   className="px-5 py-2.5 rounded-xl bg-white text-zinc-900 font-semibold text-sm hover:bg-zinc-200 transition-colors"
                 >
-                  Deploy
+                  Open dashboard
                 </Link>
                 <Link
                   href="/marketplace"
@@ -221,6 +246,9 @@ export default function AgentProfile() {
                   Back to marketplace
                 </Link>
               </div>
+              <p className="text-xs text-zinc-600 mt-3">
+                Policy controls (spend caps, allowlist, pause) are coming next session.
+              </p>
             </>
           )}
         </main>
