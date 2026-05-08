@@ -105,7 +105,7 @@ export default function Dashboard() {
         <section className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6 lg:col-span-2">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-800/60">
             <h2 className="text-[15px] font-semibold text-white">Deployed Agents</h2>
-            <Link href="/" className="text-xs bg-white text-zinc-900 font-medium px-3 py-1.5 rounded-lg hover:bg-zinc-200 transition-colors">+ Deploy New</Link>
+            <Link href="/agents/register" className="text-xs bg-white text-zinc-900 font-medium px-3 py-1.5 rounded-lg hover:bg-zinc-200 transition-colors">+ Register Agent</Link>
           </div>
           <div className="space-y-3">
             {authError && (
