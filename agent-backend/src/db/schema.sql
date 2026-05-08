@@ -284,7 +284,7 @@ create table if not exists settlements (
 
   -- Solana transaction tracking
   tx_signature text unique,
-  status text not null default 'pending' check (status in ('pending', 'confirmed', 'failed')),
+  status text not null default 'pending' check (status in ('pending', 'confirmed', 'failed', 'settled_internal')),
 
   created_at timestamptz default now()
 );
