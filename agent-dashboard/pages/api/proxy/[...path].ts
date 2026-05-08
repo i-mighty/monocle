@@ -36,9 +36,8 @@ const HOP_BY_HOP = new Set([
   // them caused the backend's CORS middleware to reject same-server requests.
   "origin",
   "referer",
-  // Cookies belong to the dashboard domain, not the backend. Strip to avoid
-  // accidental session leakage.
-  "cookie",
+  // NB: cookies are forwarded — required for SIWS session cookies to reach
+  // the backend's requireUser middleware.
 ]);
 
 export default async function handler(

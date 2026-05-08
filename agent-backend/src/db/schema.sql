@@ -726,3 +726,35 @@ create table if not exists wallet_audit_log (
 create index if not exists idx_wallet_audit_agent on wallet_audit_log(agent_id);
 create index if not exists idx_wallet_audit_action on wallet_audit_log(action);
 create index if not exists idx_wallet_audit_created on wallet_audit_log(created_at desc);
+
+-- =============================================================================
+-- SIWS AUTH: Sign-In With Solana per-user authentication
+-- =============================================================================
+
+-- End users of the dashboard (separate from `agents`, which are programmatic
+-- identities owned by users). One row per Solana wallet that has signed in.
+create table if not exists users (
+  id uuid primary key default gen_random_uuid(),
+  wallet_pubkey text unique not null,        -- canonical id (base58 Solana pubkey)
+  sol_name text,                              -- cached SNS reverse-lookup, populated lazily
+  display_name text,                          -- user-supplied alias, falls back to sol_name or short pubkey
+  created_at timestamptz default now(),
+  last_seen_at timestamptz default now()
+);
+
+create index if not exists idx_users_wallet on users(wallet_pubkey);
+create index if not exists idx_users_sol_name on users(sol_name);
+
+-- Short-lived nonces for the challenge/verify flow. Each row is consumed at
+-- most once (used_at goes non-null). Expired/used rows can be GC'd safely.
+create table if not exists auth_nonces (
+  nonce text primary key,                     -- 32 bytes hex (64 chars)
+  wallet_pubkey text not null,                -- the wallet that requested this challenge
+  message text not null,                      -- the exact SIWS string the wallet should sign
+  issued_at timestamptz not null default now(),
+  expires_at timestamptz not null,            -- typically 5 min from issue
+  used_at timestamptz                          -- non-null after one-shot consumption
+);
+
+create index if not exists idx_auth_nonces_wallet on auth_nonces(wallet_pubkey);
+create index if not exists idx_auth_nonces_expires on auth_nonces(expires_at);

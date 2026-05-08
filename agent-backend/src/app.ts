@@ -2,8 +2,10 @@ import "dotenv/config";
 import express, { Router } from "express";
 import cors from "cors";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import path from "path";
 import fs from "fs";
+import auth from "./routes/auth";
 import identity from "./routes/identity";
 import meter from "./routes/meter";
 import payments from "./routes/payments";
@@ -67,6 +69,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use(cookieParser());
 app.use(requestIdMiddleware);
 
 // =============================================================================
@@ -83,6 +86,11 @@ app.use(slowDown(50, 200));
 // API VERSION 1
 // =============================================================================
 const v1 = Router();
+
+// Auth endpoints are mounted BEFORE the API-key rate limiter and x402 guard:
+// signing in must not require already-being-signed-in. The auth router has
+// its own IP-based limiter sized for SIWS traffic.
+v1.use("/auth", auth);
 
 // Apply per-key rate limiting to authenticated routes
 v1.use(rateLimit());
