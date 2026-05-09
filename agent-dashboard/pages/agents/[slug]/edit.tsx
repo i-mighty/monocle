@@ -25,6 +25,7 @@ interface AgentDetail {
   ratePer1kTokens: number;
   categories?: string[];
   bio?: string | null;
+  endpointUrl?: string | null;
 }
 
 export default function EditAgent() {
@@ -42,6 +43,7 @@ export default function EditAgent() {
   const [ratePer1kTokens, setRate] = useState("1000");
   const [categories, setCategories] = useState<string[]>([]);
   const [bio, setBio] = useState("");
+  const [endpointUrl, setEndpointUrl] = useState("");
 
   useEffect(() => {
     if (!slug) return;
@@ -60,6 +62,7 @@ export default function EditAgent() {
         setRate(String(a.ratePer1kTokens ?? 1000));
         setCategories(a.categories ?? []);
         setBio(a.bio ?? "");
+        setEndpointUrl(a.endpointUrl ?? "");
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
@@ -72,9 +75,10 @@ export default function EditAgent() {
       publicKey !== (original.publicKey ?? "") ||
       Number(ratePer1kTokens) !== original.ratePer1kTokens ||
       JSON.stringify([...categories].sort()) !== JSON.stringify([...(original.categories ?? [])].sort()) ||
-      bio !== (original.bio ?? "")
+      bio !== (original.bio ?? "") ||
+      endpointUrl !== (original.endpointUrl ?? "")
     );
-  }, [original, name, publicKey, ratePer1kTokens, categories, bio]);
+  }, [original, name, publicKey, ratePer1kTokens, categories, bio, endpointUrl]);
 
   const toggleCategory = (id: string) => {
     setCategories((cs) => {
@@ -94,6 +98,12 @@ export default function EditAgent() {
       return;
     }
 
+    const endpoint = endpointUrl.trim();
+    if (endpoint && !/^https?:\/\/.+/i.test(endpoint)) {
+      setSaveError("Endpoint URL must start with https:// (or http:// for local dev)");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const res = await fetch(`${API_URL}/v1/agents/${encodeURIComponent(slug)}`, {
@@ -105,6 +115,7 @@ export default function EditAgent() {
           ratePer1kTokens: rate,
           categories,
           bio: bio.trim() || null,
+          endpointUrl: endpoint || null,
         }),
       });
       const d = await res.json();
@@ -246,6 +257,22 @@ export default function EditAgent() {
                     placeholder="Paste a base58 wallet address"
                     className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm font-mono placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Endpoint URL <span className="text-zinc-600 font-normal">· where callers reach your agent</span>
+                  </label>
+                  <input
+                    type="url"
+                    value={endpointUrl}
+                    onChange={(e) => setEndpointUrl(e.target.value)}
+                    placeholder="https://your-agent.example.com"
+                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm font-mono placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
+                  />
+                  <p className="text-xs text-zinc-600 mt-1.5">
+                    Public HTTPS endpoint. Required for marketplace listing — our verifier pings it every 15 min.
+                  </p>
                 </div>
 
                 {saveError && (

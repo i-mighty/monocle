@@ -24,6 +24,7 @@ interface FormState {
   name: string;
   ratePer1kTokens: string;
   publicKey: string;
+  endpointUrl: string;
   categories: string[];
 }
 
@@ -36,6 +37,7 @@ export default function RegisterAgent() {
     name: "",
     ratePer1kTokens: "1000",
     publicKey: "",
+    endpointUrl: "",
     categories: [],
   });
   const [submitting, setSubmitting] = useState(false);
@@ -78,6 +80,12 @@ export default function RegisterAgent() {
       return;
     }
 
+    const endpoint = form.endpointUrl.trim();
+    if (endpoint && !/^https?:\/\/.+/i.test(endpoint)) {
+      setError("Endpoint URL must start with https:// (or http:// for local dev)");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const res = await fetch(`${API_URL}/v1/agents/register`, {
@@ -88,6 +96,7 @@ export default function RegisterAgent() {
           name: form.name.trim() || agentId,
           ratePer1kTokens: rate,
           publicKey: form.publicKey.trim() || undefined,
+          endpointUrl: endpoint || undefined,
           categories: form.categories,
         }),
       });
@@ -235,6 +244,22 @@ export default function RegisterAgent() {
                 className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm font-mono placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
               />
               <p className="text-xs text-zinc-600 mt-1.5">Where settlements get sent. Add later if you don't have one yet.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">
+                Endpoint URL <span className="text-zinc-600 font-normal">· optional</span>
+              </label>
+              <input
+                type="url"
+                value={form.endpointUrl}
+                onChange={(e) => update("endpointUrl", e.target.value)}
+                placeholder="https://your-agent.example.com"
+                className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm font-mono placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
+              />
+              <p className="text-xs text-zinc-600 mt-1.5">
+                Public HTTPS endpoint where callers reach your agent. Required to appear in the marketplace.
+              </p>
             </div>
 
             {error && (

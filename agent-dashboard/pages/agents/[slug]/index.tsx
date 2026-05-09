@@ -15,6 +15,8 @@ interface AgentDetail {
   verifiedStatus?: string | null;
   verifiedAt?: string | null;
   solName?: string | null;
+  endpointUrl?: string | null;
+  endpointHealthy?: boolean | null;
   balanceLamports: number;
   pendingLamports: number;
   createdAt: string;
@@ -256,6 +258,51 @@ export default function AgentProfile() {
                     </dd>
                   </div>
                 </dl>
+              </section>
+
+              {/* Endpoint */}
+              <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-sm font-semibold text-white">Endpoint</h2>
+                  {agent.endpointUrl && (
+                    <span
+                      className={[
+                        "inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-md border",
+                        agent.endpointHealthy === true
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                          : agent.endpointHealthy === false
+                          ? "border-red-500/30 bg-red-500/10 text-red-300"
+                          : "border-zinc-700 bg-zinc-900/50 text-zinc-500",
+                      ].join(" ")}
+                    >
+                      <span
+                        className={[
+                          "w-1.5 h-1.5 rounded-full",
+                          agent.endpointHealthy === true
+                            ? "bg-emerald-500 animate-pulse"
+                            : agent.endpointHealthy === false
+                            ? "bg-red-500"
+                            : "bg-zinc-500",
+                        ].join(" ")}
+                      />
+                      {agent.endpointHealthy === true ? "healthy" : agent.endpointHealthy === false ? "unhealthy" : "not checked"}
+                    </span>
+                  )}
+                </div>
+                {agent.endpointUrl ? (
+                  <a
+                    href={agent.endpointUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-mono text-zinc-300 hover:text-white break-all transition-colors"
+                  >
+                    {agent.endpointUrl} ↗
+                  </a>
+                ) : (
+                  <p className="text-sm text-zinc-600 italic">
+                    No endpoint configured. Set one in <Link href={`/agents/${encodeURIComponent(agent.agentId)}/edit`} className="text-zinc-400 underline hover:text-white">edit</Link> so callers can reach this agent and the marketplace can list it.
+                  </p>
+                )}
               </section>
 
               {/* Actions */}

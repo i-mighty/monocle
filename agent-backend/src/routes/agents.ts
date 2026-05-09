@@ -48,8 +48,20 @@ const VALID_CATEGORIES = new Set([
   "general",
 ]);
 
+// Loose URL validation: scheme + host. We don't ping at register time; that's
+// the endpoint-verifier scheduler's job.
+function isValidHttpsUrl(s: unknown, allowHttp = false): s is string {
+  if (typeof s !== "string") return false;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" || (allowHttp && u.protocol === "http:");
+  } catch {
+    return false;
+  }
+}
+
 router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
-  const { agentId, name, publicKey, ratePer1kTokens, categories } = req.body;
+  const { agentId, name, publicKey, ratePer1kTokens, categories, endpointUrl } = req.body;
 
   if (!agentId) {
     throw AppError.required("agentId");
@@ -89,6 +101,19 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
     }
   }
 
+  // Optional endpoint URL — must be https in production. We only allow plain
+  // http for dev convenience (NODE_ENV != production).
+  const allowHttp = process.env.NODE_ENV !== "production";
+  if (endpointUrl !== undefined && endpointUrl !== null && endpointUrl !== "") {
+    if (!isValidHttpsUrl(endpointUrl, allowHttp)) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "endpointUrl" },
+        "endpointUrl must be a valid https URL"
+      );
+    }
+  }
+
   let result;
   try {
     result = await query(
@@ -101,6 +126,22 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
        returning id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports`,
       [agentId, name || null, publicKey || null, rate, categoriesJson]
     );
+
+    // Upsert the endpoint row if a URL was provided. Health stats reset on URL
+    // change so the verifier re-checks fresh.
+    if (typeof endpointUrl === "string" && endpointUrl.length > 0) {
+      await query(
+        `insert into agent_endpoints (agent_id, endpoint_url, is_active, is_healthy)
+         values ($1, $2, true, true)
+         on conflict (agent_id) do update set
+           endpoint_url = excluded.endpoint_url,
+           is_active = true,
+           is_healthy = true,
+           consecutive_failures = 0,
+           updated_at = now()`,
+        [agentId, endpointUrl.trim()]
+      );
+    }
   } catch (err: any) {
     // Postgres unique-violation race: someone took the public_key between our
     // pre-check and the insert. Return the same friendly error.
@@ -122,12 +163,20 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
     parsedCategories = agent.categories;
   }
 
+  // Pull current endpoint state to echo back.
+  const ep = await query(
+    "select endpoint_url, is_healthy from agent_endpoints where agent_id = $1",
+    [agentId]
+  );
+
   sendSuccess(res, {
     agentId: agent.id,
     name: agent.name,
     publicKey: agent.public_key,
     ratePer1kTokens: Number(agent.default_rate_per_1k_tokens),
     categories: parsedCategories,
+    endpointUrl: ep.rows[0]?.endpoint_url ?? null,
+    endpointHealthy: ep.rows[0]?.is_healthy ?? null,
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
   }, 201);
@@ -846,10 +895,13 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
   const { agentId } = req.params;
 
   const result = await query(
-    `select id, name, public_key, default_rate_per_1k_tokens, categories, bio,
-            verified_status, verified_at, sol_name,
-            balance_lamports, pending_lamports, created_at
-     from agents where id = $1`,
+    `select a.id, a.name, a.public_key, a.default_rate_per_1k_tokens, a.categories, a.bio,
+            a.verified_status, a.verified_at, a.sol_name,
+            a.balance_lamports, a.pending_lamports, a.created_at,
+            e.endpoint_url, e.is_healthy as endpoint_healthy, e.last_check_at as endpoint_last_check_at
+     from agents a
+     left join agent_endpoints e on e.agent_id = a.id
+     where a.id = $1`,
     [agentId]
   );
 
@@ -875,6 +927,9 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     verifiedStatus: agent.verified_status,
     verifiedAt: agent.verified_at,
     solName: agent.sol_name,
+    endpointUrl: agent.endpoint_url ?? null,
+    endpointHealthy: agent.endpoint_healthy ?? null,
+    endpointLastCheckAt: agent.endpoint_last_check_at,
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
     createdAt: agent.created_at,
@@ -892,7 +947,7 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
  */
 router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
   const { agentId } = req.params;
-  const { name, publicKey, ratePer1kTokens, categories, bio } = req.body ?? {};
+  const { name, publicKey, ratePer1kTokens, categories, bio, endpointUrl } = req.body ?? {};
 
   // Build a partial update: only set columns the caller actually sent.
   const sets: string[] = [];
@@ -948,21 +1003,89 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     params.push(typeof bio === "string" ? bio.trim().slice(0, 1000) : null);
   }
 
-  if (sets.length === 0) {
+  // Endpoint URL lives in the separate agent_endpoints table — not part of
+  // the agents-table SET. Validate here, upsert below alongside the main update.
+  let endpointUrlClean: string | null | undefined; // undefined = not provided, null = explicit clear, string = set
+  if (endpointUrl !== undefined) {
+    if (endpointUrl === null || endpointUrl === "") {
+      endpointUrlClean = null;
+    } else {
+      const allowHttp = process.env.NODE_ENV !== "production";
+      if (!isValidHttpsUrl(endpointUrl, allowHttp)) {
+        throw new AppError(
+          ErrorCodes.VALIDATION_INVALID_FORMAT,
+          { field: "endpointUrl" },
+          "endpointUrl must be a valid https URL"
+        );
+      }
+      endpointUrlClean = endpointUrl.trim();
+    }
+  }
+
+  if (sets.length === 0 && endpointUrlClean === undefined) {
     throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, {}, "No editable fields supplied");
   }
 
-  sets.push(`updated_at = now()`);
+  if (sets.length > 0) {
+    sets.push(`updated_at = now()`);
+  }
   params.push(agentId);
 
-  const result = await query(
-    `update agents set ${sets.join(", ")}
-     where id = $${i}
-     returning id, name, public_key, default_rate_per_1k_tokens, categories, bio,
-               verified_status, verified_at, sol_name,
-               balance_lamports, pending_lamports, created_at`,
-    params
-  );
+  // Run the agents-table update (only if we have anything to set), and the
+  // endpoint upsert, in a transaction so partial updates don't slip through.
+  await query("BEGIN");
+  let result;
+  try {
+    if (sets.length > 0) {
+      result = await query(
+        `update agents set ${sets.join(", ")}
+         where id = $${i}
+         returning id, name, public_key, default_rate_per_1k_tokens, categories, bio,
+                   verified_status, verified_at, sol_name,
+                   balance_lamports, pending_lamports, created_at`,
+        params
+      );
+      if (result.rows.length === 0) {
+        await query("ROLLBACK");
+        throw AppError.agentNotFound(agentId);
+      }
+    } else {
+      // No agents-table changes — confirm the agent exists before touching endpoints.
+      const exists = await query("select 1 from agents where id = $1", [agentId]);
+      if (exists.rows.length === 0) {
+        await query("ROLLBACK");
+        throw AppError.agentNotFound(agentId);
+      }
+      result = await query(
+        `select id, name, public_key, default_rate_per_1k_tokens, categories, bio,
+                verified_status, verified_at, sol_name,
+                balance_lamports, pending_lamports, created_at
+         from agents where id = $1`,
+        [agentId]
+      );
+    }
+
+    if (endpointUrlClean === null) {
+      await query("delete from agent_endpoints where agent_id = $1", [agentId]);
+    } else if (typeof endpointUrlClean === "string") {
+      await query(
+        `insert into agent_endpoints (agent_id, endpoint_url, is_active, is_healthy)
+         values ($1, $2, true, true)
+         on conflict (agent_id) do update set
+           endpoint_url = excluded.endpoint_url,
+           is_active = true,
+           is_healthy = true,
+           consecutive_failures = 0,
+           updated_at = now()`,
+        [agentId, endpointUrlClean]
+      );
+    }
+
+    await query("COMMIT");
+  } catch (err) {
+    await query("ROLLBACK").catch(() => {});
+    throw err;
+  }
 
   if (result.rows.length === 0) {
     throw AppError.agentNotFound(agentId);
@@ -976,6 +1099,12 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     parsed = agent.categories;
   }
 
+  // Pull the (possibly just-updated) endpoint state so the response is complete.
+  const epRow = await query(
+    "select endpoint_url, is_healthy from agent_endpoints where agent_id = $1",
+    [agentId]
+  );
+
   sendSuccess(res, {
     agentId: agent.id,
     name: agent.name,
@@ -986,6 +1115,8 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     verifiedStatus: agent.verified_status,
     verifiedAt: agent.verified_at,
     solName: agent.sol_name,
+    endpointUrl: epRow.rows[0]?.endpoint_url ?? null,
+    endpointHealthy: epRow.rows[0]?.is_healthy ?? null,
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
     createdAt: agent.created_at,
