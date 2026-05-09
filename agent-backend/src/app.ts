@@ -35,6 +35,7 @@ import { runVerificationJob, disableUnhealthyAgents } from "./services/endpointV
 import { query } from "./db/client";
 import { PRICING_CONSTANTS } from "./services/pricingService";
 import { x402ProtectMiddleware, x402Enabled } from "./middleware/x402Official";
+import { settleToAgentWallet, isSolanaPayerReady } from "./services/solanaService";
 
 // =============================================================================
 // PRODUCTION ENVIRONMENT VALIDATION
@@ -311,44 +312,107 @@ app.listen(port, () => {
   if (process.env.DATABASE_URL) {
     console.log(`  💰 Starting auto-settlement scheduler (every 5 min, threshold: ${PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS} lamports)`);
 
+    const onChainEnabled = isSolanaPayerReady();
+    if (onChainEnabled) {
+      console.log(`  ⛓️  On-chain settlement enabled — payouts will be real Solana txs`);
+    } else {
+      console.log(`  ⚠️  SOLANA_PAYER_SECRET missing — falling back to internal-only settlement (no on-chain transfer)`);
+    }
+
     setInterval(async () => {
       try {
+        // Note: include public_key in the SELECT — earlier version queried it
+        // but never asked for it, so the on-chain check was always undefined.
         const eligible = await query(`
-          SELECT id, name, pending_lamports 
-          FROM agents 
+          SELECT id, name, public_key, pending_lamports
+          FROM agents
           WHERE pending_lamports >= $1
         `, [PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS]);
 
         if (eligible.rows.length === 0) return;
 
         for (const agent of eligible.rows) {
-          try {
-            // Check if agent has a public key for on-chain settlement
-            if (!agent.public_key) {
-              console.log(`[Settlement] Agent ${agent.id} eligible (${agent.pending_lamports} lamports) but no public key — skipping`);
+          const pending = Number(agent.pending_lamports);
+
+          // No destination wallet → can't pay on-chain. Skip; the agent's
+          // owner needs to set a public_key on the profile.
+          if (!agent.public_key) {
+            console.log(`[Settlement] ${agent.id} eligible (${pending}) but no public key — skipping`);
+            continue;
+          }
+
+          // Path A: real on-chain transfer
+          if (onChainEnabled) {
+            let txSignature: string | null = null;
+            try {
+              txSignature = await settleToAgentWallet(agent.public_key, pending);
+            } catch (err: any) {
+              const msg = err?.message ?? String(err);
+              console.error(`[Settlement] On-chain transfer failed for ${agent.id}: ${msg}`);
+              // Record the failed attempt so it's visible in /receipts.
+              await query(`
+                INSERT INTO settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, status, error_message)
+                VALUES ($1, $1, $2, 0, $2, 'failed', $3)
+              `, [agent.id, pending, msg.slice(0, 500)]).catch(() => { /* settlements may not have error_message column on legacy DBs */ });
               continue;
             }
 
-            // Move pending to settled via atomic transaction
-            await query('BEGIN');
-            await query(`
-              UPDATE agents 
-              SET pending_lamports = 0, 
-                  balance_lamports = balance_lamports + pending_lamports
-              WHERE id = $1 AND pending_lamports >= $2
-            `, [agent.id, PRICING_CONSTANTS.MIN_PAYOUT_LAMPORTS]);
+            // Money moved on-chain. Now record it and zero pending. The
+            // defensive WHERE pending_lamports >= $2 prevents double-credit
+            // if a concurrent run already updated the row.
+            try {
+              await query('BEGIN');
+              const upd = await query(`
+                UPDATE agents
+                SET pending_lamports = pending_lamports - $2,
+                    balance_lamports = balance_lamports + $2
+                WHERE id = $1 AND pending_lamports >= $2
+                RETURNING id
+              `, [agent.id, pending]);
 
-            // Record settlement
+              if (upd.rows.length === 0) {
+                // Someone else settled this agent between our SELECT and
+                // UPDATE. The tx already paid them — log loudly so it can be
+                // reconciled manually rather than double-paid next round.
+                await query('ROLLBACK');
+                console.error(`[Settlement] Race: pending shrank under us for ${agent.id}. tx=${txSignature} amount=${pending} — manual reconciliation needed`);
+                continue;
+              }
+
+              await query(`
+                INSERT INTO settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, tx_signature, status)
+                VALUES ($1, $1, $2, 0, $2, $3, 'confirmed')
+              `, [agent.id, pending, txSignature]);
+
+              await query('COMMIT');
+              console.log(`[Settlement] On-chain settled ${pending} lamports → ${agent.id} (tx ${txSignature})`);
+            } catch (err) {
+              await query('ROLLBACK').catch(() => {});
+              console.error(`[Settlement] DB update failed AFTER on-chain transfer for ${agent.id}. tx=${txSignature} — manual reconciliation needed:`, err);
+            }
+            continue;
+          }
+
+          // Path B: legacy internal-only settlement (no Solana payer configured)
+          try {
+            await query('BEGIN');
+            const upd = await query(`
+              UPDATE agents
+              SET pending_lamports = pending_lamports - $2,
+                  balance_lamports = balance_lamports + $2
+              WHERE id = $1 AND pending_lamports >= $2
+              RETURNING id
+            `, [agent.id, pending]);
+            if (upd.rows.length === 0) { await query('ROLLBACK'); continue; }
             await query(`
               INSERT INTO settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, status)
               VALUES ($1, $1, $2, 0, $2, 'settled_internal')
-            `, [agent.id, agent.pending_lamports]);
-
+            `, [agent.id, pending]);
             await query('COMMIT');
-            console.log(`[Settlement] Settled ${agent.pending_lamports} lamports for agent ${agent.id}`);
+            console.log(`[Settlement] Internal-only settled ${pending} for ${agent.id}`);
           } catch (err) {
             await query('ROLLBACK').catch(() => {});
-            console.error(`[Settlement] Failed for agent ${agent.id}:`, err);
+            console.error(`[Settlement] Internal settlement failed for ${agent.id}:`, err);
           }
         }
       } catch (err) {

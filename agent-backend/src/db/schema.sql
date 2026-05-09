@@ -285,9 +285,13 @@ create table if not exists settlements (
   -- Solana transaction tracking
   tx_signature text unique,
   status text not null default 'pending' check (status in ('pending', 'confirmed', 'failed', 'settled_internal')),
+  error_message text,
 
   created_at timestamptz default now()
 );
+
+-- Idempotent column add for databases that pre-date error_message.
+alter table settlements add column if not exists error_message text;
 
 -- =============================================================================
 -- PLATFORM_REVENUE: Fee accounting

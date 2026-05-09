@@ -13,6 +13,7 @@ import { checkEndpointHealth } from "../services/endpointVerifyService";
 import { pingCustomAgent } from "../services/customAgentAdapter";
 import { verifySolOwnership, assignSolName } from "../services/snsIdentityService";
 import { createAgentDWallet, getDWalletInfo, getSpendingPolicy } from "../services/ikaDWalletService";
+import { settleToAgentWallet, isSolanaPayerReady } from "../services/solanaService";
 
 const router = Router();
 
@@ -1118,6 +1119,114 @@ router.post("/:agentId/verify-payment",
       verifiedAt: updated.rows[0].verified_at,
       txSignature,
       lamportsReceived: received,
+    });
+  })
+);
+
+/**
+ * POST /agents/:agentId/settle
+ *
+ * Manually trigger settlement for one agent. Same logic as the auto-settle
+ * cron, but on-demand — useful for demos and recovery without waiting for
+ * the next 5-minute cycle. Authenticated; rate-limited.
+ *
+ * Returns the tx signature on success so the caller can deep-link to
+ * Solana Explorer.
+ */
+router.post(
+  "/:agentId/settle",
+  apiKeyAuth,
+  ipRateLimit({ maxRequests: 10, windowMs: 60_000, burstAllowance: 2 }),
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+
+    const row = await query(
+      "select id, public_key, pending_lamports from agents where id = $1",
+      [agentId]
+    );
+    if (row.rows.length === 0) throw AppError.agentNotFound(agentId);
+
+    const { public_key, pending_lamports } = row.rows[0];
+    const pending = Number(pending_lamports);
+
+    if (pending <= 0) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { pendingLamports: pending },
+        "Nothing to settle — pending balance is zero"
+      );
+    }
+    if (!public_key) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "publicKey" },
+        "Agent has no settlement wallet. Set publicKey on the profile first."
+      );
+    }
+    if (!isSolanaPayerReady()) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        {},
+        "Platform payer not configured (SOLANA_PAYER_SECRET missing)"
+      );
+    }
+
+    let txSignature: string;
+    try {
+      txSignature = await settleToAgentWallet(public_key, pending);
+    } catch (err: any) {
+      const msg = err?.message ?? String(err);
+      await query(
+        `insert into settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, status, error_message)
+         values ($1, $1, $2, 0, $2, 'failed', $3)`,
+        [agentId, pending, msg.slice(0, 500)]
+      );
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { reason: msg },
+        `On-chain transfer failed: ${msg}`
+      );
+    }
+
+    // SOL moved. Update DB defensively (CAS on pending).
+    await query("BEGIN");
+    try {
+      const upd = await query(
+        `update agents
+           set pending_lamports = pending_lamports - $2,
+               balance_lamports = balance_lamports + $2
+         where id = $1 and pending_lamports >= $2
+         returning id, balance_lamports, pending_lamports`,
+        [agentId, pending]
+      );
+      if (upd.rows.length === 0) {
+        await query("ROLLBACK");
+        // Money already moved on-chain — log loudly for reconciliation.
+        console.error(`[Settle] Race: pending shrank for ${agentId}. tx=${txSignature} amount=${pending}`);
+        throw new AppError(
+          ErrorCodes.VALIDATION_INVALID_FORMAT,
+          { txSignature, pending },
+          "Race condition: pending balance changed during settlement. Funds were sent — manual reconciliation needed."
+        );
+      }
+      await query(
+        `insert into settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, tx_signature, status)
+         values ($1, $1, $2, 0, $2, $3, 'confirmed')`,
+        [agentId, pending, txSignature]
+      );
+      await query("COMMIT");
+    } catch (err) {
+      await query("ROLLBACK").catch(() => {});
+      throw err;
+    }
+
+    const network = process.env.SOLANA_NETWORK === "mainnet" ? "mainnet" : "devnet";
+    sendSuccess(res, {
+      agentId,
+      lamportsSettled: pending,
+      txSignature,
+      explorerUrl: `https://explorer.solana.com/tx/${txSignature}${network === "devnet" ? "?cluster=devnet" : ""}`,
+      status: "confirmed",
     });
   })
 );
