@@ -1255,6 +1255,61 @@ router.post("/:agentId/verify-payment",
 );
 
 /**
+ * POST /agents/test-endpoint
+ *   { url: string }
+ *
+ * Server-side reachability probe for an arbitrary URL the user is about to
+ * register on their agent. Sends a GET, falls back to HEAD if the server
+ * doesn't accept GET, with a short timeout. Returns latency + a brief snippet
+ * of the response body so the user can confirm the right service is on the
+ * other end.
+ *
+ * NOT a guarantee — production endpoints may auth-gate this path. Best-effort.
+ */
+router.post(
+  "/test-endpoint",
+  apiKeyAuth,
+  ipRateLimit({ maxRequests: 30, windowMs: 60_000, burstAllowance: 5 }),
+  asyncHandler(async (req, res) => {
+    const { url } = req.body ?? {};
+    const allowHttp = process.env.NODE_ENV !== "production";
+    if (!isValidHttpsUrl(url, allowHttp)) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "url" },
+        "url must be a valid https URL"
+      );
+    }
+
+    const started = Date.now();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    let probe: { ok: boolean; status?: number; method?: string; latencyMs: number; bodyPreview?: string; error?: string };
+    try {
+      const r = await fetch(url, { method: "GET", signal: controller.signal, redirect: "follow" });
+      clearTimeout(timeout);
+      const latencyMs = Date.now() - started;
+      const text = await r.text().catch(() => "");
+      probe = {
+        ok: r.ok,
+        status: r.status,
+        method: "GET",
+        latencyMs,
+        bodyPreview: text.slice(0, 200),
+      };
+    } catch (err: any) {
+      clearTimeout(timeout);
+      const latencyMs = Date.now() - started;
+      const msg = err?.name === "AbortError" ? "Timed out after 5s" : (err?.message ?? "Network error");
+      probe = { ok: false, latencyMs, error: msg };
+    }
+
+    sendSuccess(res, probe);
+  })
+);
+
+/**
  * POST /agents/:agentId/settle
  *
  * Manually trigger settlement for one agent. Same logic as the auto-settle
@@ -1302,15 +1357,22 @@ router.post(
       );
     }
 
+    // Platform fee: take a configurable cut of the gross. Net is what the
+    // agent actually receives on-chain. The fee stays in the platform payer's
+    // wallet by virtue of not being transferred.
+    const feeBps = Number(process.env.PLATFORM_FEE_BPS) || Math.round(PRICING_CONSTANTS.PLATFORM_FEE_PERCENT * 10000);
+    const fee = Math.floor((pending * feeBps) / 10000);
+    const net = pending - fee;
+
     let txSignature: string;
     try {
-      txSignature = await settleToAgentWallet(public_key, pending);
+      txSignature = await settleToAgentWallet(public_key, net);
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       await query(
         `insert into settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, status, error_message)
-         values ($1, $1, $2, 0, $2, 'failed', $3)`,
-        [agentId, pending, msg.slice(0, 500)]
+         values ($1, $1, $2, $3, $4, 'failed', $5)`,
+        [agentId, pending, fee, net, msg.slice(0, 500)]
       );
       throw new AppError(
         ErrorCodes.VALIDATION_INVALID_FORMAT,
@@ -1319,20 +1381,20 @@ router.post(
       );
     }
 
-    // SOL moved. Update DB defensively (CAS on pending).
+    // SOL moved. Record settlement + revenue, decrement pending by the full
+    // gross (fee + net), credit balance with net only.
     await query("BEGIN");
     try {
       const upd = await query(
         `update agents
            set pending_lamports = pending_lamports - $2,
-               balance_lamports = balance_lamports + $2
+               balance_lamports = balance_lamports + $3
          where id = $1 and pending_lamports >= $2
          returning id, balance_lamports, pending_lamports`,
-        [agentId, pending]
+        [agentId, pending, net]
       );
       if (upd.rows.length === 0) {
         await query("ROLLBACK");
-        // Money already moved on-chain — log loudly for reconciliation.
         console.error(`[Settle] Race: pending shrank for ${agentId}. tx=${txSignature} amount=${pending}`);
         throw new AppError(
           ErrorCodes.VALIDATION_INVALID_FORMAT,
@@ -1340,11 +1402,18 @@ router.post(
           "Race condition: pending balance changed during settlement. Funds were sent — manual reconciliation needed."
         );
       }
-      await query(
+      const settlement = await query(
         `insert into settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, tx_signature, status)
-         values ($1, $1, $2, 0, $2, $3, 'confirmed')`,
-        [agentId, pending, txSignature]
+         values ($1, $1, $2, $3, $4, $5, 'confirmed')
+         returning id`,
+        [agentId, pending, fee, net, txSignature]
       );
+      if (fee > 0) {
+        await query(
+          "insert into platform_revenue (settlement_id, fee_lamports) values ($1, $2)",
+          [settlement.rows[0].id, fee]
+        );
+      }
       await query("COMMIT");
     } catch (err) {
       await query("ROLLBACK").catch(() => {});
@@ -1354,7 +1423,10 @@ router.post(
     const network = process.env.SOLANA_NETWORK === "mainnet" ? "mainnet" : "devnet";
     sendSuccess(res, {
       agentId,
-      lamportsSettled: pending,
+      grossLamports: pending,
+      platformFeeLamports: fee,
+      netLamports: net,
+      lamportsSettled: net,
       txSignature,
       explorerUrl: `https://explorer.solana.com/tx/${txSignature}${network === "devnet" ? "?cluster=devnet" : ""}`,
       status: "confirmed",

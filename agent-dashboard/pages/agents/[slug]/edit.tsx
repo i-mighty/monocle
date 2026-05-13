@@ -44,6 +44,35 @@ export default function EditAgent() {
   const [categories, setCategories] = useState<string[]>([]);
   const [bio, setBio] = useState("");
   const [endpointUrl, setEndpointUrl] = useState("");
+  const [probing, setProbing] = useState(false);
+  const [probe, setProbe] = useState<{ ok: boolean; status?: number; latencyMs?: number; error?: string } | null>(null);
+
+  const testEndpoint = async () => {
+    const url = endpointUrl.trim();
+    if (!url) {
+      setProbe({ ok: false, error: "Enter a URL first" });
+      return;
+    }
+    setProbing(true);
+    setProbe(null);
+    try {
+      const res = await fetch(`${API_URL}/v1/agents/test-endpoint`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setProbe({ ok: false, error: data?.error?.message ?? `Request failed (${res.status})` });
+      } else {
+        setProbe(data.data);
+      }
+    } catch (err) {
+      setProbe({ ok: false, error: err instanceof Error ? err.message : "Probe failed" });
+    } finally {
+      setProbing(false);
+    }
+  };
 
   useEffect(() => {
     if (!slug) return;
@@ -263,13 +292,39 @@ export default function EditAgent() {
                   <label className="block text-sm font-medium text-zinc-300 mb-2">
                     Endpoint URL <span className="text-zinc-600 font-normal">· where callers reach your agent</span>
                   </label>
-                  <input
-                    type="url"
-                    value={endpointUrl}
-                    onChange={(e) => setEndpointUrl(e.target.value)}
-                    placeholder="https://your-agent.example.com"
-                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm font-mono placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="url"
+                      value={endpointUrl}
+                      onChange={(e) => { setEndpointUrl(e.target.value); setProbe(null); }}
+                      placeholder="https://your-agent.example.com"
+                      className="flex-1 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm font-mono placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={testEndpoint}
+                      disabled={probing || !endpointUrl.trim()}
+                      className="px-4 py-3 rounded-xl border border-zinc-800 text-zinc-400 font-semibold text-sm hover:text-white hover:border-zinc-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+                    >
+                      {probing ? "Testing…" : "Test"}
+                    </button>
+                  </div>
+                  {probe && (
+                    <div
+                      className={[
+                        "mt-2 rounded-lg border px-3 py-2 text-xs",
+                        probe.ok
+                          ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-300"
+                          : "border-red-500/30 bg-red-500/5 text-red-300",
+                      ].join(" ")}
+                    >
+                      {probe.ok ? (
+                        <>✓ Reachable — HTTP {probe.status} in {probe.latencyMs}ms</>
+                      ) : (
+                        <>✗ {probe.error || `HTTP ${probe.status}`}</>
+                      )}
+                    </div>
+                  )}
                   <p className="text-xs text-zinc-600 mt-1.5">
                     Public HTTPS endpoint. Required for marketplace listing — our verifier pings it every 15 min.
                   </p>

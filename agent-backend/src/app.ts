@@ -341,51 +341,60 @@ app.listen(port, () => {
             continue;
           }
 
+          // Platform fee taken on every settlement. Stays in the platform
+          // payer's wallet (we only transfer `net` lamports on-chain).
+          const feeBps = Number(process.env.PLATFORM_FEE_BPS) || Math.round(PRICING_CONSTANTS.PLATFORM_FEE_PERCENT * 10000);
+          const fee = Math.floor((pending * feeBps) / 10000);
+          const net = pending - fee;
+
           // Path A: real on-chain transfer
           if (onChainEnabled) {
             let txSignature: string | null = null;
             try {
-              txSignature = await settleToAgentWallet(agent.public_key, pending);
+              txSignature = await settleToAgentWallet(agent.public_key, net);
             } catch (err: any) {
               const msg = err?.message ?? String(err);
               console.error(`[Settlement] On-chain transfer failed for ${agent.id}: ${msg}`);
-              // Record the failed attempt so it's visible in /receipts.
               await query(`
                 INSERT INTO settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, status, error_message)
-                VALUES ($1, $1, $2, 0, $2, 'failed', $3)
-              `, [agent.id, pending, msg.slice(0, 500)]).catch(() => { /* settlements may not have error_message column on legacy DBs */ });
+                VALUES ($1, $1, $2, $3, $4, 'failed', $5)
+              `, [agent.id, pending, fee, net, msg.slice(0, 500)]).catch(() => { /* legacy DB missing error_message */ });
               continue;
             }
 
-            // Money moved on-chain. Now record it and zero pending. The
-            // defensive WHERE pending_lamports >= $2 prevents double-credit
-            // if a concurrent run already updated the row.
+            // Money moved on-chain. Record settlement + platform_revenue,
+            // decrement pending by gross, credit balance with net only.
             try {
               await query('BEGIN');
               const upd = await query(`
                 UPDATE agents
                 SET pending_lamports = pending_lamports - $2,
-                    balance_lamports = balance_lamports + $2
+                    balance_lamports = balance_lamports + $3
                 WHERE id = $1 AND pending_lamports >= $2
                 RETURNING id
-              `, [agent.id, pending]);
+              `, [agent.id, pending, net]);
 
               if (upd.rows.length === 0) {
-                // Someone else settled this agent between our SELECT and
-                // UPDATE. The tx already paid them — log loudly so it can be
-                // reconciled manually rather than double-paid next round.
                 await query('ROLLBACK');
-                console.error(`[Settlement] Race: pending shrank under us for ${agent.id}. tx=${txSignature} amount=${pending} — manual reconciliation needed`);
+                console.error(`[Settlement] Race: pending shrank for ${agent.id}. tx=${txSignature} amount=${pending} — manual reconciliation needed`);
                 continue;
               }
 
-              await query(`
+              const settlement = await query(`
                 INSERT INTO settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, tx_signature, status)
-                VALUES ($1, $1, $2, 0, $2, $3, 'confirmed')
-              `, [agent.id, pending, txSignature]);
+                VALUES ($1, $1, $2, $3, $4, $5, 'confirmed')
+                RETURNING id
+              `, [agent.id, pending, fee, net, txSignature]);
+
+              if (fee > 0) {
+                await query(
+                  'INSERT INTO platform_revenue (settlement_id, fee_lamports) VALUES ($1, $2)',
+                  [settlement.rows[0].id, fee]
+                );
+              }
 
               await query('COMMIT');
-              console.log(`[Settlement] On-chain settled ${pending} lamports → ${agent.id} (tx ${txSignature})`);
+              console.log(`[Settlement] On-chain settled ${pending} (net ${net}, fee ${fee}) → ${agent.id} (tx ${txSignature})`);
             } catch (err) {
               await query('ROLLBACK').catch(() => {});
               console.error(`[Settlement] DB update failed AFTER on-chain transfer for ${agent.id}. tx=${txSignature} — manual reconciliation needed:`, err);
@@ -399,17 +408,24 @@ app.listen(port, () => {
             const upd = await query(`
               UPDATE agents
               SET pending_lamports = pending_lamports - $2,
-                  balance_lamports = balance_lamports + $2
+                  balance_lamports = balance_lamports + $3
               WHERE id = $1 AND pending_lamports >= $2
               RETURNING id
-            `, [agent.id, pending]);
+            `, [agent.id, pending, net]);
             if (upd.rows.length === 0) { await query('ROLLBACK'); continue; }
-            await query(`
+            const settlement = await query(`
               INSERT INTO settlements (from_agent_id, to_agent_id, gross_lamports, platform_fee_lamports, net_lamports, status)
-              VALUES ($1, $1, $2, 0, $2, 'settled_internal')
-            `, [agent.id, pending]);
+              VALUES ($1, $1, $2, $3, $4, 'settled_internal')
+              RETURNING id
+            `, [agent.id, pending, fee, net]);
+            if (fee > 0) {
+              await query(
+                'INSERT INTO platform_revenue (settlement_id, fee_lamports) VALUES ($1, $2)',
+                [settlement.rows[0].id, fee]
+              );
+            }
             await query('COMMIT');
-            console.log(`[Settlement] Internal-only settled ${pending} for ${agent.id}`);
+            console.log(`[Settlement] Internal-only settled ${pending} (net ${net}, fee ${fee}) for ${agent.id}`);
           } catch (err) {
             await query('ROLLBACK').catch(() => {});
             console.error(`[Settlement] Internal settlement failed for ${agent.id}:`, err);
