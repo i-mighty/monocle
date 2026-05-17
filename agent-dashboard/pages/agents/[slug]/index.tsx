@@ -5,6 +5,26 @@ import { useEffect, useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
+interface ReputationComponent {
+  value: number | null;
+  sampleSize: number;
+  contribution: number;
+}
+
+interface ReputationBreakdown {
+  agentId: string;
+  score: number;
+  baseline: number;
+  components: {
+    successRate30d: ReputationComponent;
+    endpointUptime: ReputationComponent;
+    settlementOk: ReputationComponent;
+    tenureBonus: { ageDays: number; contribution: number };
+    recentActivity: { callsLast7d: number; contribution: number };
+  };
+  computedAt: string;
+}
+
 interface AgentDetail {
   agentId: string;
   name: string | null;
@@ -17,6 +37,7 @@ interface AgentDetail {
   solName?: string | null;
   endpointUrl?: string | null;
   endpointHealthy?: boolean | null;
+  reputation?: ReputationBreakdown | null;
   balanceLamports: number;
   pendingLamports: number;
   createdAt: string;
@@ -304,6 +325,118 @@ export default function AgentProfile() {
                   </p>
                 )}
               </section>
+
+              {/* Reputation breakdown */}
+              {agent.reputation && (
+                <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 mb-6">
+                  <div className="flex items-center justify-between mb-5">
+                    <h2 className="text-sm font-semibold text-white">Reputation</h2>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-2xl font-bold text-white">{agent.reputation.score}</span>
+                      <span className="text-xs font-mono text-zinc-600">/1000</span>
+                    </div>
+                  </div>
+
+                  {/* Score bar */}
+                  <div className="mb-6">
+                    <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+                      <div
+                        className={[
+                          "h-full rounded-full transition-all",
+                          agent.reputation.score >= 750
+                            ? "bg-emerald-500"
+                            : agent.reputation.score >= 500
+                            ? "bg-zinc-300"
+                            : agent.reputation.score >= 250
+                            ? "bg-amber-500"
+                            : "bg-red-500",
+                        ].join(" ")}
+                        style={{ width: `${(agent.reputation.score / 1000) * 100}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-[10px] font-mono text-zinc-600 mt-1.5">
+                      <span>0</span>
+                      <span>baseline 500</span>
+                      <span>1000</span>
+                    </div>
+                  </div>
+
+                  {/* Components */}
+                  <dl className="grid sm:grid-cols-2 gap-4 text-sm">
+                    {/* Success rate */}
+                    <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-4">
+                      <dt className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-1.5">
+                        Success rate · 30d
+                      </dt>
+                      <dd className="text-lg font-semibold text-white">
+                        {agent.reputation.components.successRate30d.value === null
+                          ? <span className="text-zinc-600">no data</span>
+                          : `${(agent.reputation.components.successRate30d.value * 100).toFixed(1)}%`}
+                      </dd>
+                      <p className="text-[11px] text-zinc-500 mt-1 font-mono">
+                        {agent.reputation.components.successRate30d.sampleSize} reported calls ·
+                        <span className={agent.reputation.components.successRate30d.contribution >= 0 ? " text-emerald-400" : " text-red-400"}>
+                          {" "}{agent.reputation.components.successRate30d.contribution >= 0 ? "+" : ""}{agent.reputation.components.successRate30d.contribution}
+                        </span>
+                      </p>
+                    </div>
+
+                    {/* Endpoint uptime */}
+                    <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-4">
+                      <dt className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-1.5">
+                        Endpoint uptime
+                      </dt>
+                      <dd className="text-lg font-semibold text-white">
+                        {agent.reputation.components.endpointUptime.value === null
+                          ? <span className="text-zinc-600">no data</span>
+                          : `${(agent.reputation.components.endpointUptime.value * 100).toFixed(1)}%`}
+                      </dd>
+                      <p className="text-[11px] text-zinc-500 mt-1 font-mono">
+                        {agent.reputation.components.endpointUptime.sampleSize} health checks ·
+                        <span className={agent.reputation.components.endpointUptime.contribution >= 0 ? " text-emerald-400" : " text-red-400"}>
+                          {" "}{agent.reputation.components.endpointUptime.contribution >= 0 ? "+" : ""}{agent.reputation.components.endpointUptime.contribution}
+                        </span>
+                      </p>
+                    </div>
+
+                    {/* Settlement reliability */}
+                    <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-4">
+                      <dt className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-1.5">
+                        Settlement reliability
+                      </dt>
+                      <dd className="text-lg font-semibold text-white">
+                        {agent.reputation.components.settlementOk.value === null
+                          ? <span className="text-zinc-600">no data</span>
+                          : `${(agent.reputation.components.settlementOk.value * 100).toFixed(1)}%`}
+                      </dd>
+                      <p className="text-[11px] text-zinc-500 mt-1 font-mono">
+                        {agent.reputation.components.settlementOk.sampleSize} settlements ·
+                        <span className={agent.reputation.components.settlementOk.contribution >= 0 ? " text-emerald-400" : " text-red-400"}>
+                          {" "}{agent.reputation.components.settlementOk.contribution >= 0 ? "+" : ""}{agent.reputation.components.settlementOk.contribution}
+                        </span>
+                      </p>
+                    </div>
+
+                    {/* Tenure + recent activity rolled into one */}
+                    <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/40 p-4">
+                      <dt className="text-[10px] font-mono uppercase tracking-widest text-zinc-600 mb-1.5">
+                        Tenure & activity
+                      </dt>
+                      <dd className="text-lg font-semibold text-white">
+                        {agent.reputation.components.tenureBonus.ageDays.toFixed(0)}d old
+                      </dd>
+                      <p className="text-[11px] text-zinc-500 mt-1 font-mono">
+                        {agent.reputation.components.recentActivity.callsLast7d} calls last 7d ·
+                        <span className="text-emerald-400"> +{agent.reputation.components.tenureBonus.contribution + agent.reputation.components.recentActivity.contribution}</span>
+                      </p>
+                    </div>
+                  </dl>
+
+                  <p className="text-[10px] font-mono text-zinc-600 mt-4">
+                    Baseline {agent.reputation.baseline}. Recomputed every 10 min, plus on every reported call.
+                  </p>
+                </section>
+              )}
 
               {/* Actions */}
               <div className="flex flex-wrap items-center gap-3">

@@ -14,6 +14,7 @@ import { pingCustomAgent } from "../services/customAgentAdapter";
 import { verifySolOwnership, assignSolName } from "../services/snsIdentityService";
 import { createAgentDWallet, getDWalletInfo, getSpendingPolicy } from "../services/ikaDWalletService";
 import { settleToAgentWallet, isSolanaPayerReady } from "../services/solanaService";
+import { computeAgentReputation } from "../services/reputationEngine";
 
 const router = Router();
 
@@ -917,6 +918,10 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     parsedCategories = agent.categories;
   }
 
+  // Live reputation breakdown — single source of truth, computed from real
+  // signals (success rate, endpoint uptime, settlement reliability, tenure).
+  const reputation = await computeAgentReputation(agentId).catch(() => null);
+
   sendSuccess(res, {
     agentId: agent.id,
     name: agent.name,
@@ -930,6 +935,7 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     endpointUrl: agent.endpoint_url ?? null,
     endpointHealthy: agent.endpoint_healthy ?? null,
     endpointLastCheckAt: agent.endpoint_last_check_at,
+    reputation,
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
     createdAt: agent.created_at,
@@ -1105,6 +1111,10 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     [agentId]
   );
 
+  // Compute reputation breakdown live so the response reflects whatever
+  // /meter/feedback updated since the last cron pass.
+  const reputation = await computeAgentReputation(agentId).catch(() => null);
+
   sendSuccess(res, {
     agentId: agent.id,
     name: agent.name,
@@ -1117,6 +1127,7 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     solName: agent.sol_name,
     endpointUrl: epRow.rows[0]?.endpoint_url ?? null,
     endpointHealthy: epRow.rows[0]?.is_healthy ?? null,
+    reputation,
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),
     createdAt: agent.created_at,

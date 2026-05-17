@@ -268,6 +268,16 @@ alter table tool_usage add column if not exists quote_id text;
 alter table tool_usage add column if not exists quoted_at timestamptz;
 alter table tool_usage add column if not exists quote_expires_at timestamptz;
 
+-- Outcome tracking: the caller (or an automated harness) reports whether
+-- the call actually worked. NULL = not yet reported. Drives reputation.
+alter table tool_usage add column if not exists success boolean;
+alter table tool_usage add column if not exists failure_reason text;
+alter table tool_usage add column if not exists reported_at timestamptz;
+alter table tool_usage add column if not exists latency_ms integer;
+
+create index if not exists idx_tool_usage_callee_created on tool_usage(callee_agent_id, created_at desc);
+create index if not exists idx_tool_usage_success on tool_usage(callee_agent_id, success) where success is not null;
+
 -- =============================================================================
 -- SETTLEMENTS: On-chain transaction tracking
 -- =============================================================================

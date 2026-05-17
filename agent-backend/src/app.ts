@@ -36,6 +36,7 @@ import { query } from "./db/client";
 import { PRICING_CONSTANTS } from "./services/pricingService";
 import { x402ProtectMiddleware, x402Enabled } from "./middleware/x402Official";
 import { settleToAgentWallet, isSolanaPayerReady } from "./services/solanaService";
+import { recomputeAllReputations } from "./services/reputationEngine";
 
 // =============================================================================
 // PRODUCTION ENVIRONMENT VALIDATION
@@ -435,5 +436,40 @@ app.listen(port, () => {
         console.error("[Settlement] Scheduler error:", err);
       }
     }, SETTLEMENT_INTERVAL_MS);
+  }
+
+  // ==========================================================================
+  // REPUTATION RECOMPUTE — runs every 10 minutes
+  // ==========================================================================
+  // Walks every agent and re-derives reputation_score from real signals
+  // (success rate, endpoint uptime, settlement reliability, tenure). The
+  // /meter/feedback path also recomputes on demand for the affected callee;
+  // this scheduler exists so tenure bonuses, decay, and uptime changes
+  // continue to flow even when an agent has no recent calls.
+  const REPUTATION_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+  if (process.env.DATABASE_URL) {
+    console.log(`  🏷️  Starting reputation engine (every 10 min)`);
+
+    // Kick off a recompute 60 seconds after boot so freshly-restarted
+    // servers have current scores without waiting a full interval.
+    setTimeout(async () => {
+      try {
+        const { updated, durationMs } = await recomputeAllReputations();
+        console.log(`[Reputation] Initial recompute: ${updated} agents in ${durationMs}ms`);
+      } catch (err) {
+        console.error("[Reputation] Initial recompute failed:", err);
+      }
+    }, 60_000);
+
+    setInterval(async () => {
+      try {
+        const { updated, durationMs } = await recomputeAllReputations();
+        if (updated > 0) {
+          console.log(`[Reputation] Recomputed ${updated} agents in ${durationMs}ms`);
+        }
+      } catch (err) {
+        console.error("[Reputation] Recompute scheduler error:", err);
+      }
+    }, REPUTATION_INTERVAL_MS);
   }
 });

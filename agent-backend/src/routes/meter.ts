@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
 import { logToolCall, getToolCallHistory } from "../services/meterService";
+import { query } from "../db/client";
+import { recomputeAgentReputation } from "../services/reputationEngine";
 import { 
   getAgentMetrics, 
   registerTool, 
@@ -83,6 +85,80 @@ router.post("/execute", apiKeyAuth, async (req, res) => {
     if (message.includes("Insufficient balance")) statusCode = 402;
     if (message.includes("Quote")) statusCode = 400;
     res.status(statusCode).json({ error: message });
+  }
+});
+
+/**
+ * POST /meter/feedback
+ *
+ * Caller reports the outcome of an executed tool call. This is the signal
+ * that feeds the reputation engine — without it, every call looks
+ * identical and reputation can't distinguish good agents from bad.
+ *
+ * Request:
+ *   {
+ *     usageId: string         // returned from /meter/execute
+ *     success: boolean        // did the call return something useful?
+ *     latencyMs?: number      // optional caller-observed latency
+ *     failureReason?: string  // optional, free-form, for ops + audit
+ *   }
+ *
+ * Idempotent on usageId — re-reporting the same usage row updates the
+ * existing outcome. Triggers an immediate reputation recompute for the
+ * callee so the score reflects the new signal without waiting for the
+ * periodic cron.
+ */
+router.post("/feedback", apiKeyAuth, async (req, res) => {
+  try {
+    const { usageId, success, latencyMs, failureReason } = req.body ?? {};
+
+    if (typeof usageId !== "string" || usageId.length === 0) {
+      return res.status(400).json({ error: "usageId is required" });
+    }
+    if (typeof success !== "boolean") {
+      return res.status(400).json({ error: "success must be a boolean" });
+    }
+    if (latencyMs !== undefined && (typeof latencyMs !== "number" || latencyMs < 0)) {
+      return res.status(400).json({ error: "latencyMs must be a non-negative number" });
+    }
+
+    const updated = await query(
+      `update tool_usage
+         set success = $2,
+             latency_ms = $3,
+             failure_reason = $4,
+             reported_at = now()
+       where id = $1
+       returning id, callee_agent_id, success`,
+      [
+        usageId,
+        success,
+        typeof latencyMs === "number" ? Math.round(latencyMs) : null,
+        success ? null : (typeof failureReason === "string" ? failureReason.slice(0, 500) : null),
+      ]
+    );
+
+    if (updated.rows.length === 0) {
+      return res.status(404).json({ error: "usageId not found" });
+    }
+
+    const calleeId = updated.rows[0].callee_agent_id as string;
+
+    // Fire-and-forget reputation recompute. Don't block the response; the
+    // caller doesn't need it back, and the cron is the durable path.
+    recomputeAgentReputation(calleeId).catch((err) => {
+      console.error(`[Feedback] reputation recompute failed for ${calleeId}:`, err);
+    });
+
+    return res.json({
+      usageId,
+      calleeId,
+      success,
+      recorded: true,
+    });
+  } catch (error) {
+    console.error("Error recording feedback:", error);
+    return res.status(500).json({ error: "Failed to record feedback" });
   }
 });
 
