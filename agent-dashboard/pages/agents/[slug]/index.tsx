@@ -74,12 +74,61 @@ const formatRelative = (iso: string): string => {
   return new Date(iso).toLocaleDateString();
 };
 
+interface SettleResult {
+  agentId: string;
+  grossLamports: number;
+  platformFeeLamports: number;
+  netLamports: number;
+  txSignature: string;
+  explorerUrl: string;
+  status: string;
+}
+
 export default function AgentProfile() {
   const router = useRouter();
   const { slug } = router.query;
   const [agent, setAgent] = useState<AgentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Settle-now state
+  const [settling, setSettling] = useState(false);
+  const [settleResult, setSettleResult] = useState<SettleResult | null>(null);
+  const [settleError, setSettleError] = useState<string | null>(null);
+
+  const refreshAgent = async () => {
+    if (typeof slug !== "string") return;
+    try {
+      const res = await fetch(`${API_URL}/v1/agents/${encodeURIComponent(slug)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.success) setAgent(data.data);
+    } catch {}
+  };
+
+  const handleSettle = async () => {
+    if (typeof slug !== "string") return;
+    setSettling(true);
+    setSettleError(null);
+    setSettleResult(null);
+    try {
+      const res = await fetch(`${API_URL}/v1/agents/${encodeURIComponent(slug)}/settle`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data?.error?.message ?? `Request failed (${res.status})`);
+      }
+      setSettleResult(data.data as SettleResult);
+      // Refresh agent so balances and reputation update without a manual reload
+      await refreshAgent();
+    } catch (err) {
+      setSettleError(err instanceof Error ? err.message : "Settle failed");
+    } finally {
+      setSettling(false);
+    }
+  };
 
   useEffect(() => {
     if (!slug || typeof slug !== "string") return;
@@ -225,6 +274,79 @@ export default function AgentProfile() {
                   </div>
                 </div>
               </section>
+
+              {/* Settle CTA — only when there's a pending balance and the agent has a wallet to receive it */}
+              {agent.pendingLamports > 0 && agent.publicKey && !settleResult && (
+                <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 mb-6 flex items-center gap-4 flex-wrap">
+                  <div className="flex-1 min-w-[260px]">
+                    <h2 className="text-sm font-semibold text-white mb-1">Settle pending earnings</h2>
+                    <p className="text-xs text-zinc-500 leading-relaxed">
+                      {formatLamports(agent.pendingLamports)} ready to settle. Sends real SOL on-chain to{" "}
+                      <span className="font-mono text-zinc-400">{agent.publicKey.slice(0, 6)}…{agent.publicKey.slice(-4)}</span>{" "}
+                      after Monocle's 5% fee.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSettle}
+                    disabled={settling}
+                    className="px-5 py-2.5 rounded-xl bg-white text-zinc-900 font-semibold text-sm hover:bg-zinc-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer whitespace-nowrap"
+                  >
+                    {settling ? "Settling on-chain…" : "Settle now →"}
+                  </button>
+                </section>
+              )}
+
+              {/* Settle error */}
+              {settleError && !settleResult && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm text-red-300 mb-6">
+                  ✗ {settleError}
+                </div>
+              )}
+
+              {/* Settle success — sticky until user dismisses */}
+              {settleResult && (
+                <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-6 mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-emerald-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      Settled on-chain
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setSettleResult(null); setSettleError(null); }}
+                      className="text-xs text-zinc-500 hover:text-white transition-colors"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                  <h3 className="text-xl font-bold text-white mb-4">
+                    {formatLamports(settleResult.netLamports)} transferred to {agent.name || agent.agentId}
+                  </h3>
+                  <dl className="grid sm:grid-cols-3 gap-4 text-sm mb-5">
+                    <div>
+                      <dt className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-1">Gross</dt>
+                      <dd className="font-mono text-zinc-200">{settleResult.grossLamports.toLocaleString()} lamports</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-1">Monocle fee (5%)</dt>
+                      <dd className="font-mono text-zinc-200">{settleResult.platformFeeLamports.toLocaleString()} lamports</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[10px] font-mono uppercase tracking-widest text-zinc-500 mb-1">Net to agent</dt>
+                      <dd className="font-mono text-white font-semibold">{settleResult.netLamports.toLocaleString()} lamports</dd>
+                    </div>
+                  </dl>
+                  <a
+                    href={settleResult.explorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-sm text-zinc-300 hover:text-white transition-colors font-mono break-all"
+                  >
+                    tx {settleResult.txSignature.slice(0, 8)}…{settleResult.txSignature.slice(-8)} ↗
+                  </a>
+                </section>
+              )}
 
               {/* Verify CTA — only when not verified */}
               {!verified && (
