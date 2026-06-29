@@ -1,0 +1,46 @@
+name: Deploy backend to EC2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent-backend/**"
+      - "deploy/backend.env"
+      - ".github/workflows/deploy-backend.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 54.242.122.233
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            REMOTE="/opt/monocle/app"
+
+            # Pull latest code
+            cd $REMOTE
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Build backend
+            cd $REMOTE/agent-backend
+            npm ci
+            npm run build
+
+            # Run DB migrations (safe — only applies new ones, never drops data)
+            cd $REMOTE/agent-backend
+            export $(grep -v '^#' $REMOTE/deploy/backend.env | xargs)
+            npm run db:migrate
+
+            # Restart service
+            sudo systemctl restart monocle-backend
+            sleep 3
+            sudo systemctl is-active monocle-backend
