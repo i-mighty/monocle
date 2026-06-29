@@ -11,7 +11,7 @@
     "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload"
   },
   "dependencies": {
-    "next": "^15.5.2",
+    "next": "^15.5.19",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
