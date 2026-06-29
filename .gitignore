@@ -18,3 +18,4 @@ payer.json
 # Production env files (contain secrets)
 deploy/backend.env
 deploy/frontend.env
+env-dump.txt
