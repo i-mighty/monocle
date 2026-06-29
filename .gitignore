@@ -5,6 +5,7 @@
 **/.env.*
 *.log
 dist/
+**/dist/
 .next/
 **/.next/
 payer.json
@@ -13,3 +14,7 @@ payer.json
 *.key
 
 .env.local
+
+# Production env files (contain secrets)
+deploy/backend.env
+deploy/frontend.env

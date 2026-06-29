@@ -1,14 +1,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { Readable } from "stream";
 
 /**
  * Server-side proxy to the Monocle backend.
  *
- * The dashboard's browser code calls /api/proxy/<...> (same origin). This
- * handler runs on the Next.js server, injects x-api-key from a server-only
- * env var, and forwards to the backend. The API key never ships to clients.
- *
- * Streaming responses (SSE for chat) are piped through, not buffered.
+ * Injects x-api-key from a server-only env var so the key never ships to
+ * the browser. Streaming responses (SSE for chat) are forwarded chunk-by-chunk
+ * using the Web Streams API (compatible with Node.js 18+ and Cloudflare Workers).
  */
 
 const BACKEND = process.env.MONOCLE_BACKEND_URL;
@@ -32,12 +29,9 @@ const HOP_BY_HOP = new Set([
   "trailers",
   "host",
   "content-length",
-  // Browser-origin headers don't apply to server-to-server calls. Forwarding
-  // them caused the backend's CORS middleware to reject same-server requests.
+  // Forwarding these caused the backend's CORS middleware to reject same-server requests.
   "origin",
   "referer",
-  // NB: cookies are forwarded — required for SIWS session cookies to reach
-  // the backend's requireUser middleware.
 ]);
 
 export default async function handler(
@@ -59,7 +53,6 @@ export default async function handler(
     : [];
   const path = segments.join("/");
 
-  // Rebuild query string excluding the catch-all 'path' segments
   const search = new URLSearchParams();
   for (const [k, v] of Object.entries(req.query)) {
     if (k === "path") continue;
@@ -69,7 +62,6 @@ export default async function handler(
   const qs = search.toString();
   const upstreamUrl = `${BACKEND.replace(/\/$/, "")}/${path}${qs ? `?${qs}` : ""}`;
 
-  // Forwarded headers
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) {
     if (HOP_BY_HOP.has(name.toLowerCase())) continue;
@@ -78,7 +70,6 @@ export default async function handler(
   }
   if (API_KEY) headers.set("x-api-key", API_KEY);
 
-  // Body
   let body: string | undefined;
   if (req.method && !["GET", "HEAD"].includes(req.method)) {
     if (req.body !== undefined && req.body !== null) {
@@ -94,8 +85,6 @@ export default async function handler(
       method: req.method,
       headers,
       body,
-      // @ts-expect-error: undici fetch accepts duplex
-      duplex: "half",
     });
 
     res.status(upstream.status);
@@ -105,12 +94,18 @@ export default async function handler(
     });
 
     if (upstream.body) {
-      const nodeStream = Readable.fromWeb(upstream.body as any);
-      nodeStream.pipe(res);
-      nodeStream.on("error", (err) => {
-        console.error("[Proxy] Stream error:", err);
-        res.end();
-      });
+      // Web Streams API — works in Node.js 18+ and Cloudflare Workers
+      const reader = upstream.body.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      res.end();
     } else {
       res.end();
     }
