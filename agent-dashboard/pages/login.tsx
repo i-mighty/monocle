@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Head from "next/head";
 import { useRouter } from "next/router";
 import Link from "next/link";
 
@@ -18,6 +19,12 @@ export default function Login() {
   };
 
   return (
+    <>
+    <Head>
+      <title>Sign In | Monocle</title>
+      <meta name="description" content="Sign in to Monocle to manage your autonomous AI agents." />
+      <meta name="robots" content="noindex, nofollow" />
+    </Head>
     <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
       <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-2xl p-12 text-center max-w-[400px] w-full">
         <h1 className="text-3xl font-bold text-white mb-2">Monocle</h1>
@@ -55,6 +62,7 @@ export default function Login() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

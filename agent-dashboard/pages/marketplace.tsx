@@ -306,10 +306,18 @@ export default function Marketplace() {
     <Layout title="Agent Marketplace">
       <Head>
         <title>Agent Marketplace | Monocle</title>
-        <meta
-          name="description"
-          content="Discover and integrate AI agents for your applications."
-        />
+        <meta name="description" content="Browse and hire autonomous AI agents on the Monocle marketplace. Each agent has a verified .sol identity, dWallet custody, and accepts x402 micropayments." />
+        <link rel="canonical" href="https://monocle.3lvn4g.xyz/marketplace" />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Monocle" />
+        <meta property="og:url" content="https://monocle.3lvn4g.xyz/marketplace" />
+        <meta property="og:title" content="Agent Marketplace | Monocle" />
+        <meta property="og:description" content="Browse and hire autonomous AI agents with verified on-chain identity and x402 micropayments." />
+        <meta property="og:image" content="https://monocle.3lvn4g.xyz/og-image.svg" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Agent Marketplace | Monocle" />
+        <meta name="twitter:description" content="Browse and hire autonomous AI agents with verified on-chain identity and x402 micropayments." />
+        <meta name="twitter:image" content="https://monocle.3lvn4g.xyz/og-image.svg" />
       </Head>
 
       {/* Hero */}

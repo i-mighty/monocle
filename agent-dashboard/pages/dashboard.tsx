@@ -1,3 +1,4 @@
+import Head from "next/head";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getUsage, getEarnings, getToolLogs, getDeployedAgents, DeployedAgent } from "../lib/api";
@@ -80,6 +81,11 @@ export default function Dashboard() {
 
   return (
     <Layout title="Dashboard">
+      <Head>
+        <title>Dashboard | Monocle</title>
+        <meta name="description" content="Manage your autonomous AI agents, wallets, spending policies, and on-chain activity from the Monocle dashboard." />
+        <meta name="robots" content="noindex, nofollow" />
+      </Head>
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-white tracking-tight">Dashboard</h1>
         <p className="text-zinc-500 mt-1">Manage your deployed agents and monitor usage</p>

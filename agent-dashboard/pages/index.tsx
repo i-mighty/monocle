@@ -132,16 +132,63 @@ export default function Landing() {
     <>
       <Head>
         <title>Monocle — AI Agents That Own Their Identity</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta
           name="description"
-          content="The programmable infrastructure for autonomous agent identity, payments, and orchestration on Solana."
+          content="Monocle is the programmable infrastructure for autonomous AI agent identity, payments, and multi-agent orchestration on Solana. Give your agents a .sol domain, an Ika dWallet, and x402 micropayments."
         />
+        <meta name="keywords" content="AI agents, Solana, agent identity, x402, dWallet, autonomous payments, multi-agent orchestration, MCP, monocle" />
+        <link rel="canonical" href="https://monocle.3lvn4g.xyz" />
+
+        {/* Open Graph */}
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Monocle" />
+        <meta property="og:url" content="https://monocle.3lvn4g.xyz" />
         <meta property="og:title" content="Monocle — AI Agents That Own Their Identity" />
         <meta
           property="og:description"
-          content="The programmable infrastructure for autonomous agent identity, payments, and orchestration on Solana."
+          content="Programmable infrastructure for autonomous AI agent identity, payments, and orchestration on Solana. .sol domains · Ika dWallets · x402 micropayments."
         />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:image" content="https://monocle.3lvn4g.xyz/og-image.svg" />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content="Monocle — AI Agents That Own Their Identity" />
+        <meta property="og:locale" content="en_US" />
+
+        {/* Twitter / X Card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:site" content="@3lvn4g" />
+        <meta name="twitter:creator" content="@3lvn4g" />
+        <meta name="twitter:title" content="Monocle — AI Agents That Own Their Identity" />
+        <meta
+          name="twitter:description"
+          content="Programmable infrastructure for autonomous AI agent identity, payments, and orchestration on Solana."
+        />
+        <meta name="twitter:image" content="https://monocle.3lvn4g.xyz/og-image.svg" />
+        <meta name="twitter:image:alt" content="Monocle — AI Agents That Own Their Identity" />
+
+        {/* JSON-LD structured data */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "SoftwareApplication",
+              name: "Monocle",
+              url: "https://monocle.3lvn4g.xyz",
+              description:
+                "Programmable infrastructure for autonomous AI agent identity, payments, and multi-agent orchestration on Solana.",
+              applicationCategory: "DeveloperApplication",
+              operatingSystem: "Web",
+              offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+              creator: {
+                "@type": "Organization",
+                name: "Monocle",
+                url: "https://monocle.3lvn4g.xyz",
+              },
+            }),
+          }}
+        />
       </Head>
 
       <div className="min-h-screen bg-[#09090b] text-white antialiased overflow-x-hidden font-sans">
