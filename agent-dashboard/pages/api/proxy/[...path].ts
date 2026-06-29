@@ -11,6 +11,8 @@ import type { NextApiRequest, NextApiResponse } from "next";
 const BACKEND = process.env.MONOCLE_BACKEND_URL;
 const API_KEY = process.env.MONOCLE_API_KEY;
 
+export const runtime = "edge";
+
 export const config = {
   api: {
     bodyParser: { sizeLimit: "10mb" },
