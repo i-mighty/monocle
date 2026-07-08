@@ -8,6 +8,10 @@ dist/
 **/dist/
 .next/
 **/.next/
+.open-next/
+**/.open-next/
+.wrangler/
+**/.wrangler/
 **/.vercel/
 payer.json
 **/payer.json

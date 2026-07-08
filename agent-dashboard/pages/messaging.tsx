@@ -2,7 +2,7 @@ import Link from "next/link";
 import { useState } from "react";
 import Layout from "../components/Layout";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "/api/proxy";
 
 export default function Messaging() {
   const [myAgentId, setMyAgentId] = useState("");

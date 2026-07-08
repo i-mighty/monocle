@@ -1,4 +1,4 @@
-const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
+const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
 export async function fetchJson(path: string, init?: RequestInit) {
   const res = await fetch(`${base}${path}`, {

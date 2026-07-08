@@ -64,7 +64,7 @@ export function X402Badge({
       attempts++;
       if (attempts > MAX) { clearInterval(interval); setStatus("failed"); return; }
       try {
-        const base = process.env.NEXT_PUBLIC_MONOCLE_API_URL ?? "http://localhost:3001";
+        const base = process.env.NEXT_PUBLIC_MONOCLE_API_URL ?? "/api/proxy";
         const res = await fetch(`${base}/v1/x402-feed/tx/${pollLogId}`, {
           headers: { "x-api-key": process.env.NEXT_PUBLIC_MONOCLE_API_KEY ?? "" },
         });

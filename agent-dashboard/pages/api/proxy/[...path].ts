@@ -8,9 +8,6 @@ import type { NextApiRequest, NextApiResponse } from "next";
  * using the Web Streams API (compatible with Node.js 18+ and Cloudflare Workers).
  */
 
-const BACKEND = process.env.MONOCLE_BACKEND_URL;
-const API_KEY = process.env.MONOCLE_API_KEY;
-
 export const config = {
   api: {
     bodyParser: { sizeLimit: "10mb" },
@@ -38,6 +35,11 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  // Read env inside the handler: on Cloudflare Workers (OpenNext) process.env is
+  // populated from the Worker's bindings per request, not at module load time.
+  const BACKEND = process.env.MONOCLE_BACKEND_URL;
+  const API_KEY = process.env.MONOCLE_API_KEY;
+
   if (!BACKEND) {
     res.status(500).json({
       success: false,

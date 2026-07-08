@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import type { Message, StreamChunk, RoutingDecision, AgentProvider, OrchestrationTask } from '../types/chat';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3001';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? '/api/proxy';
 
 interface UseStreamChatOptions {
   apiKey: string;

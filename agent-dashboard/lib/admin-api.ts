@@ -5,7 +5,7 @@
  * Requires ADMIN_API_KEY to be set in environment or passed directly.
  */
 
-const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
+const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
 export interface AdminFetchOptions {
   adminKey?: string;

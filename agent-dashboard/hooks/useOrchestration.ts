@@ -13,7 +13,7 @@
 
 import { useState, useCallback, useRef } from "react";
 
-const BASE_URL = process.env.NEXT_PUBLIC_MONOCLE_API_URL ?? "http://localhost:3001";
+const BASE_URL = process.env.NEXT_PUBLIC_MONOCLE_API_URL ?? "/api/proxy";
 const API_KEY  = process.env.NEXT_PUBLIC_MONOCLE_API_KEY  ?? "";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

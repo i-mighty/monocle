@@ -22,7 +22,7 @@ interface TxEvent {
   x402Enabled?: boolean;
 }
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
 function shortenAddr(addr?: string): string {
   if (!addr) return "—";

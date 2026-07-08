@@ -4,6 +4,18 @@
   "name": "monocle-dashboard",
   "compatibility_date": "2026-06-02",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "vars": {
+    // Server-side proxy target — see pages/api/proxy/[...path].ts. NO /v1 suffix:
+    // the frontend paths already include /v1 where needed, and marketplace/legacy
+    // calls hit the backend's deprecated root mounts.
+    // Must be a HOSTNAME, not a raw IP: Cloudflare Workers reject fetch() to a
+    // raw IP with "error code: 1003". Uses HTTP on :3001 because nginx TLS on
+    // api.monocle.3lvn4g.xyz (443) isn't reachable yet. Once TLS/port 443 is
+    // working, switch this to "https://api.monocle.3lvn4g.xyz".
+    // NOTE: MONOCLE_API_KEY is a secret — set it with `wrangler secret put`,
+    // never here (this file is committed).
+    "MONOCLE_BACKEND_URL": "http://api.monocle.3lvn4g.xyz:3001",
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",

@@ -12,7 +12,7 @@ const TransactionFeed = dynamic(() => import("../components/TransactionFeed"), {
   ssr: false,
 });
 
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
+const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
 interface X402Status {
   x402Enabled: boolean;

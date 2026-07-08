@@ -5,7 +5,7 @@
  * Public endpoints - no auth required for discovery.
  */
 
-const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:3001";
+const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
 // =============================================================================
 // TYPES
