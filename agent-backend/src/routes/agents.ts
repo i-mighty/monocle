@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
+import { hasValidAdminKey } from "../middleware/adminAuth";
 import { query } from "../db/client";
 import { calculateCost, getAgentMetrics, PRICING_CONSTANTS } from "../services/pricingService";
 import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
@@ -118,11 +119,16 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
   let result;
   try {
     result = await query(
+      // public_key is deliberately NOT in the update set: this is an upsert on a
+      // caller-chosen id, so allowing it here let anyone re-point an existing
+      // agent's payout wallet — the auto-settlement scheduler pays whatever is in
+      // public_key. It is set once at creation; changing it afterwards requires
+      // an admin (see PATCH /:agentId). Restore self-service here only once
+      // agents carry a real owner to authorize against.
       `insert into agents (id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports)
        values ($1, $2, $3, $4, $5, 0, 0)
        on conflict (id) do update set
          name = coalesce(excluded.name, agents.name),
-         public_key = coalesce(excluded.public_key, agents.public_key),
          categories = coalesce(excluded.categories, agents.categories)
        returning id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports`,
       [agentId, name || null, publicKey || null, rate, categoriesJson]
@@ -950,6 +956,14 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
  *
  * NOTE: this is apiKeyAuth-gated for now (any platform-key holder can edit
  * any agent). Per-user ownership comes with SIWS phase 2.
+ *
+ * publicKey is the exception: it is the agent's payout wallet, and the
+ * auto-settlement scheduler pays whatever sits in that column. Combined with the
+ * dashboard proxy — which attaches the platform key to every request it forwards,
+ * including from anonymous callers — "any platform-key holder can edit any agent"
+ * meant anyone on the internet could re-point another agent's earnings to their
+ * own wallet. Until agents carry an owner to authorize against, changing it
+ * requires an admin key. Every other field stays self-service.
  */
 router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
   const { agentId } = req.params;
@@ -965,6 +979,15 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     params.push(typeof name === "string" && name.trim() ? name.trim() : null);
   }
   if (publicKey !== undefined) {
+    // Payout-wallet changes need an admin until per-owner authorization exists.
+    if (!hasValidAdminKey(req)) {
+      throw new AppError(
+        ErrorCodes.AUTH_INSUFFICIENT_PERMISSIONS,
+        { field: "publicKey", agentId },
+        "Changing an agent's payout wallet requires an administrator. " +
+          "Every other field on this endpoint is still editable."
+      );
+    }
     const trimmed = typeof publicKey === "string" && publicKey.trim() ? publicKey.trim() : null;
     if (trimmed) {
       // Reject keys already used by a different agent.
