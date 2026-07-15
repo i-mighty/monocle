@@ -15,6 +15,31 @@ export const config = {
   },
 };
 
+// Name of the backend's session cookie (authService.SESSION_COOKIE_NAME).
+const SESSION_COOKIE = "monocle_session";
+
+/**
+ * Sensitive actions that must not be reachable on the injected platform API key
+ * alone. Because this proxy adds x-api-key server-side, any browser hitting it
+ * would otherwise inherit platform-level authority — including users who never
+ * signed in. Requiring a session cookie here forces these through the backend's
+ * email-verification (KYC) gate, which rejects unverified or invalid sessions.
+ *
+ * Matched against the forwarded path, with or without the /v1 prefix (the
+ * backend still mounts deprecated unprefixed aliases). These are static, so
+ * unlike the env vars they can safely live at module scope.
+ */
+const SENSITIVE_PATHS: RegExp[] = [
+  /^(v1\/)?payments\/settle(\/|$)/,
+  /^(v1\/)?agents\/register$/,
+  /^(v1\/)?agents\/[^/]+\/withdraw$/,
+  /^(v1\/)?deposits\/withdraw$/,
+];
+
+function isSensitive(path: string): boolean {
+  return SENSITIVE_PATHS.some((re) => re.test(path));
+}
+
 const HOP_BY_HOP = new Set([
   "connection",
   "keep-alive",
@@ -54,6 +79,21 @@ export default async function handler(
     ? [req.query.path as string]
     : [];
   const path = segments.join("/");
+
+  // Sensitive actions require a signed-in user. Without this, the x-api-key we
+  // inject below would let any anonymous browser request settle/withdraw/register.
+  // Presence is checked here; the backend validates the session for real and
+  // enforces email verification (KYC).
+  if (isSensitive(path) && !req.cookies?.[SESSION_COOKIE]) {
+    res.status(401).json({
+      success: false,
+      error: {
+        code: "AUTH_NOT_SIGNED_IN",
+        message: "Sign in and verify your email to perform this action",
+      },
+    });
+    return;
+  }
 
   const search = new URLSearchParams();
   for (const [k, v] of Object.entries(req.query)) {

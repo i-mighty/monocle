@@ -186,7 +186,7 @@ export function getStoredApiKey(): string | null {
 export async function authFetch(path: string, init?: RequestInit) {
   const apiKey = getStoredApiKey();
   if (!apiKey) throw new Error("API key required. Please log in.");
-  
+
   return fetchJson(path, {
     ...init,
     headers: {
@@ -194,6 +194,71 @@ export async function authFetch(path: string, init?: RequestInit) {
       ...(init?.headers || {})
     }
   });
+}
+
+// =============================================================================
+// SENSITIVE ACTIONS (settle / register agent / withdraw)
+// =============================================================================
+
+/** Same-origin proxy — forwards the session cookie, injects the API key server-side. */
+const PROXY_BASE = "/api/proxy";
+
+/** Error carrying the backend's structured code so callers can react to KYC gates. */
+export class ApiError extends Error {
+  code: string;
+  status: number;
+  constructor(code: string, message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+/**
+ * Fetch for money/identity actions that are gated on a verified email (KYC).
+ *
+ * Always goes through the same-origin proxy rather than straight to the backend
+ * so the HttpOnly `monocle_session` cookie rides along — the backend's gate can
+ * only enforce verification on requests that actually carry a session. The
+ * proxy also refuses these paths outright when no session is present.
+ *
+ * The stored API key is forwarded only as a fallback for deployments that
+ * haven't set MONOCLE_API_KEY on the dashboard server; when it is set, the
+ * proxy overwrites the header with the server-side key.
+ */
+export async function sensitiveFetch(path: string, init?: RequestInit) {
+  const apiKey = getStoredApiKey();
+  const res = await fetch(`${PROXY_BASE}${path}`, {
+    ...init,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiKey ? { "X-API-Key": apiKey } : {}),
+      ...(init?.headers || {}),
+    },
+  });
+
+  let json: any = null;
+  try {
+    json = await res.json();
+  } catch {
+    /* empty or non-JSON body */
+  }
+
+  if (!res.ok) {
+    const err = json?.error ?? {};
+    throw new ApiError(err.code ?? "UNKNOWN", err.message ?? `HTTP ${res.status}`, res.status);
+  }
+  return json;
+}
+
+/** True when an error means "signed in but email not verified" (or not signed in). */
+export function isKycError(err: unknown): boolean {
+  return (
+    err instanceof ApiError &&
+    ["AUTH_EMAIL_NOT_VERIFIED", "AUTH_NOT_SIGNED_IN", "AUTH_INVALID_SESSION"].includes(err.code)
+  );
 }
 
 // === Agent Registration ===
@@ -214,8 +279,9 @@ export interface RegisteredAgent {
   pendingLamports: number;
 }
 
+// Gated on a verified email — routed through the session-carrying proxy.
 export const registerAgent = (data: RegisterAgentRequest) =>
-  authFetch("/v1/agents/register", {
+  sensitiveFetch("/v1/agents/register", {
     method: "POST",
     body: JSON.stringify(data)
   });
@@ -342,8 +408,9 @@ export interface Settlement {
 export const getSettlementHistory = (agentId: string) =>
   authFetch(`/v1/payments/settlements/${agentId}`);
 
+// Gated on a verified email — routed through the session-carrying proxy.
 export const settlePayment = (agentId: string) =>
-  authFetch(`/v1/payments/settle/${agentId}`, {
+  sensitiveFetch(`/v1/payments/settle/${agentId}`, {
     method: "POST"
   });
 
@@ -467,9 +534,10 @@ export const getDepositHistory = (agentId: string): Promise<{ deposits: Deposit[
 export const getPendingDepositIntents = (agentId: string): Promise<{ pendingIntents: PendingIntent[] }> =>
   authFetch(`/v1/deposits/${agentId}/pending`);
 
-// Withdraw to external wallet
+// Withdraw to external wallet — gated on a verified email, routed through the
+// session-carrying proxy.
 export const withdrawToWallet = (agentId: string, amountLamports: number, toAddress: string): Promise<WithdrawResult> =>
-  authFetch("/v1/deposits/withdraw", {
+  sensitiveFetch("/v1/deposits/withdraw", {
     method: "POST",
     body: JSON.stringify({ agentId, amountLamports, toAddress })
   });

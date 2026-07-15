@@ -15,6 +15,7 @@
 
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
+import { gateSensitiveActionByEmail } from "../middleware/requireVerifiedEmail";
 import {
   getTreasuryAddress,
   createDepositIntent,
@@ -224,7 +225,7 @@ router.post("/scan", apiKeyAuth, async (req, res) => {
  * 
  * Body: { agentId: string, amountLamports: number }
  */
-router.post("/withdraw", apiKeyAuth, async (req, res) => {
+router.post("/withdraw", gateSensitiveActionByEmail, apiKeyAuth, async (req, res) => {
   try {
     const { agentId, amountLamports, amountSOL } = req.body;
 
