@@ -8,6 +8,13 @@
       "when": 1782716223987,
       "tag": "0000_clammy_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784117604389,
+      "tag": "0001_email_login_kyc",
+      "breakpoints": true
     }
   ]
 }
