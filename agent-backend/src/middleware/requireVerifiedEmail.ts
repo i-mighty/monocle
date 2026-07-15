@@ -39,6 +39,29 @@ import {
   verifySessionToken,
 } from "../services/authService";
 
+/**
+ * Break-glass switch. Enforcement is ON unless KYC_ENFORCEMENT is explicitly
+ * set to "off" — so forgetting the variable fails safe (gate stays on).
+ *
+ * This exists so a live demo isn't dead in the water if email delivery breaks.
+ * It disables the founder's KYC requirement wholesale, so it should never be
+ * left off: the server logs a warning on every skipped check to make that
+ * impossible to miss in the journal.
+ *
+ * Read per-call rather than cached at module load so it can be flipped with a
+ * restart and no rebuild.
+ */
+function enforcementEnabled(): boolean {
+  return (process.env.KYC_ENFORCEMENT ?? "on").toLowerCase() !== "off";
+}
+
+function warnDisabled(req: Request): void {
+  console.warn(
+    `[KYC] KYC_ENFORCEMENT=off — email verification NOT enforced for ${req.method} ${req.path}. ` +
+      `Unset KYC_ENFORCEMENT (or set it to "on") to restore the gate.`
+  );
+}
+
 function kycError(): AppError {
   return new AppError(
     ErrorCodes.AUTH_EMAIL_NOT_VERIFIED,
@@ -76,7 +99,14 @@ export async function requireVerifiedEmail(req: Request, res: Response, next: Ne
     });
   }
 
+  // Note: the break-glass switch skips the *verification* check only — the user
+  // must still be signed in. It relaxes KYC, it does not open the route up.
   if (!user.emailVerifiedAt) {
+    if (!enforcementEnabled()) {
+      warnDisabled(req);
+      req.user = user;
+      return next();
+    }
     const err = kycError();
     return res.status(err.httpStatus).json(err.toResponse((req as any).requestId));
   }
@@ -115,6 +145,10 @@ export async function gateSensitiveActionByEmail(req: Request, res: Response, ne
   // A real human session is present — enforce KYC.
   req.user = user;
   if (!user.emailVerifiedAt) {
+    if (!enforcementEnabled()) {
+      warnDisabled(req);
+      return next();
+    }
     const err = kycError();
     return res.status(err.httpStatus).json(err.toResponse((req as any).requestId));
   }

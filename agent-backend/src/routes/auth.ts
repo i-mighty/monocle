@@ -8,6 +8,7 @@ import {
   verifyChallenge,
   isValidWalletPubkey,
 } from "../services/siwsService";
+import { adminKeyAuth } from "../middleware/adminAuth";
 import {
   upsertUserByWallet,
   createUserWithEmail,
@@ -15,6 +16,7 @@ import {
   attachEmailToUser,
   createEmailVerification,
   confirmEmailVerification,
+  forceVerifyEmail,
   getUserById,
   signSessionToken,
   UserRecord,
@@ -323,6 +325,41 @@ router.post(
     // (harmless, but keeps things tidy if we ever cache flags in the token).
     setSessionCookie(res, result.user);
     sendSuccess(res, { user: publicUser(result.user) });
+  })
+);
+
+/**
+ * POST /v1/auth/admin/verify-email
+ *   { email }        header: X-Admin-Key: <ADMIN_API_KEY>
+ *
+ * Marks an account's email verified without sending a code. Operator escape
+ * hatch: pre-seed a demo account, or rescue a user when mail delivery is down.
+ *
+ * Admin-key gated (adminKeyAuth denies everything when ADMIN_API_KEY is unset),
+ * and never touches the user's own session — it only flips the KYC flag.
+ */
+router.post(
+  "/admin/verify-email",
+  adminKeyAuth,
+  asyncHandler(async (req, res) => {
+    const { email } = req.body ?? {};
+    if (!isValidEmail(email)) {
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, { field: "email" });
+    }
+
+    const user = await forceVerifyEmail(email);
+    if (!user) {
+      throw new AppError(
+        ErrorCodes.AGENT_NOT_FOUND,
+        { email: normalizeEmail(email) },
+        "No account with that email"
+      );
+    }
+
+    console.warn(
+      `[KYC] admin force-verified ${user.email} (user ${user.id}) via X-Admin-Key`
+    );
+    sendSuccess(res, { user: publicUser(user) });
   })
 );
 

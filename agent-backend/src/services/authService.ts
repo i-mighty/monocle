@@ -225,6 +225,31 @@ export async function createEmailVerification(user: UserRecord): Promise<Verific
   return { email: user.email, expiresAt: expiresAt.toISOString(), ttlMinutes: VERIFICATION_TTL_MINUTES, code };
 }
 
+/**
+ * Mark an email verified without a code. Admin-only escape hatch (see
+ * routes/auth.ts) for pre-seeding a demo account or rescuing a user when mail
+ * delivery is broken. Returns null if no user has that email.
+ *
+ * Also burns any outstanding codes so a stale one can't be replayed later.
+ */
+export async function forceVerifyEmail(email: string): Promise<UserRecord | null> {
+  const result = await query(
+    `update users set email_verified_at = now()
+     where lower(email) = lower($1)
+     returning ${USER_COLUMNS}`,
+    [normalizeEmail(email)]
+  );
+  if (result.rows.length === 0) return null;
+
+  const user = mapUserRow(result.rows[0]);
+  await query(
+    `update email_verifications set consumed_at = now()
+     where user_id = $1 and consumed_at is null`,
+    [user.id]
+  );
+  return user;
+}
+
 export type ConfirmResult =
   | { ok: true; user: UserRecord }
   | { ok: false; reason: "no_code" | "expired" | "too_many_attempts" | "mismatch" };
