@@ -15,6 +15,7 @@
 
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
+import { requireOwnAgent } from "../middleware/requireOwnAgent";
 import {
   getTreasuryAddress,
   createDepositIntent,
@@ -224,7 +225,9 @@ router.post("/scan", apiKeyAuth, async (req, res) => {
  * 
  * Body: { agentId: string, amountLamports: number }
  */
-router.post("/withdraw", apiKeyAuth, async (req, res) => {
+// requireOwnAgent: withdrawing pays out agentId's balance, so the key must be
+// that agent's. Previously any key holder could drain any agent's balance.
+router.post("/withdraw", apiKeyAuth, requireOwnAgent("body.agentId"), async (req, res) => {
   try {
     const { agentId, amountLamports, amountSOL } = req.body;
 

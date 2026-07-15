@@ -95,7 +95,7 @@ router.post("/", requireScope("admin"), async (req: Request, res: Response) => {
     logActivityAsync({
       eventType: "api_key_used",
       severity: "info",
-      actorId: req.developerId,
+      actorId: req.developerId ?? undefined,
       actorType: "admin",
       resourceType: "api_key",
       resourceId: keyRecord.id,
@@ -213,7 +213,7 @@ router.post("/:keyId/rotate", async (req: Request, res: Response) => {
     logActivityAsync({
       eventType: "api_key_used",
       severity: "info",
-      actorId: req.developerId,
+      actorId: req.developerId ?? undefined,
       actorType: "admin",
       resourceType: "api_key",
       resourceId: keyId,
@@ -262,7 +262,7 @@ router.delete("/:keyId", async (req: Request, res: Response) => {
     logActivityAsync({
       eventType: "api_key_used",
       severity: "warning",
-      actorId: req.developerId,
+      actorId: req.developerId ?? undefined,
       actorType: "admin",
       resourceType: "api_key",
       resourceId: keyId,

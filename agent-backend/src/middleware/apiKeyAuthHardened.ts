@@ -14,8 +14,7 @@ import {
   validateApiKey,
   ApiKeyRecord,
   ApiKeyScope,
-  hasScope,
-  timingSafeCompare,
+  hasScope,
 } from "../services/securityService";
 import { logActivityAsync } from "../services/activityService";
 import { AppError, ErrorCodes } from "../errors";
@@ -25,7 +24,8 @@ declare global {
   namespace Express {
     interface Request {
       apiKeyRecord?: ApiKeyRecord;
-      developerId?: string;
+      // null for agent-scoped keys, which name an agent rather than a developer.
+      developerId?: string | null;
     }
   }
 }
@@ -118,7 +118,7 @@ export async function apiKeyAuthHardened(
     logActivityAsync({
       eventType: "api_key_used",
       severity: "info",
-      actorId: result.keyRecord.developerId,
+      actorId: result.keyRecord.developerId ?? undefined,
       actorType: "api",
       action: "auth.success",
       description: `API key authenticated: ${result.keyRecord.name}`,
@@ -166,7 +166,7 @@ export function requireScope(
       logActivityAsync({
         eventType: "api_key_used",
         severity: "warning",
-        actorId: keyRecord.developerId,
+        actorId: keyRecord.developerId ?? undefined,
         actorType: "api",
         action: "auth.scope_denied",
         description: `Scope denied: ${scope} for key ${keyRecord.name}`,
@@ -355,48 +355,57 @@ function getClientIp(req: Request): string {
 // =============================================================================
 
 /**
- * Simple API key auth for backward compatibility
- * Uses hardened comparison but doesn't require v2 keys
+ * API key auth used by every route.
+ *
+ * This now delegates to validateApiKey rather than comparing against
+ * AGENTPAY_API_KEY itself. That direct comparison was why agent-scoped keys never
+ * worked anywhere: this is the only auth middleware actually mounted, so a key
+ * that wasn't the single platform key was rejected outright, no matter what the
+ * key tables said. Agents were issued keys that could never authenticate.
+ *
+ * Delegating means one place resolves identity, and every route gets a key record
+ * that knows which agent (if any) it acts as:
+ *   - `mk_...`  -> agent-scoped, agentId set   (may act only as that agent)
+ *   - `agp_...` -> developer key, agentId null
+ *   - platform key -> synthetic record, agentId null (operator, not an agent)
+ *
+ * Authentication is unchanged for the platform key; what changed is that the
+ * record it produces names no agent, so requireOwnAgent can refuse it on money
+ * routes.
  */
-export function apiKeyAuth(req: Request, res: Response, next: NextFunction): void {
+export async function apiKeyAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const provided = req.header("x-api-key");
-  const expected = process.env.AGENTPAY_API_KEY;
 
-  if (!expected) {
-    const error = new AppError(ErrorCodes.AUTH_API_KEY_NOT_CONFIGURED, {
-      header: "x-api-key",
-    });
-    return res.status(error.httpStatus).json(error.toResponse((req as any).requestId)) as any;
-  }
-
-  if (!provided || !timingSafeCompare(provided, expected)) {
+  if (!provided) {
     const error = new AppError(ErrorCodes.AUTH_INVALID_API_KEY, {
       header: "x-api-key",
-      provided: provided ? "[redacted]" : undefined,
+      message: "API key required. Provide x-api-key header.",
     });
-    return res.status(error.httpStatus).json(error.toResponse((req as any).requestId)) as any;
+    res.status(error.httpStatus).json(error.toResponse((req as any).requestId));
+    return;
   }
 
-  // Create a synthetic record for backward compatibility
-  req.apiKeyRecord = {
-    id: "legacy",
-    developerId: "system",
-    name: "Legacy API Key",
-    keyPrefix: "legacy",
-    keyHash: "",
-    scopes: ["*"],
-    rateLimit: 1000,
-    rateLimitBurst: 100,
-    expiresAt: null,
-    lastUsedAt: new Date(),
-    lastUsedIp: null,
-    isActive: true,
-    version: 1,
-    previousKeyHash: null,
-    rotatedAt: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
+  let result;
+  try {
+    result = await validateApiKey(provided);
+  } catch (err: any) {
+    console.error("[apiKeyAuth] validation error:", err?.message ?? err);
+    const error = new AppError(ErrorCodes.AUTH_INVALID_API_KEY, { message: "Authentication failed" });
+    res.status(error.httpStatus).json(error.toResponse((req as any).requestId));
+    return;
+  }
 
+  if (!result.valid || !result.keyRecord) {
+    const error = new AppError(ErrorCodes.AUTH_INVALID_API_KEY, {
+      header: "x-api-key",
+      provided: "[redacted]",
+    });
+    res.status(error.httpStatus).json(error.toResponse((req as any).requestId));
+    return;
+  }
+
+  req.apiKeyRecord = result.keyRecord;
+  req.developerId = result.keyRecord.developerId;
   return next();
 }
+

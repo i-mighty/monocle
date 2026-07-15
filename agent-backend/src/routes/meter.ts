@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
+import { requireOwnAgent } from "../middleware/requireOwnAgent";
 import { logToolCall, getToolCallHistory } from "../services/meterService";
 import { query } from "../db/client";
 import { recomputeAgentReputation } from "../services/reputationEngine";
@@ -45,7 +46,10 @@ const router = Router();
  *   - Agent not found
  *   - Transaction failed
  */
-router.post("/execute", apiKeyAuth, async (req, res) => {
+// requireOwnAgent: callerId is debited, so the key must BE that caller. Without
+// this, callerId was an unverified claim and any key holder could bill any agent
+// and credit their own — draining a victim's balance into an agent they own.
+router.post("/execute", apiKeyAuth, requireOwnAgent("body.callerId"), async (req, res) => {
   try {
     const { callerId, calleeId, toolName, tokensUsed, quoteId } = req.body;
 

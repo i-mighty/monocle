@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
-import { hasValidAdminKey } from "../middleware/adminAuth";
+import { requireOwnAgent } from "../middleware/requireOwnAgent";
+import { hashAgentKey } from "../services/securityService";
+import { hasValidAdminKey, adminKeyAuth } from "../middleware/adminAuth";
 import { query } from "../db/client";
 import { calculateCost, getAgentMetrics, PRICING_CONSTANTS } from "../services/pricingService";
 import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
@@ -306,7 +308,9 @@ router.post("/register/public",
     // Generate unique agent ID and API key
     const agentId = `agent_${randomUUID().replace(/-/g, "")}`;
     const apiKey = `mk_${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "").slice(0, 16)}`;
-    const apiKeyHash = require("crypto").createHash("sha256").update(apiKey).digest("hex");
+    // Same digest the validator looks the key up by — keep these in one place so
+    // they cannot drift apart and silently stop authenticating.
+    const apiKeyHash = hashAgentKey(apiKey);
 
     // Validate rate
     const rate: number = ratePer1kTokens ? Math.max(100, Math.min(1000000, Math.floor(Number(ratePer1kTokens)))) : 1000;
@@ -747,7 +751,10 @@ router.get("/:agentId/stats", asyncHandler(async (req, res) => {
  * Response:
  *   { txSignature, amountWithdrawn, remainingBalance }
  */
-router.post("/:agentId/withdraw", apiKeyAuth, asyncHandler(async (req, res) => {
+// requireOwnAgent replaces the ownership check below, which never worked: it read
+// apiKeyRecord.agentId, a field that did not exist, so the condition was always
+// false and "you can only withdraw from your own agent account" never once fired.
+router.post("/:agentId/withdraw", apiKeyAuth, requireOwnAgent("params.agentId"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
   const { amount } = req.body;
 
@@ -2266,5 +2273,71 @@ router.get("/tools/by-category/:category", apiKeyAuth, asyncHandler(async (req, 
 
   sendSuccess(res, { tools: result.tools });
 }));
+
+/**
+ * POST /agents/:agentId/keys
+ *   header: X-Admin-Key: <ADMIN_API_KEY>
+ *   { name?: string, rotate?: boolean }
+ *
+ * Issue an agent-scoped API key for an EXISTING agent, returned once and never
+ * again (only its sha256 is stored).
+ *
+ * Why this exists: money routes now require a key that names an agent, but agents
+ * created before this change have no key at all — register/public's key insert
+ * targeted columns that did not exist, so it always threw. Without a way to issue
+ * keys to existing agents, tightening the money routes would strand every current
+ * caller with no route back.
+ *
+ * Admin-gated because there is still no per-user ownership model: nothing else in
+ * the system can currently prove that a requester owns a given agent. When agents
+ * gain an owner, this should become self-service for that owner.
+ *
+ * rotate=true revokes the agent's existing keys, so a leaked key can be retired.
+ */
+router.post(
+  "/:agentId/keys",
+  adminKeyAuth,
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+    const { name, rotate } = req.body ?? {};
+
+    const agent = await query("select id, name from agents where id = $1", [agentId]);
+    if (agent.rows.length === 0) throw AppError.agentNotFound(agentId);
+
+    if (rotate === true) {
+      await query(
+        `update api_keys set is_active = false, revoked_at = now()
+         where agent_id = $1 and is_active = true`,
+        [agentId]
+      );
+    }
+
+    const apiKey = `mk_${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    await query(
+      `insert into api_keys (id, key_hash, agent_id, name, scopes, is_active, created_at)
+       values ($1, $2, $3, $4, $5, true, now())`,
+      [
+        randomUUID(),
+        hashAgentKey(apiKey),
+        agentId,
+        typeof name === "string" && name.trim() ? name.trim() : `${agent.rows[0].name ?? agentId} - Key`,
+        JSON.stringify(["read:own", "write:own", "agents:manage"]),
+      ]
+    );
+
+    console.warn(`[Keys] admin issued an agent key for ${agentId} (rotate=${rotate === true})`);
+
+    sendSuccess(
+      res,
+      {
+        agentId,
+        apiKey, // shown once — only the hash is persisted
+        rotated: rotate === true,
+        warning: "Store this key now. It cannot be retrieved again.",
+      },
+      201
+    );
+  })
+);
 
 export default router;

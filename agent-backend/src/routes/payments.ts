@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
+import { requireOwnAgent } from "../middleware/requireOwnAgent";
 import { demoOnly } from "../middleware/demoOnly";
 import { sendMicropayment } from "../services/solanaService";
 import {
@@ -34,7 +35,10 @@ const router = Router();
  *   - 402: Insufficient pending balance
  *   - 500: Transaction failed
  */
-router.post("/settle/:agentId", apiKeyAuth, async (req, res) => {
+// requireOwnAgent: settling triggers an on-chain payout for :agentId, so the key
+// must be that agent's. Previously any key holder could force settlement of any
+// agent, and a cross-site request could ride a signed-in user's session to do it.
+router.post("/settle/:agentId", apiKeyAuth, requireOwnAgent("params.agentId"), async (req, res) => {
   try {
     const { agentId } = req.params;
 
