@@ -8,6 +8,7 @@ interface LayoutProps {
 }
 
 const NAV_LINKS = [
+  { href: "/arena", label: "Arena" },
   { href: "/marketplace", label: "Marketplace" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/usage", label: "Usage" },

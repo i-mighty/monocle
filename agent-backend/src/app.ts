@@ -27,6 +27,8 @@ import chat from "./routes/chat";
 import x402Feed from "./routes/x402Feed";
 import orchestrate from "./routes/orchestrate";
 import wallet from "./routes/wallet";
+import arena from "./routes/arena";
+import { getArena } from "./arena/engine";
 import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 import { getDemoStatus } from "./middleware/demoOnly";
 import { rateLimit, ipRateLimit, slowDown } from "./middleware/rateLimit";
@@ -121,6 +123,7 @@ v1.use("/deposits", deposits);
 v1.use("/chat", chat);
 v1.use("/orchestrate", orchestrate);
 v1.use("/wallet", wallet);
+v1.use("/arena", arena);
 
 // Mount v1 API
 app.use("/v1", v1);
@@ -471,5 +474,25 @@ app.listen(port, () => {
         console.error("[Reputation] Recompute scheduler error:", err);
       }
     }, REPUTATION_INTERVAL_MS);
+  }
+
+  // ==========================================================================
+  // TxLINE AGENT-vs-AGENT ARENA
+  // ==========================================================================
+  // Two agents read the same TxLINE World Cup consensus feed and run opposite
+  // strategies (sharp-money momentum vs contrarian value). Positions are marked
+  // to the consensus probability and settled on-chain at match resolution via
+  // the platform settlement rail above. Runs in `sim` mode by default (offline,
+  // deterministic) or `live` against TxLINE when TXLINE_MODE=live.
+  // Enabled by default; set ARENA_ENABLED=false to disable.
+  if (process.env.ARENA_ENABLED !== "false") {
+    const tickMs = Number(process.env.ARENA_TICK_MS ?? 60000);
+    const theArena = getArena();
+    theArena
+      .init()
+      .catch((err) => console.error("[Arena] init failed:", err))
+      .finally(() => theArena.start(tickMs));
+  } else {
+    console.log("  🏟️  Arena disabled (ARENA_ENABLED=false)");
   }
 });
