@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import Link from "next/link";
+import { sensitiveFetch, isKycError } from "../../lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
@@ -117,9 +118,10 @@ export default function RegisterAgent() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/v1/agents/register`, {
+      // Registering an agent is gated on a verified email — sensitiveFetch
+      // routes through the proxy so the session cookie reaches the KYC gate.
+      await sensitiveFetch("/v1/agents/register", {
         method: "POST",
-        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           agentId,
           name: form.name.trim() || agentId,
@@ -129,15 +131,16 @@ export default function RegisterAgent() {
           categories: form.categories,
         }),
       });
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data?.error?.message || `Request failed (${res.status})`);
-      }
 
       router.push(`/agents/${encodeURIComponent(agentId)}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      setError(
+        isKycError(err)
+          ? "Verify your email before registering an agent. Open Login to finish verification."
+          : err instanceof Error
+          ? err.message
+          : "Registration failed"
+      );
       setSubmitting(false);
     }
   };

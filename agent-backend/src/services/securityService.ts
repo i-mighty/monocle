@@ -77,7 +77,21 @@ export type ApiKeyScope =
 
 export interface ApiKeyRecord {
   id: string;
-  developerId: string;
+  /**
+   * The agent this key acts as, or null for platform/developer keys.
+   *
+   * This is the field the whole authorization model hangs off: a key with an
+   * agentId may only act as that agent, so `callerId` in a request body stops
+   * being an unverified claim. routes/agents.ts has always read
+   * `apiKeyRecord?.agentId` to enforce "you can only withdraw from your own
+   * agent account" — the field never existed, so that check silently never fired.
+   *
+   * null means "not scoped to an agent", which is deliberately NOT the same as
+   * "may act as any agent". Money routes require a non-null agentId; see
+   * requireOwnAgent.
+   */
+  agentId: string | null;
+  developerId: string | null;
   name: string;
   keyPrefix: string;
   keyHash: string;
@@ -326,9 +340,78 @@ export async function createApiKey(
 /**
  * Validate an API key and return its record
  */
+/**
+ * sha256 of an agent key, matching how routes/agents.ts hashes it at mint time.
+ * Agent keys are never stored in plaintext — only this digest.
+ */
+export function hashAgentKey(key: string): string {
+  return crypto.createHash("sha256").update(key).digest("hex");
+}
+
+/**
+ * Validate an agent-scoped key (`mk_...`) against api_keys.key_hash.
+ *
+ * These keys are minted by POST /agents/register/public and handed to the agent's
+ * operator. Until now nothing validated them: validateApiKey only recognised the
+ * `agp_` prefix and everything else fell through to the single env platform key,
+ * so an agent's own key authenticated as nobody and was rejected.
+ *
+ * Lookup is by digest, so the plaintext key never has to be stored or compared.
+ */
+async function validateAgentKey(key: string): Promise<ApiKeyValidationResult> {
+  const result = await query(
+    `SELECT id, agent_id, developer_id, name, scopes, is_active, created_at, revoked_at
+     FROM api_keys
+     WHERE key_hash = $1`,
+    [hashAgentKey(key)]
+  );
+  if (result.rows.length === 0) return { valid: false, error: "Invalid API key" };
+
+  const row = result.rows[0];
+  if (row.is_active === false || row.revoked_at) {
+    return { valid: false, error: "API key revoked" };
+  }
+
+  let scopes: ApiKeyScope[] = ["read:own", "write:own"] as unknown as ApiKeyScope[];
+  try {
+    if (row.scopes) scopes = JSON.parse(row.scopes);
+  } catch {
+    /* malformed scopes fall back to the least-privilege default above */
+  }
+
+  return {
+    valid: true,
+    keyRecord: {
+      id: row.id,
+      agentId: row.agent_id ?? null,
+      developerId: row.developer_id ?? null,
+      name: row.name ?? "Agent Key",
+      keyPrefix: key.slice(0, 8),
+      keyHash: "",
+      scopes,
+      rateLimit: 60,
+      rateLimitBurst: 10,
+      expiresAt: null,
+      lastUsedAt: row.last_used_at ?? null,
+      lastUsedIp: null,
+      isActive: true,
+      version: 1,
+      previousKeyHash: null,
+      rotatedAt: null,
+      createdAt: row.created_at ?? new Date(),
+      updatedAt: new Date(),
+    },
+  };
+}
+
 export async function validateApiKey(
   key: string
 ): Promise<ApiKeyValidationResult> {
+  // Agent-scoped key (`mk_...`): resolves to a specific agent.
+  if (key.startsWith("mk_")) {
+    return validateAgentKey(key);
+  }
+
   // Extract prefix from key format: agp_{prefix}_{random}
   const match = key.match(/^agp_([a-f0-9]+)_/);
   if (!match) {
@@ -393,11 +476,17 @@ async function validateLegacyApiKey(key: string): Promise<ApiKeyValidationResult
   }
 
   if (timingSafeCompare(key, envKey)) {
-    // Create a synthetic record for legacy keys
+    // Create a synthetic record for legacy keys.
+    //
+    // agentId is null: this key is the platform operator, not any particular
+    // agent. That is deliberately not the same as "may act as every agent" —
+    // money routes require a key that names an agent (see requireOwnAgent), so
+    // this key can no longer bill, settle or withdraw on someone else's behalf.
     return {
       valid: true,
       keyRecord: {
         id: "legacy",
+        agentId: null,
         developerId: "system",
         name: "Legacy API Key",
         keyPrefix: "legacy",
@@ -525,7 +614,10 @@ export function hasScope(
 function formatApiKeyRecord(row: any): ApiKeyRecord {
   return {
     id: row.id,
-    developerId: row.developer_id,
+    // api_keys_v2 rows are developer-scoped, not agent-scoped: they act as a
+    // developer, never as a specific agent, so they cannot move an agent's money.
+    agentId: row.agent_id ?? null,
+    developerId: row.developer_id ?? null,
     name: row.name,
     keyPrefix: row.key_prefix,
     keyHash: row.key_hash,

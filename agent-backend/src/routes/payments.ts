@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
+import { requireOwnAgent } from "../middleware/requireOwnAgent";
+import { gateSensitiveActionByEmail } from "../middleware/requireVerifiedEmail";
 import { demoOnly } from "../middleware/demoOnly";
 import { sendMicropayment } from "../services/solanaService";
 import {
@@ -34,7 +36,9 @@ const router = Router();
  *   - 402: Insufficient pending balance
  *   - 500: Transaction failed
  */
-router.post("/settle/:agentId", apiKeyAuth, async (req, res) => {
+// gateSensitiveActionByEmail (KYC when a session is present) -> apiKeyAuth (agent-
+// scoped key) -> requireOwnAgent (the key may only settle its OWN agent).
+router.post("/settle/:agentId", gateSensitiveActionByEmail, apiKeyAuth, requireOwnAgent("params.agentId"), async (req, res) => {
   try {
     const { agentId } = req.params;
 

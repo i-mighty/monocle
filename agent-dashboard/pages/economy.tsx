@@ -14,6 +14,7 @@ import {
   getPlatformRevenue,
   topUpAgent,
   getStoredApiKey,
+  isKycError,
   getDepositAddress,
   createDepositIntent,
   verifyDeposit,
@@ -35,6 +36,11 @@ import {
   Deposit,
   PendingIntent,
 } from "../lib/api";
+
+// Shown when the backend's KYC gate blocks a money/identity action because the
+// signed-in user hasn't verified their email (or isn't signed in at all).
+const KYC_MESSAGE =
+  "Verify your email first — settlement, withdrawals, and agent registration require a verified account. Go to Login → Email to finish verification.";
 
 // =============================================================================
 // TYPES
@@ -260,7 +266,7 @@ export default function EconomyControlPanel() {
       await loadAgents();
       setSelectedAgent(result.agentId);
     } catch (err: any) {
-      showMessage("error", err.message || "Registration failed");
+      showMessage("error", isKycError(err) ? KYC_MESSAGE : err.message || "Registration failed");
     }
     setLoading(false);
   };
@@ -309,7 +315,7 @@ export default function EconomyControlPanel() {
       await loadSettlements(agentId);
       await loadEconomicState(agentId);
     } catch (err: any) {
-      showMessage("error", err.message || "Settlement failed");
+      showMessage("error", isKycError(err) ? KYC_MESSAGE : err.message || "Settlement failed");
     }
     setLoading(false);
   };
@@ -386,7 +392,7 @@ export default function EconomyControlPanel() {
       await loadEconomicState(selectedAgent);
       await loadAgents();
     } catch (err: any) {
-      showMessage("error", err.message || "Withdrawal failed");
+      showMessage("error", isKycError(err) ? KYC_MESSAGE : err.message || "Withdrawal failed");
     }
     setLoading(false);
   };

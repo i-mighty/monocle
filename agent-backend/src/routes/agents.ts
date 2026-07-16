@@ -1,5 +1,9 @@
 import { Router } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
+import { requireOwnAgent } from "../middleware/requireOwnAgent";
+import { hashAgentKey } from "../services/securityService";
+import { hasValidAdminKey, adminKeyAuth } from "../middleware/adminAuth";
+import { gateSensitiveActionByEmail, requireVerifiedEmail } from "../middleware/requireVerifiedEmail";
 import { query } from "../db/client";
 import { calculateCost, getAgentMetrics, PRICING_CONSTANTS } from "../services/pricingService";
 import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
@@ -61,7 +65,7 @@ function isValidHttpsUrl(s: unknown, allowHttp = false): s is string {
   }
 }
 
-router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
+router.post("/register", gateSensitiveActionByEmail, apiKeyAuth, asyncHandler(async (req, res) => {
   const { agentId, name, publicKey, ratePer1kTokens, categories, endpointUrl } = req.body;
 
   if (!agentId) {
@@ -118,11 +122,16 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
   let result;
   try {
     result = await query(
+      // public_key is deliberately NOT in the update set: this is an upsert on a
+      // caller-chosen id, so allowing it here let anyone re-point an existing
+      // agent's payout wallet — the auto-settlement scheduler pays whatever is in
+      // public_key. It is set once at creation; changing it afterwards requires
+      // an admin (see PATCH /:agentId). Restore self-service here only once
+      // agents carry a real owner to authorize against.
       `insert into agents (id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports)
        values ($1, $2, $3, $4, $5, 0, 0)
        on conflict (id) do update set
          name = coalesce(excluded.name, agents.name),
-         public_key = coalesce(excluded.public_key, agents.public_key),
          categories = coalesce(excluded.categories, agents.categories)
        returning id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports`,
       [agentId, name || null, publicKey || null, rate, categoriesJson]
@@ -184,14 +193,23 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
 }));
 
 // =============================================================================
-// PUBLIC REGISTRATION (No API Key Required - Marketplace Onboarding)
+// SELF-SERVE REGISTRATION (Signed-in + email-verified — Marketplace Onboarding)
 // =============================================================================
 
 /**
  * POST /agents/register/public
  *
- * Public endpoint for AI providers to register their agent on the Monocle network.
- * No API key required, but heavily rate-limited to prevent abuse.
+ * Self-serve endpoint for AI providers to register their agent on the Monocle
+ * network and mint an API key.
+ *
+ * KYC: requires a signed-in user with a VERIFIED email. This endpoint issues an
+ * API key and creates a marketplace identity, so leaving it anonymous would let
+ * anyone mint credentials and sidestep the email-verification gate that covers
+ * the rest of agent registration. Sign up (or sign in) and verify your email
+ * first, then call this with the session cookie. Still rate-limited 5/hour.
+ *
+ * NB: the path keeps the historical "/public" name for backwards compatibility;
+ * it is no longer unauthenticated.
  *
  * Request:
  *   {
@@ -211,9 +229,12 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
  *     apiKey: string (one-time display - store this!)
  *     name, publicKey, ratePer1kTokens, taskTypes, createdAt
  *   }
+ *
+ * Errors: 401 if not signed in, 403 AUTH_EMAIL_NOT_VERIFIED if email unverified.
  */
 router.post("/register/public",
   rateLimit({ maxRequests: 5, windowMs: 60 * 60 * 1000, burstAllowance: 0 }), // 5/hour
+  requireVerifiedEmail,
   asyncHandler(async (req, res) => {
     const { name, endpoint, publicKey, ratePer1kTokens, taskTypes, bio, websiteUrl, ownerEmail, authHeader, solName } = req.body;
 
@@ -300,7 +321,9 @@ router.post("/register/public",
     // Generate unique agent ID and API key
     const agentId = `agent_${randomUUID().replace(/-/g, "")}`;
     const apiKey = `mk_${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "").slice(0, 16)}`;
-    const apiKeyHash = require("crypto").createHash("sha256").update(apiKey).digest("hex");
+    // Same digest the validator looks the key up by — keep these in one place so
+    // they cannot drift apart and silently stop authenticating.
+    const apiKeyHash = hashAgentKey(apiKey);
 
     // Validate rate
     const rate: number = ratePer1kTokens ? Math.max(100, Math.min(1000000, Math.floor(Number(ratePer1kTokens)))) : 1000;
@@ -741,7 +764,9 @@ router.get("/:agentId/stats", asyncHandler(async (req, res) => {
  * Response:
  *   { txSignature, amountWithdrawn, remainingBalance }
  */
-router.post("/:agentId/withdraw", apiKeyAuth, asyncHandler(async (req, res) => {
+// gateSensitiveActionByEmail (KYC) -> apiKeyAuth -> requireOwnAgent (replaces the
+// old ownership check that read apiKeyRecord.agentId — a field that never existed).
+router.post("/:agentId/withdraw", gateSensitiveActionByEmail, apiKeyAuth, requireOwnAgent("params.agentId"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
   const { amount } = req.body;
 
@@ -950,6 +975,14 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
  *
  * NOTE: this is apiKeyAuth-gated for now (any platform-key holder can edit
  * any agent). Per-user ownership comes with SIWS phase 2.
+ *
+ * publicKey is the exception: it is the agent's payout wallet, and the
+ * auto-settlement scheduler pays whatever sits in that column. Combined with the
+ * dashboard proxy — which attaches the platform key to every request it forwards,
+ * including from anonymous callers — "any platform-key holder can edit any agent"
+ * meant anyone on the internet could re-point another agent's earnings to their
+ * own wallet. Until agents carry an owner to authorize against, changing it
+ * requires an admin key. Every other field stays self-service.
  */
 router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
   const { agentId } = req.params;
@@ -965,6 +998,15 @@ router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     params.push(typeof name === "string" && name.trim() ? name.trim() : null);
   }
   if (publicKey !== undefined) {
+    // Payout-wallet changes need an admin until per-owner authorization exists.
+    if (!hasValidAdminKey(req)) {
+      throw new AppError(
+        ErrorCodes.AUTH_INSUFFICIENT_PERMISSIONS,
+        { field: "publicKey", agentId },
+        "Changing an agent's payout wallet requires an administrator. " +
+          "Every other field on this endpoint is still editable."
+      );
+    }
     const trimmed = typeof publicKey === "string" && publicKey.trim() ? publicKey.trim() : null;
     if (trimmed) {
       // Reject keys already used by a different agent.
@@ -2243,5 +2285,71 @@ router.get("/tools/by-category/:category", apiKeyAuth, asyncHandler(async (req, 
 
   sendSuccess(res, { tools: result.tools });
 }));
+
+/**
+ * POST /agents/:agentId/keys
+ *   header: X-Admin-Key: <ADMIN_API_KEY>
+ *   { name?: string, rotate?: boolean }
+ *
+ * Issue an agent-scoped API key for an EXISTING agent, returned once and never
+ * again (only its sha256 is stored).
+ *
+ * Why this exists: money routes now require a key that names an agent, but agents
+ * created before this change have no key at all — register/public's key insert
+ * targeted columns that did not exist, so it always threw. Without a way to issue
+ * keys to existing agents, tightening the money routes would strand every current
+ * caller with no route back.
+ *
+ * Admin-gated because there is still no per-user ownership model: nothing else in
+ * the system can currently prove that a requester owns a given agent. When agents
+ * gain an owner, this should become self-service for that owner.
+ *
+ * rotate=true revokes the agent's existing keys, so a leaked key can be retired.
+ */
+router.post(
+  "/:agentId/keys",
+  adminKeyAuth,
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+    const { name, rotate } = req.body ?? {};
+
+    const agent = await query("select id, name from agents where id = $1", [agentId]);
+    if (agent.rows.length === 0) throw AppError.agentNotFound(agentId);
+
+    if (rotate === true) {
+      await query(
+        `update api_keys set is_active = false, revoked_at = now()
+         where agent_id = $1 and is_active = true`,
+        [agentId]
+      );
+    }
+
+    const apiKey = `mk_${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    await query(
+      `insert into api_keys (id, key_hash, agent_id, name, scopes, is_active, created_at)
+       values ($1, $2, $3, $4, $5, true, now())`,
+      [
+        randomUUID(),
+        hashAgentKey(apiKey),
+        agentId,
+        typeof name === "string" && name.trim() ? name.trim() : `${agent.rows[0].name ?? agentId} - Key`,
+        JSON.stringify(["read:own", "write:own", "agents:manage"]),
+      ]
+    );
+
+    console.warn(`[Keys] admin issued an agent key for ${agentId} (rotate=${rotate === true})`);
+
+    sendSuccess(
+      res,
+      {
+        agentId,
+        apiKey, // shown once — only the hash is persisted
+        rotated: rotate === true,
+        warning: "Store this key now. It cannot be retrieved again.",
+      },
+      201
+    );
+  })
+);
 
 export default router;

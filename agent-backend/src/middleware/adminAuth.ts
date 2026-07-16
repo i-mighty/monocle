@@ -37,6 +37,29 @@ declare global {
 // =============================================================================
 
 /**
+ * Is this request carrying a valid X-Admin-Key?
+ *
+ * Predicate form of adminKeyAuth, for handlers that only need admin rights for
+ * *part* of a request (e.g. one privileged field) rather than the whole route,
+ * where mounting the middleware would lock the entire endpoint.
+ *
+ * Fails closed: false when ADMIN_API_KEY is unset, so a misconfigured server
+ * denies the privileged path rather than opening it. Constant-time comparison.
+ */
+export function hasValidAdminKey(req: Request): boolean {
+  const adminKey = process.env.ADMIN_API_KEY;
+  if (!adminKey) return false;
+
+  const provided = req.headers["x-admin-key"];
+  if (typeof provided !== "string" || provided.length === 0) return false;
+
+  const expected = Buffer.from(adminKey);
+  const actual = Buffer.from(provided);
+  if (expected.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expected, actual);
+}
+
+/**
  * Validate admin access via ADMIN_API_KEY environment variable
  * Header: X-Admin-Key: <key>
  */

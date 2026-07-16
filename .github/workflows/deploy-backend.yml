@@ -37,7 +37,16 @@ jobs:
 
             # Run DB migrations (safe — only applies new ones, never drops data)
             cd $REMOTE/agent-backend
-            export $(grep -v '^#' $REMOTE/deploy/backend.env | xargs)
+            # Load backend.env by sourcing it rather than `export $(... | xargs)`.
+            # xargs splits on whitespace, so any value containing a space broke the
+            # deploy: `EMAIL_FROM=Monocle <noreply@x>` became
+            # `export EMAIL_FROM=Monocle <noreply@x>`, where `<` is a redirect —
+            # bash errors with "not a valid identifier" and `set -e` aborts the run.
+            # Quoting the value didn't help either, because xargs strips the quotes.
+            # `set -a` exports everything the file defines; quoted values survive.
+            set -a
+            . $REMOTE/deploy/backend.env
+            set +a
             npm run db:migrate
 
             # Restart service

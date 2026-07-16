@@ -782,3 +782,48 @@ create table if not exists auth_nonces (
 
 create index if not exists idx_auth_nonces_wallet on auth_nonces(wallet_pubkey);
 create index if not exists idx_auth_nonces_expires on auth_nonces(expires_at);
+
+-- =============================================================================
+-- EMAIL LOGIN + KYC: email/password as a second login method, plus an
+-- email-verification signal that gates sensitive actions. See
+-- migrate-email-kyc.sql for the standalone/idempotent version of this block.
+-- =============================================================================
+
+-- Email/password columns on the existing wallet-keyed users table. A user may
+-- have a wallet, an email, or both; password_hash is null for wallet-only users.
+alter table users add column if not exists email             text;
+alter table users add column if not exists password_hash     text;
+alter table users add column if not exists email_verified_at timestamptz;
+
+-- users was created wallet-first (wallet_pubkey NOT NULL). Email-only accounts
+-- have no wallet, so drop that constraint and instead require at least one of
+-- the two identifiers.
+alter table users alter column wallet_pubkey drop not null;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'users_wallet_or_email') then
+    alter table users
+      add constraint users_wallet_or_email
+      check (wallet_pubkey is not null or email is not null);
+  end if;
+end $$;
+
+create unique index if not exists users_email_lower_unique on users (lower(email))
+  where email is not null;
+
+-- One-time email verification codes (single-use, hashed, expiring).
+create table if not exists email_verifications (
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references users(id) on delete cascade,
+  email       text not null,
+  code_hash   text not null,
+  purpose     text not null default 'verify_email',
+  attempts    integer not null default 0,
+  consumed_at timestamptz,
+  expires_at  timestamptz not null,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists idx_email_verifications_user    on email_verifications(user_id);
+create index if not exists idx_email_verifications_expires on email_verifications(expires_at);
