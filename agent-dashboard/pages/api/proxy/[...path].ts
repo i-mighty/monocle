@@ -44,13 +44,21 @@ export const config = {
   },
 };
 
+// Name of the backend's session cookie (authService.SESSION_COOKIE_NAME).
+const SESSION_COOKIE = "monocle_session";
+
+// Everything below matches against a NORMALIZED path (lowercased, slashes
+// collapsed and trimmed) because Express routes case-insensitively — an earlier
+// case-sensitive guard let `/v1/Agents/...` walk straight past it.
+function normalizePath(path: string): string {
+  return path.toLowerCase().replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+}
+
 /**
- * Paths where platform authority must never be granted to an anonymous caller.
- *
- * Matched against a normalized path (lowercased, slashes collapsed, leading and
- * trailing slashes stripped) because Express routes case-insensitively: an
- * earlier version of this guard used case-sensitive patterns, and `/v1/Agents/...`
- * walked straight past it. Normalizing here keeps both sides agreeing.
+ * Money paths: the injected platform key is WITHHELD here. These move funds, so a
+ * caller must present their own (agent-scoped) credential or be rejected 401 by
+ * the backend. Withholding fails safe — a path the list misses gets *less*
+ * authority, never more.
  */
 const MONEY_PATHS: RegExp[] = [
   /^(v1\/)?meter\/execute$/,          // debits caller, credits callee
@@ -60,13 +68,24 @@ const MONEY_PATHS: RegExp[] = [
   /^(v1\/)?agents\/[^/]+\/withdraw$/, // pays out to a wallet
 ];
 
-function normalizePath(path: string): string {
-  return path.toLowerCase().replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
+function movesMoney(path: string): boolean {
+  return MONEY_PATHS.some((re) => re.test(normalizePath(path)));
 }
 
-function movesMoney(path: string): boolean {
-  const p = normalizePath(path);
-  return MONEY_PATHS.some((re) => re.test(p));
+/**
+ * Sensitive paths: require a signed-in user session (KYC / ownership). A request
+ * without the session cookie is refused before the key is injected. Covers agent
+ * registration (which links the agent to its owner) on top of the money paths.
+ */
+const SENSITIVE_PATHS: RegExp[] = [
+  /^(v1\/)?payments\/settle(\/|$)/,
+  /^(v1\/)?agents\/register$/,
+  /^(v1\/)?agents\/[^/]+\/withdraw$/,
+  /^(v1\/)?deposits\/withdraw$/,
+];
+
+function isSensitive(path: string): boolean {
+  return SENSITIVE_PATHS.some((re) => re.test(normalizePath(path)));
 }
 
 const HOP_BY_HOP = new Set([
@@ -108,6 +127,21 @@ export default async function handler(
     ? [req.query.path as string]
     : [];
   const path = segments.join("/");
+
+  // Sensitive actions require a signed-in user. Without this, the x-api-key we
+  // inject below would let any anonymous browser request settle/withdraw/register.
+  // Presence is checked here; the backend validates the session for real and
+  // enforces email verification (KYC).
+  if (isSensitive(path) && !req.cookies?.[SESSION_COOKIE]) {
+    res.status(401).json({
+      success: false,
+      error: {
+        code: "AUTH_NOT_SIGNED_IN",
+        message: "Sign in and verify your email to perform this action",
+      },
+    });
+    return;
+  }
 
   const search = new URLSearchParams();
   for (const [k, v] of Object.entries(req.query)) {

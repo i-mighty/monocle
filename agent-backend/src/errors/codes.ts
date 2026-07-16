@@ -22,6 +22,17 @@ export const ErrorCodes = {
   AUTH_TOKEN_EXPIRED: "AUTH_TOKEN_EXPIRED",
   AUTH_INSUFFICIENT_PERMISSIONS: "AUTH_INSUFFICIENT_PERMISSIONS",
 
+  // Email/password login + email verification (KYC)
+  AUTH_EMAIL_ALREADY_REGISTERED: "AUTH_EMAIL_ALREADY_REGISTERED",
+  AUTH_INVALID_CREDENTIALS: "AUTH_INVALID_CREDENTIALS",
+  AUTH_EMAIL_NOT_VERIFIED: "AUTH_EMAIL_NOT_VERIFIED",
+  AUTH_VERIFICATION_INVALID: "AUTH_VERIFICATION_INVALID",
+  AUTH_VERIFICATION_EXPIRED: "AUTH_VERIFICATION_EXPIRED",
+  AUTH_EMAIL_ALREADY_VERIFIED: "AUTH_EMAIL_ALREADY_VERIFIED",
+  AUTH_NO_EMAIL_ON_ACCOUNT: "AUTH_NO_EMAIL_ON_ACCOUNT",
+  EMAIL_NOT_CONFIGURED: "EMAIL_NOT_CONFIGURED",
+  EMAIL_SEND_FAILED: "EMAIL_SEND_FAILED",
+
   // ==================== Agent Errors ====================
   AGENT_NOT_FOUND: "AGENT_NOT_FOUND",
   AGENT_ALREADY_EXISTS: "AGENT_ALREADY_EXISTS",
@@ -124,6 +135,17 @@ export const ErrorHttpStatus: Record<ErrorCode, number> = {
   AUTH_TOKEN_EXPIRED: 401,
   AUTH_INSUFFICIENT_PERMISSIONS: 403,
 
+  // Email/password + verification (KYC)
+  AUTH_EMAIL_ALREADY_REGISTERED: 409,
+  AUTH_INVALID_CREDENTIALS: 401,
+  AUTH_EMAIL_NOT_VERIFIED: 403,
+  AUTH_VERIFICATION_INVALID: 400,
+  AUTH_VERIFICATION_EXPIRED: 410,
+  AUTH_EMAIL_ALREADY_VERIFIED: 409,
+  AUTH_NO_EMAIL_ON_ACCOUNT: 400,
+  EMAIL_NOT_CONFIGURED: 500,
+  EMAIL_SEND_FAILED: 502,
+
   // Agent - 400/404/409
   AGENT_NOT_FOUND: 404,
   AGENT_ALREADY_EXISTS: 409,
@@ -223,6 +245,17 @@ export const ErrorMessages: Record<ErrorCode, string> = {
   AUTH_MISSING_HEADER: "Missing required authentication header",
   AUTH_TOKEN_EXPIRED: "Authentication token has expired",
   AUTH_INSUFFICIENT_PERMISSIONS: "Insufficient permissions for this action",
+
+  // Email/password + verification (KYC)
+  AUTH_EMAIL_ALREADY_REGISTERED: "An account with this email already exists",
+  AUTH_INVALID_CREDENTIALS: "Invalid email or password",
+  AUTH_EMAIL_NOT_VERIFIED: "Verify your email to perform this action",
+  AUTH_VERIFICATION_INVALID: "Invalid or already-used verification code",
+  AUTH_VERIFICATION_EXPIRED: "Verification code has expired",
+  AUTH_EMAIL_ALREADY_VERIFIED: "This email is already verified",
+  AUTH_NO_EMAIL_ON_ACCOUNT: "No email is attached to this account",
+  EMAIL_NOT_CONFIGURED: "Email delivery is not configured on the server",
+  EMAIL_SEND_FAILED: "Failed to send email",
 
   // Agent
   AGENT_NOT_FOUND: "Agent not found",

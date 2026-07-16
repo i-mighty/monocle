@@ -3,6 +3,7 @@ import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
 import { requireOwnAgent } from "../middleware/requireOwnAgent";
 import { hashAgentKey } from "../services/securityService";
 import { hasValidAdminKey, adminKeyAuth } from "../middleware/adminAuth";
+import { gateSensitiveActionByEmail, requireVerifiedEmail } from "../middleware/requireVerifiedEmail";
 import { query } from "../db/client";
 import { calculateCost, getAgentMetrics, PRICING_CONSTANTS } from "../services/pricingService";
 import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
@@ -64,7 +65,7 @@ function isValidHttpsUrl(s: unknown, allowHttp = false): s is string {
   }
 }
 
-router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
+router.post("/register", gateSensitiveActionByEmail, apiKeyAuth, asyncHandler(async (req, res) => {
   const { agentId, name, publicKey, ratePer1kTokens, categories, endpointUrl } = req.body;
 
   if (!agentId) {
@@ -192,14 +193,23 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
 }));
 
 // =============================================================================
-// PUBLIC REGISTRATION (No API Key Required - Marketplace Onboarding)
+// SELF-SERVE REGISTRATION (Signed-in + email-verified — Marketplace Onboarding)
 // =============================================================================
 
 /**
  * POST /agents/register/public
  *
- * Public endpoint for AI providers to register their agent on the Monocle network.
- * No API key required, but heavily rate-limited to prevent abuse.
+ * Self-serve endpoint for AI providers to register their agent on the Monocle
+ * network and mint an API key.
+ *
+ * KYC: requires a signed-in user with a VERIFIED email. This endpoint issues an
+ * API key and creates a marketplace identity, so leaving it anonymous would let
+ * anyone mint credentials and sidestep the email-verification gate that covers
+ * the rest of agent registration. Sign up (or sign in) and verify your email
+ * first, then call this with the session cookie. Still rate-limited 5/hour.
+ *
+ * NB: the path keeps the historical "/public" name for backwards compatibility;
+ * it is no longer unauthenticated.
  *
  * Request:
  *   {
@@ -219,9 +229,12 @@ router.post("/register", apiKeyAuth, asyncHandler(async (req, res) => {
  *     apiKey: string (one-time display - store this!)
  *     name, publicKey, ratePer1kTokens, taskTypes, createdAt
  *   }
+ *
+ * Errors: 401 if not signed in, 403 AUTH_EMAIL_NOT_VERIFIED if email unverified.
  */
 router.post("/register/public",
   rateLimit({ maxRequests: 5, windowMs: 60 * 60 * 1000, burstAllowance: 0 }), // 5/hour
+  requireVerifiedEmail,
   asyncHandler(async (req, res) => {
     const { name, endpoint, publicKey, ratePer1kTokens, taskTypes, bio, websiteUrl, ownerEmail, authHeader, solName } = req.body;
 
@@ -751,10 +764,9 @@ router.get("/:agentId/stats", asyncHandler(async (req, res) => {
  * Response:
  *   { txSignature, amountWithdrawn, remainingBalance }
  */
-// requireOwnAgent replaces the ownership check below, which never worked: it read
-// apiKeyRecord.agentId, a field that did not exist, so the condition was always
-// false and "you can only withdraw from your own agent account" never once fired.
-router.post("/:agentId/withdraw", apiKeyAuth, requireOwnAgent("params.agentId"), asyncHandler(async (req, res) => {
+// gateSensitiveActionByEmail (KYC) -> apiKeyAuth -> requireOwnAgent (replaces the
+// old ownership check that read apiKeyRecord.agentId — a field that never existed).
+router.post("/:agentId/withdraw", gateSensitiveActionByEmail, apiKeyAuth, requireOwnAgent("params.agentId"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
   const { amount } = req.body;
 
