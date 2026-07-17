@@ -250,7 +250,10 @@ export async function sensitiveFetch(path: string, init?: RequestInit) {
     const err = json?.error ?? {};
     throw new ApiError(err.code ?? "UNKNOWN", err.message ?? `HTTP ${res.status}`, res.status);
   }
-  return json;
+  // The backend wraps success payloads as { success, data }. Callers read the
+  // fields directly (result.agentId, result.txSignature, …), so unwrap the
+  // envelope here. Falls back to the raw body for any endpoint that returns flat.
+  return json?.data ?? json;
 }
 
 /** True when an error means "signed in but email not verified" (or not signed in). */
