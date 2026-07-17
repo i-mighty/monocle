@@ -7,6 +7,8 @@
     "build": "tsc",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:baseline": "node scripts/ensure-drizzle-baseline.js",
+    "db:migrate:deploy": "node scripts/ensure-drizzle-baseline.js && drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "openapi:validate": "npx @redocly/cli lint openapi.yaml",

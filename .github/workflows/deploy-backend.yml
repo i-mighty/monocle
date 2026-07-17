@@ -47,7 +47,13 @@ jobs:
             set -a
             . $REMOTE/deploy/backend.env
             set +a
-            npm run db:migrate
+            # db:migrate:deploy baselines the pre-Drizzle schema first. The prod DB
+            # was built from schema.sql before Drizzle existed, so its tables are
+            # already present but 0000 isn't recorded — plain `drizzle-kit migrate`
+            # then tries to re-CREATE existing tables and aborts the deploy (which is
+            # why it has failed at this step every time). See
+            # scripts/ensure-drizzle-baseline.js. Idempotent and non-destructive.
+            npm run db:migrate:deploy
 
             # Restart service
             sudo systemctl restart monocle-backend
