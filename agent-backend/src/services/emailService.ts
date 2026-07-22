@@ -1,22 +1,28 @@
 /**
- * Transactional email delivery via Resend (https://resend.com).
+ * Transactional email delivery. Supports two providers, chosen by config:
  *
- * Uses Resend's REST API over Node's global fetch — no SDK dependency. Config
- * comes from env:
- *   RESEND_API_KEY   required. API key from the Resend dashboard.
- *   EMAIL_FROM       required. Verified sender, e.g. "Monocle <noreply@yourdomain.com>".
- *   EMAIL_REPLY_TO   optional. Reply-To address.
+ *   SMTP (e.g. Brevo, Mailgun, SES) — set when SMTP_HOST is present:
+ *     SMTP_HOST   e.g. smtp-relay.brevo.com
+ *     SMTP_PORT   e.g. 587 (STARTTLS) or 465 (implicit TLS)
+ *     SMTP_USER   SMTP login
+ *     SMTP_PASS   SMTP password/key
+ *   Resend REST API — used when SMTP is not set but RESEND_API_KEY is:
+ *     RESEND_API_KEY
+ *   Shared:
+ *     EMAIL_FROM      sender, e.g. "Monocle <noreply@yourdomain.com>" (must be a
+ *                     validated sender for the provider)
+ *     EMAIL_REPLY_TO  optional Reply-To
  *
- * If RESEND_API_KEY is unset the service throws EMAIL_NOT_CONFIGURED, matching
- * how apiKeyAuth fails fast on missing config — callers surface a clear 500
- * rather than silently pretending to send.
+ * SMTP is preferred because a provider like Brevo can deliver to any recipient,
+ * whereas Resend on the shared onboarding domain only reaches the account owner.
  *
- * Non-production convenience: when NODE_ENV !== "production" and no API key is
- * set, emails are logged to the console instead of sent, so local dev and the
- * verification flow work without procuring a key. Production always requires
- * real config.
+ * If neither provider is configured: in non-production the email is logged to the
+ * console (so local dev works without a provider); in production it throws
+ * EMAIL_NOT_CONFIGURED so a missing config surfaces as a clear error rather than
+ * silently dropping mail.
  */
 
+import nodemailer, { Transporter } from "nodemailer";
 import { AppError, ErrorCodes } from "../errors";
 import { isProduction } from "../middleware/requireProduction";
 
@@ -30,38 +36,54 @@ export interface SendEmailInput {
 }
 
 function getFrom(): string {
-  // A sensible default keeps dev working; production must set a verified sender.
+  // A sensible default keeps dev working; production must set a validated sender.
   return process.env.EMAIL_FROM || "Monocle <onboarding@resend.dev>";
 }
 
-/**
- * Send an email. Throws AppError(EMAIL_NOT_CONFIGURED | EMAIL_SEND_FAILED) on
- * failure. In non-production without an API key, logs and resolves.
- */
-export async function sendEmail(input: SendEmailInput): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
+function smtpConfigured(): boolean {
+  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+}
 
-  if (!apiKey) {
-    if (!isProduction()) {
-      console.log(
-        `\n[emailService] RESEND_API_KEY not set — dev fallback, not sending.\n` +
-          `  To:      ${input.to}\n` +
-          `  Subject: ${input.subject}\n` +
-          `  Text:\n${input.text}\n`
-      );
-      return;
-    }
-    throw new AppError(ErrorCodes.EMAIL_NOT_CONFIGURED, { provider: "resend" });
+// One reused transporter (connection pooling) rather than one per email.
+let transporter: Transporter | null = null;
+function getTransporter(): Transporter {
+  if (transporter) return transporter;
+  const port = Number(process.env.SMTP_PORT) || 587;
+  transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port,
+    secure: port === 465, // 465 = implicit TLS; 587 uses STARTTLS
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+  return transporter;
+}
+
+async function sendViaSmtp(input: SendEmailInput): Promise<void> {
+  try {
+    await getTransporter().sendMail({
+      from: getFrom(),
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+      ...(process.env.EMAIL_REPLY_TO ? { replyTo: process.env.EMAIL_REPLY_TO } : {}),
+    });
+  } catch (err: any) {
+    throw new AppError(ErrorCodes.EMAIL_SEND_FAILED, {
+      provider: "smtp",
+      host: process.env.SMTP_HOST,
+      reason: err?.message ?? String(err),
+    });
   }
+}
 
+async function sendViaResend(input: SendEmailInput): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY!;
   let res: Response;
   try {
     res = await fetch(RESEND_ENDPOINT, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from: getFrom(),
         to: [input.to],
@@ -72,26 +94,38 @@ export async function sendEmail(input: SendEmailInput): Promise<void> {
       }),
     });
   } catch (err: any) {
-    throw new AppError(ErrorCodes.EMAIL_SEND_FAILED, {
-      provider: "resend",
-      reason: err?.message ?? String(err),
-    });
+    throw new AppError(ErrorCodes.EMAIL_SEND_FAILED, { provider: "resend", reason: err?.message ?? String(err) });
   }
-
   if (!res.ok) {
     let detail = "";
-    try {
-      detail = await res.text();
-    } catch {
-      /* ignore body read errors */
-    }
+    try { detail = await res.text(); } catch { /* ignore body read errors */ }
     throw new AppError(ErrorCodes.EMAIL_SEND_FAILED, {
       provider: "resend",
       status: res.status,
-      // Truncate provider error bodies so we don't leak or bloat responses.
       detail: detail.slice(0, 300),
     });
   }
+}
+
+/**
+ * Send an email via the configured provider. Throws
+ * AppError(EMAIL_NOT_CONFIGURED | EMAIL_SEND_FAILED) on failure. In non-production
+ * with no provider configured, logs and resolves.
+ */
+export async function sendEmail(input: SendEmailInput): Promise<void> {
+  if (smtpConfigured()) return sendViaSmtp(input);
+  if (process.env.RESEND_API_KEY) return sendViaResend(input);
+
+  if (!isProduction()) {
+    console.log(
+      `\n[emailService] no email provider configured — dev fallback, not sending.\n` +
+        `  To:      ${input.to}\n` +
+        `  Subject: ${input.subject}\n` +
+        `  Text:\n${input.text}\n`
+    );
+    return;
+  }
+  throw new AppError(ErrorCodes.EMAIL_NOT_CONFIGURED, { provider: "none" });
 }
 
 /**
