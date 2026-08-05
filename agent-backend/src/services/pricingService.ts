@@ -337,32 +337,41 @@ export async function onToolExecuted(
   try {
     await client.query("BEGIN");
 
-    // 1. Insert tool usage record with quote reference if available
+    // 1. Deduct from caller's balance atomically with a conditional check
+    const deductResult = await client.query(
+      `UPDATE agents
+       SET balance_lamports = balance_lamports - $1
+       WHERE id = $2 AND balance_lamports >= $1
+       RETURNING balance_lamports`,
+      [cost, callerId]
+    );
+
+    if (deductResult.rowCount === 0) {
+      throw new Error(
+        `Insufficient balance: ${callerId} has insufficient funds for cost ${cost} lamports`
+      );
+    }
+
+    // 2. Insert tool usage record with quote reference if available
     const usageResult = await client.query(
       `INSERT INTO tool_usage 
        (caller_agent_id, callee_agent_id, tool_id, tool_name, tokens_used, rate_per_1k_tokens, cost_lamports, quote_id, quoted_at, quote_expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
       [
-        callerId, 
-        calleeId, 
-        toolId, 
-        toolName, 
-        tokensUsed, 
-        ratePer1kTokens, 
+        callerId,
+        calleeId,
+        toolId,
+        toolName,
+        tokensUsed,
+        ratePer1kTokens,
         cost,
         quoteInfo?.quoteId || null,
         quoteInfo?.quotedAt || null,
-        quoteInfo?.quoteExpiresAt || null
+        quoteInfo?.quoteExpiresAt || null,
       ]
     );
     usageId = usageResult.rows[0].id;
-
-    // 2. Deduct from caller's balance
-    await client.query(
-      "UPDATE agents SET balance_lamports = balance_lamports - $1 WHERE id = $2",
-      [cost, callerId]
-    );
 
     // 3. Credit to callee's pending balance
     await client.query(
