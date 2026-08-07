@@ -70,7 +70,7 @@ function setSessionCookie(res: Parameters<typeof sendSuccess>[0], user: UserReco
 
 /**
  * Best-effort: issue a verification code and email it. Email delivery failures
- * are swallowed so a flaky mail provider can't block registration — the user
+ * are swallowed so a flaky mail provider can't block registration - the user
  * can re-request a code via /email/send-code. Returns whether the email sent.
  */
 async function issueVerification(user: UserRecord): Promise<boolean> {
@@ -228,8 +228,10 @@ router.post(
       throw new AppError(ErrorCodes.AUTH_INVALID_CREDENTIALS);
     }
 
+    const verificationEmailSent = user.emailVerifiedAt ? undefined : await issueVerification(user);
+
     setSessionCookie(res, user);
-    sendSuccess(res, { user: publicUser(user) });
+    sendSuccess(res, { user: publicUser(user), verificationEmailSent });
   })
 );
 
@@ -336,7 +338,7 @@ router.post(
  * hatch: pre-seed a demo account, or rescue a user when mail delivery is down.
  *
  * Admin-key gated (adminKeyAuth denies everything when ADMIN_API_KEY is unset),
- * and never touches the user's own session — it only flips the KYC flag.
+ * and never touches the user's own session - it only flips the KYC flag.
  */
 router.post(
   "/admin/verify-email",
@@ -366,7 +368,7 @@ router.post(
 /**
  * POST /v1/auth/logout
  *
- * Clears the session cookie. Doesn't blacklist the JWT — for v1 we accept
+ * Clears the session cookie. Doesn't blacklist the JWT - for v1 we accept
  * that a logged-out token is valid until expiry (24h). Acceptable risk
  * given the short TTL; revisit if longer sessions are introduced.
  */

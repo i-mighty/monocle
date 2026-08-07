@@ -40,13 +40,16 @@ export default function Login() {
       goToApp();
       return;
     }
-    // Not verified yet — move to the code step.
     setStep("verify");
-    setNotice(
-      sent === false
-        ? "Account ready, but we couldn't send the email. Tap Resend to try again."
-        : `We sent a 6-digit code to ${user.email}. Enter it below to verify.`
-    );
+    if (sent === false) {
+      setNotice("Account ready, but we couldn't send the email. Tap Resend to try again.");
+      return;
+    }
+    if (sent === true) {
+      setNotice(`We sent a 6-digit code to ${user.email}. Enter it below to verify.`);
+      return;
+    }
+    setNotice(`Account ready. Tap Resend to get a fresh 6-digit code at ${user.email ?? "your email"}.`);
   }
 
   async function handleCredentials() {
@@ -62,8 +65,8 @@ export default function Login() {
         const { user, verificationEmailSent } = await apiRegister(email.trim(), password);
         afterAuth(user, verificationEmailSent);
       } else {
-        const { user } = await apiLogin(email.trim(), password);
-        afterAuth(user);
+        const { user, verificationEmailSent } = await apiLogin(email.trim(), password);
+        afterAuth(user, verificationEmailSent);
       }
     } catch (err) {
       setError(humanize(err));
@@ -95,8 +98,12 @@ export default function Login() {
     setNotice(null);
     setBusy(true);
     try {
-      const { email: to } = await sendVerificationCode();
-      setNotice(`New code sent to ${to}.`);
+      const { email: to, sent } = await sendVerificationCode();
+      setNotice(
+        sent
+          ? `New code sent to ${to}.`
+          : "We created a fresh code, but couldn't deliver the email. Check the mail provider and try again."
+      );
     } catch (err) {
       setError(humanize(err));
     } finally {
@@ -230,7 +237,7 @@ export default function Login() {
             <PrimaryButton busy={false} onClick={handleSaveKey}>
               Continue with API key
             </PrimaryButton>
-            {savedKey && <p className="text-emerald-400 mt-4 text-sm text-center">Saved! Redirecting…</p>}
+            {savedKey && <p className="text-emerald-400 mt-4 text-sm text-center">Saved! Redirecting...</p>}
           </div>
         )}
 
@@ -322,7 +329,7 @@ function PrimaryButton({ busy, onClick, children }: any) {
       disabled={busy}
       className="w-full py-3 bg-white text-zinc-900 font-semibold rounded-xl hover:bg-zinc-200 transition-colors disabled:opacity-50"
     >
-      {busy ? "…" : children}
+      {busy ? "..." : children}
     </button>
   );
 }

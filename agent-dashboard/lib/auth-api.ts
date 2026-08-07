@@ -1,7 +1,7 @@
 /**
  * Session-based auth client (email/password + email verification for KYC).
  *
- * Always routed through the same-origin proxy — deliberately NOT via
+ * Always routed through the same-origin proxy - deliberately NOT via
  * NEXT_PUBLIC_BACKEND_URL. The HttpOnly `monocle_session` cookie is scoped to
  * whichever origin sets it, so if login went straight to the backend's domain
  * the cookie would land there, while sensitiveFetch (which goes through the
@@ -82,7 +82,7 @@ export async function register(email: string, password: string) {
 }
 
 export async function login(email: string, password: string) {
-  return post<{ user: AuthUser }>("/v1/auth/login", { email, password });
+  return post<{ user: AuthUser; verificationEmailSent?: boolean }>("/v1/auth/login", { email, password });
 }
 
 export async function logout() {
