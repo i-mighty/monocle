@@ -53,9 +53,21 @@ function getTransporter(): Transporter {
     host: process.env.SMTP_HOST,
     port,
     secure: port === 465, // 465 = implicit TLS; 587 uses STARTTLS
+    requireTLS: port !== 465,
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 15_000,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   });
   return transporter;
+}
+
+function describeSmtpError(err: any): { reason: string; hint?: string } {
+  const reason = err?.response || err?.message || String(err);
+  const hint = typeof reason === "string" && reason.includes("Unauthorized IP address")
+    ? "Brevo blocked this server IP. Add the backend host IP to Brevo Authorized IPs before retrying."
+    : undefined;
+  return { reason, hint };
 }
 
 async function sendViaSmtp(input: SendEmailInput): Promise<void> {
@@ -69,10 +81,12 @@ async function sendViaSmtp(input: SendEmailInput): Promise<void> {
       ...(process.env.EMAIL_REPLY_TO ? { replyTo: process.env.EMAIL_REPLY_TO } : {}),
     });
   } catch (err: any) {
+    const { reason, hint } = describeSmtpError(err);
     throw new AppError(ErrorCodes.EMAIL_SEND_FAILED, {
       provider: "smtp",
       host: process.env.SMTP_HOST,
-      reason: err?.message ?? String(err),
+      reason,
+      ...(hint ? { hint } : {}),
     });
   }
 }
