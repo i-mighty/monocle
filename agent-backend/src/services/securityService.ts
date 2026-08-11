@@ -91,6 +91,16 @@ export interface ApiKeyRecord {
    * requireOwnAgent.
    */
   agentId: string | null;
+  /**
+   * The user this key belongs to, or null for agent/platform keys.
+   *
+   * Set for developer keys (`Mon_...`), which are issued to a human once their
+   * email is verified. Like agentId, a non-null userId narrows what the key may
+   * do rather than widening it: it identifies whose key this is, and is NOT a
+   * grant to act as any agent that user happens to own. Money routes still
+   * require agentId (see requireOwnAgent), which a developer key never has.
+   */
+  userId: string | null;
   developerId: string | null;
   name: string;
   keyPrefix: string;
@@ -384,6 +394,7 @@ async function validateAgentKey(key: string): Promise<ApiKeyValidationResult> {
     keyRecord: {
       id: row.id,
       agentId: row.agent_id ?? null,
+      userId: null,
       developerId: row.developer_id ?? null,
       name: row.name ?? "Agent Key",
       keyPrefix: key.slice(0, 8),
@@ -404,9 +415,202 @@ async function validateAgentKey(key: string): Promise<ApiKeyValidationResult> {
   };
 }
 
+// =============================================================================
+// DEVELOPER KEYS (`Mon_...`)
+// =============================================================================
+
+/** Prefix for developer-facing keys. Distinct from `mk_` (agent) and `agp_` (v2). */
+export const DEVELOPER_KEY_PREFIX = "Mon_";
+
+/**
+ * Scopes a developer key carries by default.
+ *
+ * Read access plus agent registration — enough for a signed-in developer to run
+ * the dashboard and register agents they own. Deliberately excludes write:payments:
+ * moving money requires an agent-scoped key, and granting it here would be
+ * meaningless anyway since requireOwnAgent rejects a key with no agentId.
+ */
+export const DEFAULT_DEVELOPER_SCOPES: ApiKeyScope[] = [
+  "read:agents",
+  "read:analytics",
+  "read:activity",
+  "read:payments",
+  "write:agents",
+];
+
+/**
+ * Generate a developer key: `Mon_` + 32 cryptographically random bytes, base64url.
+ *
+ * base64url so the key is safe in headers, query strings and env files without
+ * escaping. 32 bytes (~256 bits) puts it far beyond brute force, which is what
+ * makes the unsalted sha256 below an acceptable way to store it.
+ */
+export function generateDeveloperKey(): string {
+  return `${DEVELOPER_KEY_PREFIX}${crypto.randomBytes(32).toString("base64url")}`;
+}
+
+/**
+ * Mint a developer key for a user and store ONLY its digest.
+ *
+ * Uses hashAgentKey (sha256), the same one-way storage the agent keys use, rather
+ * than the reversible encryption or the PBKDF2 prefix-lookup scheme in
+ * api_keys_v2. Two reasons: lookup is a single indexed probe on the digest, and
+ * there is deliberately no path from a stored row back to the key — which is why
+ * the dashboard offers "Regenerate" and not "Reveal".
+ *
+ * The caller is handed the plaintext exactly once and must show it immediately;
+ * it cannot be recovered afterwards.
+ *
+ * `name` and `scopes` are persisted per-key so issuing a developer several named
+ * keys later needs no migration, even though today everyone gets one "Default".
+ */
+export async function createDeveloperKey(input: {
+  userId: string;
+  name?: string;
+  scopes?: ApiKeyScope[];
+}): Promise<{ plainKey: string; id: string; name: string; scopes: ApiKeyScope[]; createdAt: Date }> {
+  const plainKey = generateDeveloperKey();
+  const name = input.name?.trim() || "Default";
+  const scopes = input.scopes ?? DEFAULT_DEVELOPER_SCOPES;
+
+  const result = await query(
+    `INSERT INTO api_keys (user_id, key_hash, name, scopes, is_active)
+     VALUES ($1, $2, $3, $4, true)
+     RETURNING id, name, scopes, created_at`,
+    [input.userId, hashAgentKey(plainKey), name, JSON.stringify(scopes)]
+  );
+
+  const row = result.rows[0];
+  return {
+    plainKey,
+    id: row.id,
+    name: row.name,
+    scopes,
+    createdAt: row.created_at ?? new Date(),
+  };
+}
+
+/**
+ * Revoke every active developer key for a user. Returns how many were revoked.
+ *
+ * Rows are kept and marked revoked rather than deleted, so a compromised key
+ * leaves a trail. The partial unique index only covers active, unrevoked rows,
+ * so this is what makes room for the replacement key.
+ */
+export async function revokeDeveloperKeysForUser(userId: string): Promise<number> {
+  const result = await query(
+    `UPDATE api_keys
+        SET is_active = false, revoked_at = now()
+      WHERE user_id = $1 AND is_active = true AND revoked_at IS NULL`,
+    [userId]
+  );
+  return result.rowCount ?? 0;
+}
+
+/**
+ * Metadata for a user's active developer key — never the key or its digest.
+ *
+ * This is what the dashboard is allowed to see: enough to confirm a key exists
+ * and when it was issued, with nothing that could reconstruct it.
+ */
+export async function getDeveloperKeyMetadata(
+  userId: string
+): Promise<{ id: string; name: string; scopes: ApiKeyScope[]; createdAt: Date; lastUsedAt: Date | null } | null> {
+  const result = await query(
+    `SELECT id, name, scopes, created_at, last_used_at
+       FROM api_keys
+      WHERE user_id = $1 AND is_active = true AND revoked_at IS NULL
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [userId]
+  );
+  if (result.rows.length === 0) return null;
+
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    name: row.name ?? "Default",
+    scopes: parseScopes(row.scopes, DEFAULT_DEVELOPER_SCOPES),
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at ?? null,
+  };
+}
+
+/** Parse a JSON-encoded scopes column, falling back when absent or malformed. */
+function parseScopes(raw: unknown, fallback: ApiKeyScope[]): ApiKeyScope[] {
+  if (!raw) return fallback;
+  if (Array.isArray(raw)) return raw as ApiKeyScope[];
+  try {
+    const parsed = JSON.parse(String(raw));
+    return Array.isArray(parsed) ? (parsed as ApiKeyScope[]) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Validate a developer key (`Mon_...`) against api_keys.key_hash.
+ *
+ * Resolves to a record with a userId and — importantly — agentId null, so a
+ * developer key authenticates its owner for reads and agent registration but is
+ * still refused by requireOwnAgent on every route that moves money. Widening
+ * that boundary is a deliberate future decision, not something this lookup
+ * should quietly grant.
+ */
+async function validateDeveloperKey(key: string): Promise<ApiKeyValidationResult> {
+  const result = await query(
+    `SELECT k.id, k.user_id, k.name, k.scopes, k.is_active, k.revoked_at,
+            k.created_at, k.last_used_at
+       FROM api_keys k
+      WHERE k.key_hash = $1 AND k.user_id IS NOT NULL`,
+    [hashAgentKey(key)]
+  );
+  if (result.rows.length === 0) return { valid: false, error: "Invalid API key" };
+
+  const row = result.rows[0];
+  if (row.is_active === false || row.revoked_at) {
+    return { valid: false, error: "API key revoked" };
+  }
+
+  // Best-effort: a failed usage stamp must never fail the request.
+  query(`UPDATE api_keys SET last_used_at = now() WHERE id = $1`, [row.id]).catch(
+    (err) => console.error("[SecurityService] developer key usage stamp failed:", err?.message ?? err)
+  );
+
+  return {
+    valid: true,
+    keyRecord: {
+      id: row.id,
+      agentId: null,
+      userId: row.user_id,
+      developerId: null,
+      name: row.name ?? "Default",
+      keyPrefix: DEVELOPER_KEY_PREFIX,
+      keyHash: "",
+      scopes: parseScopes(row.scopes, DEFAULT_DEVELOPER_SCOPES),
+      rateLimit: 60,
+      rateLimitBurst: 10,
+      expiresAt: null,
+      lastUsedAt: row.last_used_at ?? null,
+      lastUsedIp: null,
+      isActive: true,
+      version: 1,
+      previousKeyHash: null,
+      rotatedAt: null,
+      createdAt: row.created_at ?? new Date(),
+      updatedAt: new Date(),
+    },
+  };
+}
+
 export async function validateApiKey(
   key: string
 ): Promise<ApiKeyValidationResult> {
+  // Developer key (`Mon_...`): resolves to a user, never to an agent.
+  if (key.startsWith(DEVELOPER_KEY_PREFIX)) {
+    return validateDeveloperKey(key);
+  }
+
   // Agent-scoped key (`mk_...`): resolves to a specific agent.
   if (key.startsWith("mk_")) {
     return validateAgentKey(key);
@@ -487,6 +691,7 @@ async function validateLegacyApiKey(key: string): Promise<ApiKeyValidationResult
       keyRecord: {
         id: "legacy",
         agentId: null,
+        userId: null,
         developerId: "system",
         name: "Legacy API Key",
         keyPrefix: "legacy",
@@ -617,6 +822,9 @@ function formatApiKeyRecord(row: any): ApiKeyRecord {
     // api_keys_v2 rows are developer-scoped, not agent-scoped: they act as a
     // developer, never as a specific agent, so they cannot move an agent's money.
     agentId: row.agent_id ?? null,
+    // api_keys_v2 has no user_id: these predate developer keys and belong to the
+    // free-text developer_id owner instead.
+    userId: null,
     developerId: row.developer_id ?? null,
     name: row.name,
     keyPrefix: row.key_prefix,
