@@ -243,11 +243,24 @@ export function sensitiveRateLimit(): (req: Request, res: Response, next: NextFu
 
 /**
  * IP-based rate limit (ignores API key)
+ *
+ * Each distinct configuration gets its own counter. Previously every instance
+ * keyed on `ip-only:${ip}` alone, so two limiters mounted on the same router
+ * shared a single bucket: routes/auth.ts has a broad 30/min limiter on the whole
+ * router plus a stricter 12/min one on the email surface, and the strict limiter
+ * was rejecting on a count it had not made. Reading /v1/auth/me repeatedly — a
+ * cheap route the strict limiter does not govern — could therefore lock a user
+ * out of registering or signing in long before either budget was actually spent.
+ *
+ * `bucket` defaults to the limits themselves, so limiters that genuinely share a
+ * policy still share a counter, while differing ones no longer interfere.
  */
 export function ipRateLimit(
-  config?: Partial<RateLimitConfig>
+  config?: Partial<RateLimitConfig> & { bucket?: string }
 ): (req: Request, res: Response, next: NextFunction) => void {
-  const defaultConfig = { ...RATE_LIMIT_TIERS.unauthenticated, ...config };
+  const { bucket, ...rest } = config ?? {};
+  const defaultConfig = { ...RATE_LIMIT_TIERS.unauthenticated, ...rest };
+  const bucketKey = bucket ?? `${defaultConfig.maxRequests}/${defaultConfig.windowMs}`;
 
   return (req: Request, res: Response, next: NextFunction) => {
     const ip =
@@ -256,7 +269,7 @@ export function ipRateLimit(
       req.socket.remoteAddress ||
       "unknown";
 
-    const clientId = `ip-only:${ip}`;
+    const clientId = `ip-only:${bucketKey}:${ip}`;
     const rateLimitStore = getStore();
 
     const now = Date.now();

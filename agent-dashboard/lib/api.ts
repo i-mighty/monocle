@@ -146,54 +146,61 @@ export interface DeployedAgent {
 }
 
 /**
- * Fetch deployed/registered agents.
- * Requires API key authentication via X-API-Key header.
+ * Reads below go through the same-origin proxy, which attaches the server-side
+ * key for non-money paths. They used to take an `apiKey` argument sourced from
+ * localStorage, which is why the UI had to ask the developer to paste one in —
+ * and why every user ended up holding the shared platform key. The browser now
+ * sends no key of its own for these.
  */
-export const getDeployedAgents = (apiKey: string, limit: number = 50) => 
-  fetchJson(`/v1/agents?limit=${limit}`, {
-    headers: { "X-API-Key": apiKey }
-  });
 
-/**
- * Get agent metrics (calls, spend, etc.)
- */
-export const getAgentDetails = (apiKey: string, agentId: string) =>
-  fetchJson(`/v1/agents/${agentId}`, {
-    headers: { "X-API-Key": apiKey }
-  });
+/** Fetch deployed/registered agents. */
+export const getDeployedAgents = (limit: number = 50) =>
+  authFetch(`/v1/agents?limit=${limit}`);
 
-/**
- * Get agent metrics
- */
-export const getAgentMetrics = (apiKey: string, agentId: string) =>
-  fetchJson(`/v1/agents/${agentId}/metrics`, {
-    headers: { "X-API-Key": apiKey }
-  });
+/** Get a single agent. */
+export const getAgentDetails = (agentId: string) =>
+  authFetch(`/v1/agents/${agentId}`);
+
+/** Get agent metrics (calls, spend, etc.) */
+export const getAgentMetrics = (agentId: string) =>
+  authFetch(`/v1/agents/${agentId}/metrics`);
 
 // ==================== AGENT ECONOMY API ====================
 
 /**
- * Helper to get API key from localStorage
- */
-export function getStoredApiKey(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("apiKey");
-}
-
-/**
- * Authenticated fetch helper
+ * Fetch for the dashboard's own read calls.
+ *
+ * Routed through the same-origin proxy so the session cookie rides along and the
+ * proxy can attach the server-side key on non-money paths. Previously this read a
+ * key out of localStorage and threw "API key required" when absent, which is what
+ * forced the "Enter API Key" prompt into the UI.
+ *
+ * The developer's own `Mon_` key is deliberately not used here. It is issued for
+ * calling Monocle from their services; the dashboard authenticates as the person
+ * signed into it, and the key is unrecoverable after creation anyway.
  */
 export async function authFetch(path: string, init?: RequestInit) {
-  const apiKey = getStoredApiKey();
-  if (!apiKey) throw new Error("API key required. Please log in.");
-
-  return fetchJson(path, {
+  const res = await fetch(`${PROXY_BASE}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
-      "X-API-Key": apiKey,
-      ...(init?.headers || {})
-    }
+      "Content-Type": "application/json",
+      ...(init?.headers || {}),
+    },
   });
+
+  let json: any = null;
+  try {
+    json = await res.json();
+  } catch {
+    /* empty or non-JSON body */
+  }
+
+  if (!res.ok) {
+    const err = json?.error ?? {};
+    throw new ApiError(err.code ?? "UNKNOWN", err.message ?? `HTTP ${res.status}`, res.status);
+  }
+  return json?.data ?? json;
 }
 
 // =============================================================================
@@ -223,18 +230,23 @@ export class ApiError extends Error {
  * only enforce verification on requests that actually carry a session. The
  * proxy also refuses these paths outright when no session is present.
  *
- * The stored API key is forwarded only as a fallback for deployments that
- * haven't set MONOCLE_API_KEY on the dashboard server; when it is set, the
- * proxy overwrites the header with the server-side key.
+ * No API key is attached from the browser. This previously forwarded whatever
+ * was in localStorage, which only ever had a value because the UI asked the
+ * developer to paste one in; with that prompt gone the fallback had nothing to
+ * read and was dead code.
+ *
+ * Note this does not by itself make the money paths work from the dashboard. The
+ * proxy deliberately withholds the platform key on those, and they require an
+ * agent-scoped (`mk_`) key that names the agent whose funds are moving — a
+ * developer key never can, by design (see requireOwnAgent). Wiring the dashboard
+ * up to agent-scoped keys is separate work.
  */
 export async function sensitiveFetch(path: string, init?: RequestInit) {
-  const apiKey = getStoredApiKey();
   const res = await fetch(`${PROXY_BASE}${path}`, {
     ...init,
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
       ...(init?.headers || {}),
     },
   });
@@ -250,7 +262,10 @@ export async function sensitiveFetch(path: string, init?: RequestInit) {
     const err = json?.error ?? {};
     throw new ApiError(err.code ?? "UNKNOWN", err.message ?? `HTTP ${res.status}`, res.status);
   }
-  return json;
+  // The backend wraps success payloads as { success, data }. Callers read the
+  // fields directly (result.agentId, result.txSignature, …), so unwrap the
+  // envelope here. Falls back to the raw body for any endpoint that returns flat.
+  return json?.data ?? json;
 }
 
 /** True when an error means "signed in but email not verified" (or not signed in). */

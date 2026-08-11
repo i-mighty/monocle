@@ -70,6 +70,25 @@ function describeSmtpError(err: any): { reason: string; hint?: string } {
   return { reason, hint };
 }
 
+/**
+ * Strip anything credential-shaped out of an SMTP error before it can reach a
+ * client. AppError.details is serialised straight into the response body, and an
+ * SMTP rejection is one of the few strings on the server that routinely quotes
+ * the account it just refused — "535 Authentication failed for user@..." — so the
+ * raw text is exactly the wrong thing to hand back.
+ */
+function redactSmtpReason(reason: string): string {
+  let out = String(reason);
+  for (const name of ["SMTP_USER", "SMTP_PASS", "SMTP_HOST"]) {
+    const value = process.env[name];
+    if (value && value.length >= 4) {
+      out = out.split(value).join(`[redacted:${name}]`);
+    }
+  }
+  // Catch-all for addresses the provider echoes that are not our configured user.
+  return out.replace(/[\w.+-]+@[\w.-]+\.\w+/g, "[redacted:email]");
+}
+
 async function sendViaSmtp(input: SendEmailInput): Promise<void> {
   try {
     await getTransporter().sendMail({
@@ -82,10 +101,16 @@ async function sendViaSmtp(input: SendEmailInput): Promise<void> {
     });
   } catch (err: any) {
     const { reason, hint } = describeSmtpError(err);
+
+    // Full detail, including the host and unredacted provider response, goes to
+    // the operator via logs — the place that can act on it.
+    console.error(`[emailService] SMTP send failed via ${process.env.SMTP_HOST}:`, reason);
+
+    // The client gets the failure and an actionable hint, but no infrastructure
+    // hostname and no provider text that might quote our SMTP account.
     throw new AppError(ErrorCodes.EMAIL_SEND_FAILED, {
       provider: "smtp",
-      host: process.env.SMTP_HOST,
-      reason,
+      reason: redactSmtpReason(reason),
       ...(hint ? { hint } : {}),
     });
   }

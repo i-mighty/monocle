@@ -1,5 +1,8 @@
 ﻿import { useEffect, useState } from "react";
+import Link from "next/link";
 import Layout from "../components/Layout";
+import ApiKeyPanel from "../components/ApiKeyPanel";
+import { getMe } from "../lib/auth-api";
 import {
   registerAgent,
   getDeployedAgents,
@@ -13,7 +16,6 @@ import {
   settlePayment,
   getPlatformRevenue,
   topUpAgent,
-  getStoredApiKey,
   isKycError,
   getDepositAddress,
   createDepositIntent,
@@ -59,9 +61,9 @@ interface AgentOption {
 // =============================================================================
 
 export default function EconomyControlPanel() {
-  // Auth state
-  const [apiKey, setApiKey] = useState<string | null>(null);
+  // Auth state — resolved from the session cookie, never from a pasted key.
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Agent list
   const [agents, setAgents] = useState<AgentOption[]>([]);
@@ -115,13 +117,23 @@ export default function EconomyControlPanel() {
   // EFFECTS
   // =============================================================================
 
+  // Identity comes from the session, not from a key the user pasted in. The
+  // dashboard's own reads are authorised by the same-origin proxy; the
+  // developer's `Mon_` key is for their services, not for this page.
   useEffect(() => {
-    const key = getStoredApiKey();
-    if (key) {
-      setApiKey(key);
-      setIsAuthenticated(true);
-      loadAgents(key);
-    }
+    (async () => {
+      try {
+        const user = await getMe();
+        if (user) {
+          setIsAuthenticated(true);
+          loadAgents();
+        }
+      } catch {
+        /* treated as signed out */
+      } finally {
+        setAuthLoading(false);
+      }
+    })();
     loadPricingConstants();
   }, []);
 
@@ -150,9 +162,9 @@ export default function EconomyControlPanel() {
   // DATA LOADERS
   // =============================================================================
 
-  const loadAgents = async (key?: string) => {
+  const loadAgents = async () => {
     try {
-      const data = await getDeployedAgents(key || apiKey!, 100);
+      const data = await getDeployedAgents(100);
       const agentList = (data.data || data || []).map((a: DeployedAgent) => ({
         id: a.agentId,
         name: a.name || a.agentId,
@@ -238,18 +250,6 @@ export default function EconomyControlPanel() {
   // =============================================================================
   // ACTIONS
   // =============================================================================
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    const input = (document.getElementById("apiKeyInput") as HTMLInputElement)?.value;
-    if (input) {
-      localStorage.setItem("apiKey", input);
-      setApiKey(input);
-      setIsAuthenticated(true);
-      loadAgents(input);
-      showMessage("success", "Logged in successfully");
-    }
-  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -420,22 +420,30 @@ export default function EconomyControlPanel() {
   // RENDER
   // =============================================================================
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <p className="text-zinc-500 text-sm">Loading...</p>
+      </div>
+    );
+  }
+
+  // Signed out. Previously this asked the developer to paste an API key, which
+  // made every user a holder of the shared platform key. Identity now comes from
+  // the session cookie, exactly as it does for agent ownership and the KYC gate.
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <form onSubmit={handleLogin} className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-8 w-[360px]">
+        <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-8 w-[360px] text-center">
           <h1 className="text-white text-2xl font-bold mb-2">Economy Control Panel</h1>
-          <p className="text-zinc-500 text-sm mb-6">Enter your API key to access the control panel</p>
-          <input
-            id="apiKeyInput"
-            type="password"
-            placeholder="Enter API Key"
-            className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm mb-4 focus:outline-none focus:border-zinc-600 transition-colors"
-          />
-          <button type="submit" className="w-full py-3 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors">
-            Login
-          </button>
-        </form>
+          <p className="text-zinc-500 text-sm mb-6">Sign in to access the control panel.</p>
+          <Link
+            href="/login"
+            className="block w-full py-3 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors"
+          >
+            Sign in
+          </Link>
+        </div>
       </div>
     );
   }
@@ -455,6 +463,13 @@ export default function EconomyControlPanel() {
       <div className="mb-6">
         <h1 className="text-xl font-bold text-white">Economy Control Panel</h1>
         <p className="text-zinc-500 text-sm">Register agents, execute calls, view economics, and manage settlements</p>
+      </div>
+
+      {/* Developer API key — replaces the "Enter API Key" gate this page used to
+          show. Nothing to paste in; the key is issued at verification and can
+          only be replaced, never re-read. */}
+      <div className="mb-6 max-w-xl">
+        <ApiKeyPanel />
       </div>
 
       {/* Tab Navigation */}

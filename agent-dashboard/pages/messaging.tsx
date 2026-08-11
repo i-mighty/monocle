@@ -33,13 +33,13 @@ export default function Messaging() {
 
   const registerAgent = async () => {
     if (!myAgentId) return log("Enter your agent ID");
-    const apiKey = typeof window !== "undefined" ? localStorage.getItem("apiKey") : null;
-    if (!apiKey) {
-      return log("Error: API key required. Please log in first.");
-    }
+    // Authorised by the session through the same-origin proxy. This used to read
+    // a key out of localStorage, which only had a value because the login page
+    // asked the user to paste one in; that prompt is gone.
     const res = await fetch(`${BACKEND_URL}/verify-identity`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         agentId: myAgentId,
         firstName: myAgentId.split("-")[0] || "Agent",

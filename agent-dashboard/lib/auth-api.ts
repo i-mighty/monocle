@@ -103,6 +103,47 @@ export async function sendVerificationCode() {
   return post<{ sent: boolean; email: string }>("/v1/auth/email/send-code");
 }
 
+/**
+ * Confirm the signup code. On first success the backend also mints the developer's
+ * API key and returns it here — the only response that ever carries the plaintext.
+ * Show it immediately; it cannot be fetched again.
+ */
 export async function verifyEmail(code: string) {
-  return post<{ user: AuthUser }>("/v1/auth/email/verify", { code });
+  return post<{ user: AuthUser; apiKey: string | null }>("/v1/auth/email/verify", { code });
+}
+
+// ---- developer API key ------------------------------------------------------
+
+export interface ApiKeyMetadata {
+  id: string;
+  name: string;
+  scopes: string[];
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/**
+ * Metadata about the signed-in developer's key, or null if they have none.
+ *
+ * Deliberately cannot return the key itself: it is stored as a one-way digest, so
+ * there is nothing to return. This is what lets the UI say "you have a key" while
+ * offering Regenerate rather than Reveal.
+ */
+export async function getApiKeyMetadata() {
+  return request<{ key: ApiKeyMetadata | null }>("/v1/auth/api-key", { method: "GET" });
+}
+
+/** Email a fresh step-up code for regeneration. Rate limited server-side. */
+export async function sendRegenerateCode() {
+  return post<{ sent: boolean; email: string; expiresAt: string }>(
+    "/v1/auth/api-key/regenerate/send-code"
+  );
+}
+
+/**
+ * Invalidate the current key and issue a new one. Returns the new plaintext once.
+ * Any service still using the old key stops working the moment this resolves.
+ */
+export async function regenerateApiKey(code: string) {
+  return post<{ apiKey: string; revokedCount: number }>("/v1/auth/api-key/regenerate", { code });
 }

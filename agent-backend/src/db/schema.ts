@@ -19,6 +19,7 @@ import {
   uniqueIndex,
   index,
   check,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
@@ -173,17 +174,58 @@ export const tools = pgTable(
 
 // =============================================================================
 // API_KEYS: Authentication
+//
+// A key names exactly one of three things, and that identity is what every
+// authorization decision hangs off:
+//
+//   agentId  — agent-scoped key (`mk_...`), may act only as that agent
+//   userId   — developer key (`Mon_...`), issued once email verification passes
+//   developerId — legacy free-text owner, kept for pre-existing rows
+//
+// The `api_keys_identifies_someone` check (0001, widened in 0003) enforces that
+// at least one is present: a key naming nobody cannot be authorised to move
+// anybody's money. A null agentId is deliberately NOT "may act as any agent" —
+// see requireOwnAgent.
+//
+// `key` is null for every key minted since 0001; only `keyHash` is stored (sha256,
+// see hashAgentKey). Plaintext is shown once at creation and is unrecoverable
+// thereafter, which is why the dashboard regenerates rather than reveals.
+//
+// NOTE: `userId` is a real FK to users(id) ON DELETE CASCADE in the database
+// (migration 0003). It is not expressed with .references() here because the
+// `users` table is created by hand-written SQL in 0002 and has never been modelled
+// in this file — along with email_verifications and the rest of the auth schema.
+// Treat the migrations as the source of truth for those.
 // =============================================================================
 export const apiKeys = pgTable(
   "api_keys",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    developerId: text("developer_id").notNull(),
-    key: text("key").notNull().unique(),
+    // Nullable since 0001: agent and developer keys supply a hash, not an owner
+    // string and not a plaintext key.
+    developerId: text("developer_id"),
+    key: text("key").unique(),
+    agentId: text("agent_id").references(() => agents.id, { onDelete: "cascade" }),
+    userId: uuid("user_id"),
+    name: text("name"),
+    /** JSON-encoded string array. Empty/absent means the caller's default scopes. */
+    scopes: text("scopes"),
+    keyHash: text("key_hash"),
+    isActive: boolean("is_active").notNull().default(true),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (table) => ({
     keyIdx: index("api_keys_key_idx").on(table.key),
+    agentIdx: index("idx_api_keys_agent").on(table.agentId),
+    userIdx: index("idx_api_keys_user").on(table.userId),
+    // Both of these are PARTIAL indexes in the database and Drizzle cannot express
+    // the predicate here: api_keys_key_hash_unique is `where key_hash is not null`
+    // (legacy plaintext rows have no hash), and api_keys_one_active_per_user is
+    // `where user_id is not null and is_active and revoked_at is null` (revoked
+    // keys stay as history). Declaring them unconditionally unique here would be
+    // wrong; see 0001 and 0003 for the real definitions.
   })
 );
 
