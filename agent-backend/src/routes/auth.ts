@@ -28,6 +28,10 @@ import {
   isValidEmail,
   normalizeEmail,
 } from "../services/emailService";
+import {
+  createDeveloperKey,
+  getDeveloperKeyMetadata,
+} from "../services/securityService";
 import { isValidPassword } from "../utils/password";
 
 const router = Router();
@@ -81,6 +85,40 @@ async function issueVerification(user: UserRecord): Promise<boolean> {
   } catch (err) {
     console.error("[auth] verification email failed to send:", err);
     return false;
+  }
+}
+
+/**
+ * Mint the developer's API key the first time their email is verified.
+ *
+ * Returns the plaintext key to be shown exactly once, or null if they already
+ * have one — re-verifying must not mint a second key, and cannot return the
+ * existing one, which is stored only as a digest.
+ *
+ * Best-effort by design. The email is already marked verified by the time we get
+ * here, so throwing would leave the user verified but staring at an error, and a
+ * retry would be refused as already-verified. A missing key is recoverable
+ * through the regenerate flow; a failed verification is not. Failures are logged
+ * loudly rather than surfaced.
+ */
+async function issueDeveloperKeyOnce(userId: string): Promise<string | null> {
+  try {
+    const existing = await getDeveloperKeyMetadata(userId);
+    if (existing) return null;
+
+    const { plainKey } = await createDeveloperKey({ userId });
+    return plainKey;
+  } catch (err: any) {
+    // The partial unique index (migration 0003) is the backstop against two
+    // concurrent verifications both passing the check above. Losing that race
+    // is correct behaviour, not an error: the user has a key, it just isn't
+    // this request's to show.
+    if (err?.code === "23505") {
+      console.warn(`[auth] developer key already issued for user ${userId} (concurrent verify)`);
+      return null;
+    }
+    console.error("[auth] failed to issue developer key:", err?.message ?? err);
+    return null;
   }
 }
 
@@ -323,10 +361,16 @@ router.post(
       throw new AppError(errCode, { reason: result.reason });
     }
 
+    // Verification just succeeded, so this is where the developer gets their key
+    // — not at registration, which would let unverified signups consume key
+    // records. `apiKey` is present in this response and in no other: it is the
+    // only moment the plaintext exists outside the caller's hands.
+    const apiKey = await issueDeveloperKeyOnce(result.user.id);
+
     // Refresh the session cookie so the JWT reflects the now-verified user
     // (harmless, but keeps things tidy if we ever cache flags in the token).
     setSessionCookie(res, result.user);
-    sendSuccess(res, { user: publicUser(result.user) });
+    sendSuccess(res, { user: publicUser(result.user), apiKey });
   })
 );
 
@@ -339,6 +383,12 @@ router.post(
  *
  * Admin-key gated (adminKeyAuth denies everything when ADMIN_API_KEY is unset),
  * and never touches the user's own session - it only flips the KYC flag.
+ *
+ * Deliberately does NOT mint the user's developer key. The plaintext is returned
+ * exactly once to whoever calls the endpoint, and here that is an operator, not
+ * the developer - handing a user's credential to an operator is precisely the
+ * mixing of credential types this design keeps apart. The user picks their key up
+ * through the regenerate flow instead.
  */
 router.post(
   "/admin/verify-email",
