@@ -86,21 +86,24 @@ async function api(path: string, init: RequestInit = {}) {
 }
 
 /**
- * Drain the IP limiter, then wait for its window to roll over, so the caller
- * starts with a full request budget. Needed because the per-user cooldown and the
- * IP window are both 60s: without this, waiting out one expires the other and the
- * cooldown assertion becomes a coin flip.
+ * Wait until every IP-limiter window has rolled over, so the cooldown assertions
+ * below are measuring the per-user cooldown and not leftover IP budget.
+ *
+ * This used to drain /v1/auth/me until it 429'd and then wait out that window,
+ * which only worked while all ipRateLimit instances shared one counter. They no
+ * longer do (each config has its own bucket), so draining the broad 30/min
+ * limiter says nothing about the strict 12/min one that governs send-code — and
+ * leftover strict-bucket counts from earlier in this file surfaced as an
+ * intermittent IP-limiter 429 exactly where the cooldown was expected.
+ *
+ * An unconditional wait is the only thing that clears a bucket this test cannot
+ * observe. Windows are 60s wide, so 61s from now is always past the end of any
+ * window already in flight.
  */
+const IP_WINDOW_SECONDS = 61;
 async function resetIpWindow(): Promise<void> {
-  for (let i = 0; i < 25; i++) {
-    const r = await rawApi("/v1/auth/me", { method: "GET" });
-    if (r.status === 429 && isIpLimiter(r.body)) {
-      const waitS = Number(r.body?.retryAfter ?? 60) + 1;
-      console.log(`  ${colors.dim}(draining IP window; waiting ${waitS}s)${colors.reset}`);
-      await new Promise((res) => setTimeout(res, waitS * 1000));
-      return;
-    }
-  }
+  console.log(`  ${colors.dim}(waiting ${IP_WINDOW_SECONDS}s for all IP-limiter windows to roll over)${colors.reset}`);
+  await new Promise((res) => setTimeout(res, IP_WINDOW_SECONDS * 1000));
 }
 
 /** Hits a gated read route to prove a key is live. */
