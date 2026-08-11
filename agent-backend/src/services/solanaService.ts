@@ -24,6 +24,35 @@ export function getPayerPublicKey(): string | null {
 }
 
 /**
+ * Ensure a destination wallet is rent-exempt so it can receive micro-payments.
+ *
+ * Solana rejects any transfer that would leave an account below the
+ * rent-exempt minimum (~0.0009 SOL). Agent settlement wallets that have never
+ * been funded are therefore unable to receive small winnings until they're
+ * initialized once. This tops a wallet up to the rent-exempt floor from the
+ * platform payer, and is a no-op for wallets already above it.
+ *
+ * Returns the funding tx signature if a top-up happened, else null.
+ */
+export async function ensureWalletRentExempt(toPubkey: string): Promise<string | null> {
+  if (!payer) throw new Error("SOLANA_PAYER_SECRET not configured");
+  const connection = new Connection(RPC, "confirmed");
+  const dest = new PublicKey(toPubkey);
+  const rentMin = await connection.getMinimumBalanceForRentExemption(0);
+  const balance = await connection.getBalance(dest, "confirmed");
+  if (balance >= rentMin) return null;
+
+  const topUp = rentMin - balance;
+  const tx = new Transaction().add(
+    SystemProgram.transfer({ fromPubkey: payer.publicKey, toPubkey: dest, lamports: topUp })
+  );
+  return await sendAndConfirmTransaction(connection, tx, [payer], {
+    commitment: "confirmed",
+    maxRetries: 3,
+  });
+}
+
+/**
  * Pay a Solana wallet from the platform's payer keypair.
  * Used by the auto-settlement cron to send earned lamports to an agent's
  * registered settlement wallet.
