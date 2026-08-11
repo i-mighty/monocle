@@ -9,7 +9,7 @@
  */
 
 import crypto from "crypto";
-import { query } from "../db/client";
+import { query, pool } from "../db/client";
 
 // =============================================================================
 // CONFIGURATION
@@ -505,6 +505,65 @@ export async function revokeDeveloperKeysForUser(userId: string): Promise<number
     [userId]
   );
   return result.rowCount ?? 0;
+}
+
+/**
+ * Replace a user's developer key: revoke every active one and mint a fresh one,
+ * atomically.
+ *
+ * Both halves run in a single transaction because the failure modes are not
+ * symmetric. A revoke that commits without its replacement leaves the developer
+ * with no working credential and no way to obtain one without another emailed
+ * code; a rollback simply leaves the old key working, which is the direction a
+ * partial failure should fail in.
+ *
+ * Returns the new plaintext key — the only time it exists outside the caller's
+ * hands — plus how many keys were revoked.
+ */
+export async function regenerateDeveloperKey(input: {
+  userId: string;
+  name?: string;
+  scopes?: ApiKeyScope[];
+}): Promise<{ plainKey: string; id: string; revokedCount: number; createdAt: Date }> {
+  if (!pool) throw new Error("DATABASE_URL is required to regenerate an API key");
+
+  const plainKey = generateDeveloperKey();
+  const name = input.name?.trim() || "Default";
+  const scopes = input.scopes ?? DEFAULT_DEVELOPER_SCOPES;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const revoked = await client.query(
+      `UPDATE api_keys
+          SET is_active = false, revoked_at = now()
+        WHERE user_id = $1 AND is_active = true AND revoked_at IS NULL`,
+      [input.userId]
+    );
+
+    const inserted = await client.query(
+      `INSERT INTO api_keys (user_id, key_hash, name, scopes, is_active)
+       VALUES ($1, $2, $3, $4, true)
+       RETURNING id, created_at`,
+      [input.userId, hashAgentKey(plainKey), name, JSON.stringify(scopes)]
+    );
+
+    await client.query("COMMIT");
+    return {
+      plainKey,
+      id: inserted.rows[0].id,
+      revokedCount: revoked.rowCount ?? 0,
+      createdAt: inserted.rows[0].created_at ?? new Date(),
+    };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {
+      /* connection already broken; the transaction is discarded regardless */
+    });
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**

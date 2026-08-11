@@ -16,6 +16,7 @@ import {
   attachEmailToUser,
   createEmailVerification,
   confirmEmailVerification,
+  consumeStepUpCode,
   forceVerifyEmail,
   getUserById,
   signSessionToken,
@@ -31,7 +32,10 @@ import {
 import {
   createDeveloperKey,
   getDeveloperKeyMetadata,
+  regenerateDeveloperKey,
 } from "../services/securityService";
+import { requireVerifiedEmail } from "../middleware/requireVerifiedEmail";
+import { query } from "../db/client";
 import { isValidPassword } from "../utils/password";
 
 const router = Router();
@@ -412,6 +416,152 @@ router.post(
       `[KYC] admin force-verified ${user.email} (user ${user.id}) via X-Admin-Key`
     );
     sendSuccess(res, { user: publicUser(user) });
+  })
+);
+
+// ===========================================================================
+// DEVELOPER API KEY (`Mon_...`)
+//
+// Three endpoints, one invariant: the plaintext key exists in exactly one
+// response body in this file — the regenerate one — and nowhere else, ever. It
+// is stored as a digest, so there is no reveal endpoint and there cannot be one.
+// ===========================================================================
+
+/**
+ * How long a developer must wait between step-up code requests, and how many
+ * they may request per hour.
+ *
+ * This endpoint sends mail on demand to an address an attacker does not control
+ * but the account owner does, so it is both a spam vector aimed at the user's
+ * inbox and a way to burn through the mail provider's quota. The IP limiter that
+ * already covers this router does not stop either on its own: a single signed-in
+ * session can sit under the IP limit and still fire a request every second.
+ *
+ * Enforced from email_verifications rather than an in-memory counter, so the
+ * limit survives a restart and holds if the backend is ever run as more than one
+ * process — an in-memory bucket would reset on deploy and be trivially outlasted.
+ */
+const STEP_UP_COOLDOWN_SECONDS = 60;
+const STEP_UP_MAX_PER_HOUR = 5;
+
+/**
+ * GET /v1/auth/api-key   (requires an active session)
+ *
+ * Metadata for the caller's developer key, or null if they have none. Never
+ * returns the key or its hash: the key is stored one-way and this endpoint is
+ * how the dashboard knows a key exists without being able to show it.
+ */
+router.get(
+  "/api-key",
+  requireUser,
+  asyncHandler(async (req, res) => {
+    const key = await getDeveloperKeyMetadata(req.user!.id);
+    sendSuccess(res, { key });
+  })
+);
+
+/**
+ * POST /v1/auth/api-key/regenerate/send-code   (requires a verified email)
+ *
+ * Emails a fresh 6-digit code scoped to 'regenerate_api_key'. Reuses the signup
+ * verification machinery rather than a parallel one, so the code shares its
+ * expiry, attempt ceiling and hashed storage — but is not interchangeable with a
+ * signup code in either direction (see consumeStepUpCode).
+ */
+router.post(
+  "/api-key/regenerate/send-code",
+  emailAuthLimiter,
+  requireVerifiedEmail,
+  asyncHandler(async (req, res) => {
+    const user = req.user!;
+    if (!user.email) {
+      throw new AppError(ErrorCodes.AUTH_NO_EMAIL_ON_ACCOUNT);
+    }
+
+    const recent = await query(
+      `select
+         max(created_at) as last_sent,
+         count(*) filter (where created_at > now() - interval '1 hour') as sent_last_hour
+       from email_verifications
+       where user_id = $1 and purpose = 'regenerate_api_key'`,
+      [user.id]
+    );
+    const lastSent: Date | null = recent.rows[0]?.last_sent ?? null;
+    const sentLastHour = Number(recent.rows[0]?.sent_last_hour ?? 0);
+
+    if (lastSent) {
+      const elapsedSeconds = (Date.now() - new Date(lastSent).getTime()) / 1000;
+      if (elapsedSeconds < STEP_UP_COOLDOWN_SECONDS) {
+        const retryAfter = Math.ceil(STEP_UP_COOLDOWN_SECONDS - elapsedSeconds);
+        res.setHeader("Retry-After", retryAfter);
+        throw new AppError(
+          ErrorCodes.RATE_LIMIT_EXCEEDED,
+          { retryAfter, reason: "cooldown" },
+          `Wait ${retryAfter}s before requesting another code.`
+        );
+      }
+    }
+
+    if (sentLastHour >= STEP_UP_MAX_PER_HOUR) {
+      res.setHeader("Retry-After", 3600);
+      throw new AppError(
+        ErrorCodes.RATE_LIMIT_EXCEEDED,
+        { retryAfter: 3600, reason: "hourly_cap" },
+        "Too many code requests. Try again later."
+      );
+    }
+
+    const challenge = await createEmailVerification(user, "regenerate_api_key");
+    let sent = true;
+    try {
+      await sendVerificationEmail(challenge.email, challenge.code, challenge.ttlMinutes);
+    } catch (err) {
+      console.error("[auth] step-up email failed to send:", err);
+      sent = false;
+    }
+
+    sendSuccess(res, { sent, email: user.email, expiresAt: challenge.expiresAt });
+  })
+);
+
+/**
+ * POST /v1/auth/api-key/regenerate
+ *   { code }   (requires a verified email)
+ *
+ * Invalidates the caller's current key and issues a new one, returning the
+ * plaintext exactly once. This is the "Regenerate" the dashboard offers in place
+ * of a "Reveal" that cannot exist.
+ *
+ * The code is consumed BEFORE the key is replaced, so a replayed request fails on
+ * the spent code rather than minting a second key. If the replacement then fails,
+ * it rolls back whole (see regenerateDeveloperKey) and the caller keeps their old
+ * working key, having lost only the code.
+ */
+router.post(
+  "/api-key/regenerate",
+  emailAuthLimiter,
+  requireVerifiedEmail,
+  asyncHandler(async (req, res) => {
+    const { code } = req.body ?? {};
+    if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, { field: "code" }, "code must be 6 digits");
+    }
+
+    const consumed = await consumeStepUpCode(req.user!.id, code, "regenerate_api_key");
+    if (!consumed.ok) {
+      const errCode =
+        consumed.reason === "expired"
+          ? ErrorCodes.AUTH_VERIFICATION_EXPIRED
+          : ErrorCodes.AUTH_VERIFICATION_INVALID;
+      throw new AppError(errCode, { reason: consumed.reason });
+    }
+
+    const { plainKey, revokedCount } = await regenerateDeveloperKey({ userId: req.user!.id });
+
+    console.warn(
+      `[auth] developer key regenerated for user ${req.user!.id} (${revokedCount} revoked)`
+    );
+    sendSuccess(res, { apiKey: plainKey, revokedCount });
   })
 );
 
