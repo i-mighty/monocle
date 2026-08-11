@@ -10,14 +10,17 @@ import {
   AuthError,
   AuthUser,
 } from "../lib/auth-api";
+import { RevealedKey } from "../components/ApiKeyPanel";
 
-type Tab = "email" | "apikey";
 type EmailMode = "login" | "register";
-type Step = "credentials" | "verify";
+/**
+ * `apikey` is gone: developers no longer paste a key to sign in. A key is minted
+ * for them when they verify their email and shown once on the `key` step below.
+ */
+type Step = "credentials" | "verify" | "key";
 
 export default function Login() {
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("email");
 
   // ---- email/password + verification state ----
   const [mode, setMode] = useState<EmailMode>("login");
@@ -29,9 +32,10 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // ---- api key state ----
-  const [key, setKey] = useState("");
-  const [savedKey, setSavedKey] = useState(false);
+  // The freshly minted key, held only in component state for the single render
+  // that shows it. Never persisted — it is unrecoverable once dismissed, which is
+  // exactly what the copy on screen tells the user.
+  const [issuedKey, setIssuedKey] = useState<string | null>(null);
 
   const goToApp = () => router.push("/economy");
 
@@ -84,8 +88,19 @@ export default function Login() {
     }
     setBusy(true);
     try {
-      const { user } = await verifyEmail(code);
-      if (user.emailVerified) goToApp();
+      const { user, apiKey } = await verifyEmail(code);
+      if (!user.emailVerified) return;
+
+      // First verification mints the developer's key and returns it here, once.
+      // Anything else (a returning user re-verifying) gets null and goes straight
+      // through — there is no key to show, and none can be recovered.
+      if (apiKey) {
+        setIssuedKey(apiKey);
+        setStep("key");
+        setNotice(null);
+        return;
+      }
+      goToApp();
     } catch (err) {
       setError(humanize(err));
     } finally {
@@ -111,14 +126,6 @@ export default function Login() {
     }
   }
 
-  function handleSaveKey() {
-    if (key.trim()) {
-      localStorage.setItem("apiKey", key.trim());
-      setSavedKey(true);
-      setTimeout(goToApp, 800);
-    }
-  }
-
   return (
     <>
     <Head>
@@ -133,17 +140,7 @@ export default function Login() {
           <p className="text-zinc-500 text-sm">Agent Economy Control Panel</p>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 p-1 bg-zinc-900 border border-zinc-800 rounded-xl mb-6">
-          <TabButton active={tab === "email"} onClick={() => setTab("email")}>
-            Email
-          </TabButton>
-          <TabButton active={tab === "apikey"} onClick={() => setTab("apikey")}>
-            API Key
-          </TabButton>
-        </div>
-
-        {tab === "email" && step === "credentials" && (
+        {step === "credentials" && (
           <div>
             <div className="flex gap-4 mb-5 text-sm">
               <ModeLink active={mode === "login"} onClick={() => setMode("login")}>
@@ -181,7 +178,7 @@ export default function Login() {
           </div>
         )}
 
-        {tab === "email" && step === "verify" && (
+        {step === "verify" && (
           <div>
             <h2 className="text-white text-lg font-semibold mb-1">Verify your email</h2>
             <p className="text-zinc-500 text-sm mb-5">
@@ -220,24 +217,20 @@ export default function Login() {
           </div>
         )}
 
-        {tab === "apikey" && (
+        {step === "key" && issuedKey && (
           <div>
-            <h2 className="text-white text-lg font-semibold mb-4">Enter API Key</h2>
-            <input
-              type="password"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder="Paste your API key"
-              onKeyDown={(e) => e.key === "Enter" && handleSaveKey()}
-              className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
-            />
-            <p className="text-zinc-600 text-xs mt-2 mb-4">
-              Programmatic key from the backend .env (for SDK / machine access).
+            <h2 className="text-white text-lg font-semibold mb-1">Your API key</h2>
+            <p className="text-zinc-500 text-sm mb-5">
+              Email verified. Here is your key for calling Monocle from your own
+              services.
             </p>
-            <PrimaryButton busy={false} onClick={handleSaveKey}>
-              Continue with API key
-            </PrimaryButton>
-            {savedKey && <p className="text-emerald-400 mt-4 text-sm text-center">Saved! Redirecting...</p>}
+            <RevealedKey
+              keyValue={issuedKey}
+              onDone={() => {
+                setIssuedKey(null);
+                goToApp();
+              }}
+            />
           </div>
         )}
 
@@ -279,19 +272,6 @@ function humanize(err: unknown): string {
 }
 
 // ---- small presentational helpers ----
-
-function TabButton({ active, onClick, children }: any) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-        active ? "bg-white text-zinc-900" : "text-zinc-400 hover:text-white"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
 
 function ModeLink({ active, onClick, children }: any) {
   return (

@@ -32,9 +32,6 @@ export default function Dashboard() {
       setLoading(true);
       setAuthError(null);
       
-      // Get API key from localStorage (set in login page)
-      const apiKey = typeof window !== "undefined" ? localStorage.getItem("apiKey") : null;
-      
       try {
         const [usageData, earningsData, logsData, agentsData] = await Promise.allSettled([
           getUsage(),
@@ -48,25 +45,21 @@ export default function Dashboard() {
         if (logsData.status === 'fulfilled') setRecentLogs(logsData.value?.slice(0, 5) || []);
         if (agentsData.status === 'fulfilled') setMarketplaceAgents(agentsData.value?.agents || []);
         
-        // Fetch deployed agents if API key is available
-        if (apiKey) {
-          try {
-            const agents = await getDeployedAgents(apiKey);
-            const data = agents.data || agents;
-            setDeployedAgents((data || []).map((agent: DeployedAgent) => ({
-              id: agent.agentId,
-              name: agent.name || agent.agentId,
-              slug: agent.agentId.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-              status: "active" as const,
-              spend: agent.balanceLamports / 1e9, // Convert lamports to SOL
-              calls: 0, // Will be populated from metrics
-            })));
-          } catch (err) {
-            console.warn("Failed to load deployed agents - authentication may be required");
-            setAuthError("API key required to view deployed agents");
-          }
-        } else {
-          setAuthError("Please log in to view your deployed agents");
+        // Deployed agents are authorised by the session via the proxy — no key
+        // is read from localStorage, and none is asked of the user.
+        try {
+          const data = await getDeployedAgents();
+          setDeployedAgents((data || []).map((agent: DeployedAgent) => ({
+            id: agent.agentId,
+            name: agent.name || agent.agentId,
+            slug: agent.agentId.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+            status: "active" as const,
+            spend: agent.balanceLamports / 1e9, // Convert lamports to SOL
+            calls: 0, // Will be populated from metrics
+          })));
+        } catch (err) {
+          console.warn("Failed to load deployed agents:", err);
+          setAuthError("Sign in to view your deployed agents");
         }
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
