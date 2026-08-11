@@ -198,28 +198,48 @@ export interface VerificationChallenge {
 }
 
 /**
- * Issue a fresh verification code for the user's current email. Invalidates any
- * previous unconsumed codes so only the newest works. Returns the plaintext
- * code for the caller to email out.
+ * What a verification code is allowed to authorise.
+ *
+ * Codes are scoped so that one obtained for a routine action cannot be redeemed
+ * for a sensitive one. Without this, every code in the table is interchangeable:
+ * a code mailed out to confirm an address would also satisfy the step-up
+ * challenge guarding API key regeneration, which is the whole reason that
+ * challenge exists.
+ *
+ * The `purpose` column has existed since 0002 and was always written as
+ * 'verify_email'; this makes it mean something.
  */
-export async function createEmailVerification(user: UserRecord): Promise<VerificationChallenge> {
+export type VerificationPurpose = "verify_email" | "regenerate_api_key";
+
+/**
+ * Issue a fresh verification code for the user's current email. Invalidates
+ * previous unconsumed codes *of the same purpose* so only the newest works, and
+ * returns the plaintext code for the caller to email out.
+ *
+ * Burning is scoped to the purpose: requesting a step-up code must not silently
+ * invalidate a signup code the user is midway through typing, and vice versa.
+ */
+export async function createEmailVerification(
+  user: UserRecord,
+  purpose: VerificationPurpose = "verify_email"
+): Promise<VerificationChallenge> {
   if (!user.email) throw new Error("NO_EMAIL");
 
   const code = generateCode();
   const codeHash = hashCode(code);
   const expiresAt = new Date(Date.now() + VERIFICATION_TTL_MINUTES * 60 * 1000);
 
-  // One active code at a time: burn older unconsumed codes for this user.
+  // One active code at a time per purpose: burn older unconsumed ones.
   await query(
     `update email_verifications set consumed_at = now()
-     where user_id = $1 and consumed_at is null`,
-    [user.id]
+     where user_id = $1 and purpose = $2 and consumed_at is null`,
+    [user.id, purpose]
   );
 
   await query(
     `insert into email_verifications (user_id, email, code_hash, purpose, expires_at)
-     values ($1, $2, $3, 'verify_email', $4)`,
-    [user.id, user.email, codeHash, expiresAt]
+     values ($1, $2, $3, $4, $5)`,
+    [user.id, user.email, codeHash, purpose, expiresAt]
   );
 
   return { email: user.email, expiresAt: expiresAt.toISOString(), ttlMinutes: VERIFICATION_TTL_MINUTES, code };
@@ -231,6 +251,9 @@ export async function createEmailVerification(user: UserRecord): Promise<Verific
  * delivery is broken. Returns null if no user has that email.
  *
  * Also burns any outstanding codes so a stale one can't be replayed later.
+ * Deliberately unscoped by purpose, unlike the rest of this module: this is the
+ * operator's break-glass path, so invalidating every outstanding challenge —
+ * including any pending API key step-up — is the conservative choice.
  */
 export async function forceVerifyEmail(email: string): Promise<UserRecord | null> {
   const result = await query(
@@ -250,22 +273,37 @@ export async function forceVerifyEmail(email: string): Promise<UserRecord | null
   return user;
 }
 
+export type VerificationFailure = "no_code" | "expired" | "too_many_attempts" | "mismatch";
+
 export type ConfirmResult =
   | { ok: true; user: UserRecord }
-  | { ok: false; reason: "no_code" | "expired" | "too_many_attempts" | "mismatch" };
+  | { ok: false; reason: VerificationFailure };
+
+export type ConsumeResult = { ok: true } | { ok: false; reason: VerificationFailure };
 
 /**
- * Confirm a submitted code against the user's newest active verification.
- * On success, marks the code consumed and stamps users.email_verified_at.
+ * Validate and consume the user's newest active code *for a given purpose*.
+ *
+ * Shared by every code-redeeming flow so they cannot drift apart — in particular
+ * so the step-up challenge keeps the same expiry window, attempt ceiling and
+ * timing-safe comparison as signup verification rather than reimplementing them.
+ *
+ * The `purpose` filter is the security boundary: a code issued to confirm an
+ * email address is not visible to a lookup for a regeneration code, so it can
+ * never be redeemed as one.
  */
-export async function confirmEmailVerification(userId: string, code: string): Promise<ConfirmResult> {
+async function consumeCode(
+  userId: string,
+  code: string,
+  purpose: VerificationPurpose
+): Promise<ConsumeResult> {
   const result = await query(
     `select id, code_hash, attempts, expires_at
      from email_verifications
-     where user_id = $1 and consumed_at is null
+     where user_id = $1 and purpose = $2 and consumed_at is null
      order by created_at desc
      limit 1`,
-    [userId]
+    [userId, purpose]
   );
   if (result.rows.length === 0) return { ok: false, reason: "no_code" };
   const row = result.rows[0];
@@ -282,8 +320,21 @@ export async function confirmEmailVerification(userId: string, code: string): Pr
     return { ok: false, reason: "mismatch" };
   }
 
-  // Consume the code and mark the email verified in one shot.
   await query(`update email_verifications set consumed_at = now() where id = $1`, [row.id]);
+  return { ok: true };
+}
+
+/**
+ * Confirm a submitted code against the user's newest active verification.
+ * On success, marks the code consumed and stamps users.email_verified_at.
+ *
+ * Only ever accepts a 'verify_email' code: a step-up code issued for API key
+ * regeneration must not be redeemable to verify an address.
+ */
+export async function confirmEmailVerification(userId: string, code: string): Promise<ConfirmResult> {
+  const consumed = await consumeCode(userId, code, "verify_email");
+  if (!consumed.ok) return consumed;
+
   const upd = await query(
     `update users set email_verified_at = now(), last_seen_at = now()
      where id = $1
@@ -291,6 +342,21 @@ export async function confirmEmailVerification(userId: string, code: string): Pr
     [userId]
   );
   return { ok: true, user: mapUserRow(upd.rows[0]) };
+}
+
+/**
+ * Redeem a step-up code for a sensitive action (today: API key regeneration).
+ *
+ * Deliberately does NOT touch email_verified_at. Proving control of the inbox a
+ * second time authorises one action; it is not a re-verification of the address,
+ * and conflating the two would let this path quietly grant KYC state.
+ */
+export async function consumeStepUpCode(
+  userId: string,
+  code: string,
+  purpose: Exclude<VerificationPurpose, "verify_email">
+): Promise<ConsumeResult> {
+  return consumeCode(userId, code, purpose);
 }
 
 export function signSessionToken(user: UserRecord): string {
