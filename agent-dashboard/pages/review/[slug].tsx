@@ -106,7 +106,7 @@ export default function ReviewAgent() {
         <style jsx global>{styles}</style>
         <div className="error-state">
           <h2>Agent Not Found</h2>
-          <Link href="/" className="btn-primary">Back to Marketplace</Link>
+          <Link href="/marketplace" className="btn-primary">Back to Marketplace</Link>
         </div>
       </main>
     );
@@ -122,7 +122,7 @@ export default function ReviewAgent() {
         <header className="nav">
           <div className="brand">AgentPay Marketplace</div>
           <div className="links">
-            <Link href="/">Marketplace</Link>
+            <Link href="/marketplace">Marketplace</Link>
             <Link href="/dashboard">Dashboard</Link>
           </div>
         </header>
@@ -133,7 +133,7 @@ export default function ReviewAgent() {
           <p>Thank you for reviewing {agent.name}. Your feedback helps the community make better decisions.</p>
           <div className="action-buttons">
             <Link href={`/agents/${agent.slug}`} className="btn-primary">View Agent Profile</Link>
-            <Link href="/" className="btn-secondary">Back to Marketplace</Link>
+            <Link href="/marketplace" className="btn-secondary">Back to Marketplace</Link>
           </div>
         </div>
       </main>
@@ -147,13 +147,13 @@ export default function ReviewAgent() {
       <header className="nav">
         <div className="brand">AgentPay Marketplace</div>
         <div className="links">
-          <Link href="/">Marketplace</Link>
+          <Link href="/marketplace">Marketplace</Link>
           <Link href="/dashboard">Dashboard</Link>
         </div>
       </header>
 
       <div className="breadcrumb">
-        <Link href="/">Marketplace</Link>
+        <Link href="/marketplace">Marketplace</Link>
         <span>/</span>
         <Link href={`/agents/${agent.slug}`}>{agent.name}</Link>
         <span>/</span>

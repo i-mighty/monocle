@@ -58,7 +58,7 @@ export default function DeployAgent() {
         <style jsx global>{styles}</style>
         <div className="error-state">
           <h2>Agent Not Found</h2>
-          <Link href="/" className="btn-primary">Back to Marketplace</Link>
+          <Link href="/marketplace" className="btn-primary">Back to Marketplace</Link>
         </div>
       </main>
     );
@@ -74,7 +74,7 @@ export default function DeployAgent() {
         <header className="nav">
           <div className="brand">AgentPay Marketplace</div>
           <div className="links">
-            <Link href="/">Marketplace</Link>
+            <Link href="/marketplace">Marketplace</Link>
             <Link href="/dashboard">Dashboard</Link>
             <Link href="/usage">Usage</Link>
           </div>
@@ -144,14 +144,14 @@ const result = await client.callTool('search', { query: 'example' });`}</pre>
       <header className="nav">
         <div className="brand">AgentPay Marketplace</div>
         <div className="links">
-          <Link href="/">Marketplace</Link>
+          <Link href="/marketplace">Marketplace</Link>
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/usage">Usage</Link>
         </div>
       </header>
 
       <div className="breadcrumb">
-        <Link href="/">Marketplace</Link>
+        <Link href="/marketplace">Marketplace</Link>
         <span>/</span>
         <Link href={`/agents/${agent.slug}`}>{agent.name}</Link>
         <span>/</span>

@@ -49,7 +49,7 @@ export default function PaymentsPage() {
               </p>
             </div>
             <a
-              href="/"
+              href="/marketplace"
               className="text-sm text-zinc-400 hover:text-white transition-colors"
             >
               &larr; Marketplace
