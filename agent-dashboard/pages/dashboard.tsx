@@ -1,7 +1,7 @@
 import Head from "next/head";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getUsage, getEarnings, getToolLogs, getDeployedAgents, DeployedAgent } from "../lib/api";
+import { getUsage, getEarnings, getToolLogs, getMyAgents } from "../lib/api";
 import { searchAgents, AgentSearchResult } from "../lib/reputation-api";
 import { getMe } from "../lib/auth-api";
 import Layout from "../components/Layout";
@@ -61,15 +61,17 @@ export default function Dashboard() {
         if (logsData.status === 'fulfilled') setRecentLogs(logsData.value?.slice(0, 5) || []);
         if (agentsData.status === 'fulfilled') setMarketplaceAgents(agentsData.value?.agents || []);
         
-        // Deployed agents go through the proxy, which attaches the server-side
-        // key. Nothing is read from localStorage and nothing is asked of the user.
+        // The user's OWN agents. This previously called getDeployedAgents(),
+        // which lists every agent in the system — so a panel headed "Deployed
+        // Agents" showed each developer everyone else's agent ids, rates and
+        // balances. /mine is scoped by the session.
         try {
-          const data = await getDeployedAgents();
-          setDeployedAgents((data || []).map((agent: DeployedAgent) => ({
+          const { agents } = await getMyAgents();
+          setDeployedAgents((agents || []).map((agent) => ({
             id: agent.agentId,
             name: agent.name || agent.agentId,
             slug: agent.agentId.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-            status: "active" as const,
+            status: agent.isPaused ? ("inactive" as const) : ("active" as const),
             spend: agent.balanceLamports / 1e9, // Convert lamports to SOL
             calls: 0, // Will be populated from metrics
           })));

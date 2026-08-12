@@ -17,6 +17,7 @@ import {
   checkEndpointHealth,
   ENDPOINT_DEACTIVATION_THRESHOLD,
 } from "../services/endpointVerifyService";
+import { requireUser } from "../middleware/requireUser";
 import { pingCustomAgent } from "../services/customAgentAdapter";
 import { verifySolOwnership, assignSolName } from "../services/snsIdentityService";
 import { createAgentDWallet, getDWalletInfo, getSpendingPolicy } from "../services/ikaDWalletService";
@@ -131,13 +132,22 @@ router.post("/register", gateSensitiveActionByEmail, apiKeyAuth, asyncHandler(as
       // public_key. It is set once at creation; changing it afterwards requires
       // an admin (see PATCH /:agentId). Restore self-service here only once
       // agents carry a real owner to authorize against.
-      `insert into agents (id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports)
-       values ($1, $2, $3, $4, $5, 0, 0)
+      // owner_user_id is set on INSERT only, and deliberately absent from the
+      // update set. This is an upsert on a caller-chosen id, so assigning the
+      // owner on conflict would let anyone take over an existing agent by
+      // re-registering its id — the same reasoning that keeps public_key out.
+      // First registrant owns it; a later one changes nothing about who does.
+      //
+      // Null when the caller is a pure SDK/API-key client with no session: we
+      // record an owner only when we actually know who it is, rather than
+      // inventing one.
+      `insert into agents (id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports, owner_user_id)
+       values ($1, $2, $3, $4, $5, 0, 0, $6)
        on conflict (id) do update set
          name = coalesce(excluded.name, agents.name),
          categories = coalesce(excluded.categories, agents.categories)
-       returning id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports`,
-      [agentId, name || null, publicKey || null, rate, categoriesJson]
+       returning id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports, owner_user_id`,
+      [agentId, name || null, publicKey || null, rate, categoriesJson, req.user?.id ?? null]
     );
 
     // Upsert the endpoint row if a URL was provided. Health stats reset on URL
@@ -912,6 +922,59 @@ router.post("/:agentId/withdraw", gateSensitiveActionByEmail, apiKeyAuth, requir
     explorerUrl: `https://explorer.solana.com/tx/${signature}?cluster=${
       process.env.SOLANA_CLUSTER || "devnet"
     }`,
+  });
+}));
+
+/**
+ * GET /agents/mine
+ *
+ * The agents owned by the signed-in user.
+ *
+ * Authorised by the session rather than an API key: this answers "who am I",
+ * which a shared platform key cannot. GET /agents by contrast has no owner
+ * filter and returns every agent in the system — fine for public discovery,
+ * wrong for anything claiming to be yours.
+ *
+ * MUST stay above `/:agentId`, which captures any single segment. /agents/search
+ * and /agents/leaderboard are registered below it and are consequently dead,
+ * answering "Agent not found: search".
+ */
+router.get("/mine", requireUser, asyncHandler(async (req, res) => {
+  const result = await query(
+    `select a.id, a.name, a.public_key, a.default_rate_per_1k_tokens,
+            a.balance_lamports, a.pending_lamports, a.is_paused, a.categories,
+            a.created_at,
+            e.endpoint_url, e.is_healthy, e.is_active as endpoint_active
+       from agents a
+       left join lateral (
+         select endpoint_url, is_healthy, is_active
+           from agent_endpoints
+          where agent_id = a.id
+          order by updated_at desc nulls last
+          limit 1
+       ) e on true
+      where a.owner_user_id = $1
+      order by a.created_at desc`,
+    [req.user!.id]
+  );
+
+  sendSuccess(res, {
+    agents: result.rows.map((a: any) => ({
+      agentId: a.id,
+      name: a.name,
+      publicKey: a.public_key,
+      ratePer1kTokens: Number(a.default_rate_per_1k_tokens),
+      balanceLamports: Number(a.balance_lamports),
+      pendingLamports: Number(a.pending_lamports),
+      isPaused: a.is_paused === true,
+      categories: a.categories,
+      createdAt: a.created_at,
+      endpointUrl: a.endpoint_url ?? null,
+      // null when there is no endpoint at all — "never checked" and "checked and
+      // failing" mean different things to the owner.
+      endpointHealthy: a.endpoint_url ? a.is_healthy === true : null,
+      listedInMarketplace: a.is_healthy === true && a.endpoint_active === true,
+    })),
   });
 }));
 

@@ -157,6 +157,31 @@ export interface DeployedAgent {
 export const getDeployedAgents = (limit: number = 50) =>
   authFetch(`/v1/agents?limit=${limit}`);
 
+export interface MyAgent {
+  agentId: string;
+  name: string | null;
+  publicKey: string | null;
+  ratePer1kTokens: number;
+  balanceLamports: number;
+  pendingLamports: number;
+  isPaused: boolean;
+  categories?: unknown;
+  createdAt: string;
+  endpointUrl: string | null;
+  endpointHealthy: boolean | null;
+  listedInMarketplace: boolean;
+}
+
+/**
+ * The signed-in user's own agents.
+ *
+ * Distinct from getDeployedAgents, which lists every agent in the system —
+ * public discovery data, not yours. Anything that says "your agents" must use
+ * this, or it is showing other people's.
+ */
+export const getMyAgents = (): Promise<{ agents: MyAgent[] }> =>
+  authFetch("/v1/agents/mine");
+
 /** Get a single agent. */
 export const getAgentDetails = (agentId: string) =>
   authFetch(`/v1/agents/${agentId}`);

@@ -1,11 +1,30 @@
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
+import { getMyAgents, MyAgent } from "../lib/api";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "/api/proxy";
 
 export default function Messaging() {
   const [myAgentId, setMyAgentId] = useState("");
+  const [myAgents, setMyAgents] = useState<MyAgent[]>([]);
+  const [loadingAgents, setLoadingAgents] = useState(true);
+
+  // Load the caller's own agents so they pick rather than retype an id.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { agents } = await getMyAgents();
+        setMyAgents(agents);
+        // One agent is the common case; selecting it saves a pointless click.
+        if (agents.length === 1) setMyAgentId(agents[0].agentId);
+      } catch {
+        setMyAgents([]);
+      } finally {
+        setLoadingAgents(false);
+      }
+    })();
+  }, []);
   const [targetAgentId, setTargetAgentId] = useState("");
   const [message, setMessage] = useState("");
   const [output, setOutput] = useState<string[]>([]);
@@ -31,30 +50,10 @@ export default function Messaging() {
     return res.json();
   };
 
-  const registerAgent = async () => {
-    if (!myAgentId) return log("Enter your agent ID");
-    // Authorised by the session through the same-origin proxy. This used to read
-    // a key out of localStorage, which only had a value because the login page
-    // asked the user to paste one in; that prompt is gone.
-    const res = await fetch(`${BACKEND_URL}/verify-identity`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agentId: myAgentId,
-        firstName: myAgentId.split("-")[0] || "Agent",
-        lastName: "User",
-        dob: "1990-01-01",
-        idNumber: `ID-${Date.now()}`,
-      }),
-    });
-    const data = await res.json();
-    if (data.status === "verified") {
-      log(`Registered as ${myAgentId}`);
-    } else {
-      log(`Registration failed: ${JSON.stringify(data)}`);
-    }
-  };
+  // registerAgent() lived here: it POSTed to /verify-identity with a fabricated
+  // name, a hardcoded date of birth and a timestamp as the ID number, to
+  // "register" an agent the user had already registered. Agents are now picked
+  // from the ones they own, so nothing needs inventing.
 
   const sendChatRequest = async () => {
     if (!targetAgentId || !message) return log("Enter target agent and message");
@@ -144,14 +143,36 @@ export default function Messaging() {
       <section className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6 mb-6">
         <h2 className="text-[17px] font-semibold text-white mb-4">Agent Messaging</h2>
 
-        <div className="flex gap-3 mb-3">
-          <input
-            placeholder="Your Agent ID"
-            value={myAgentId}
-            onChange={(e) => setMyAgentId(e.target.value)}
-            className={inputClass}
-          />
-          <button onClick={registerAgent} className={btnClass}>Register</button>
+        {/* Which of your agents you are acting as.
+            This used to be a free-text box plus a Register button, which asked
+            you to re-register an agent you had already registered and to
+            remember its id exactly. Your agents are known, so they are offered. */}
+        <div className="mb-3">
+          <label className="block text-zinc-500 text-xs mb-1.5">Send as</label>
+          {loadingAgents ? (
+            <div className="text-zinc-600 text-sm py-2">Loading your agents…</div>
+          ) : myAgents.length === 0 ? (
+            <div className="text-sm text-zinc-500 py-2">
+              You don&apos;t have any agents yet.{" "}
+              <Link href="/agents/register" className="text-zinc-300 underline hover:text-white">
+                Register one
+              </Link>{" "}
+              to start messaging.
+            </div>
+          ) : (
+            <select
+              value={myAgentId}
+              onChange={(e) => setMyAgentId(e.target.value)}
+              className={inputClass}
+            >
+              <option value="">Select an agent…</option>
+              {myAgents.map((a) => (
+                <option key={a.agentId} value={a.agentId}>
+                  {a.name ? `${a.name} (${a.agentId})` : a.agentId}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div className="flex gap-3 mb-3">
