@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
+import { getMe } from "../lib/auth-api";
 
 interface LayoutProps {
   children: ReactNode;
@@ -18,6 +19,26 @@ const NAV_LINKS = [
 
 export default function Layout({ children, title }: LayoutProps) {
   const router = useRouter();
+
+  // Who is signed in, for the account affordance on the right of the nav. Left
+  // null until it resolves so a signed-out visitor never sees a flash of somebody
+  // else's identity, and a failure just hides the control rather than blocking
+  // the page around it.
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMe()
+      .then((u) => {
+        if (!cancelled) setEmail(u?.email ?? null);
+      })
+      .catch(() => {
+        /* signed out, or /me unreachable — the nav simply omits the account link */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#09090b] text-white font-sans">
@@ -49,6 +70,22 @@ export default function Layout({ children, title }: LayoutProps) {
                 </Link>
               );
             })}
+
+            {/* Account, held apart from the section links: it answers "who am I"
+                rather than "where do I go". Absent when signed out. */}
+            {email && (
+              <Link
+                href="/profile"
+                title={email}
+                className={`ml-3 pl-3 border-l border-zinc-800 max-w-[180px] truncate px-3 py-1.5 rounded-md text-sm transition-colors duration-200 ${
+                  router.pathname === "/profile"
+                    ? "bg-zinc-800 text-white font-medium"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                {email}
+              </Link>
+            )}
           </nav>
         </div>
       </header>

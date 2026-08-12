@@ -1,7 +1,6 @@
 ﻿import { useEffect, useState } from "react";
 import Link from "next/link";
 import Layout from "../components/Layout";
-import ApiKeyPanel from "../components/ApiKeyPanel";
 import { getMe } from "../lib/auth-api";
 import {
   registerAgent,
@@ -465,12 +464,8 @@ export default function EconomyControlPanel() {
         <p className="text-zinc-500 text-sm">Register agents, execute calls, view economics, and manage settlements</p>
       </div>
 
-      {/* Developer API key — replaces the "Enter API Key" gate this page used to
-          show. Nothing to paste in; the key is issued at verification and can
-          only be replaced, never re-read. */}
-      <div className="mb-6 max-w-xl">
-        <ApiKeyPanel />
-      </div>
+      {/* The API key panel that briefly lived here now sits on /profile, with the
+          account it authenticates. This page no longer asks for a key at all. */}
 
       {/* Tab Navigation */}
       <div className="flex gap-2 mb-6 flex-wrap">
