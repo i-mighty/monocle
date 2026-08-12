@@ -230,8 +230,11 @@ export default function Landing() {
               </a> */}
             </div>
 
+            {/* Points at the app, not the marketplace. Signed out, middleware
+                redirects to /login?next=/dashboard and sign-in returns here, so
+                this needs no auth check of its own. */}
             <Link
-              href="/marketplace"
+              href="/dashboard"
               className="px-4 py-2 text-sm font-medium rounded-lg bg-white text-zinc-900 hover:bg-zinc-200 transition-colors duration-200 cursor-pointer active:scale-[0.97]"
             >
               Launch App
