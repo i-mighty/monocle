@@ -32,6 +32,15 @@ jobs:
 
             # Build backend
             cd $REMOTE/agent-backend
+            # Clear node_modules before `npm ci` rather than relying on it to do so.
+            # npm ci removes the directory itself, and on this box that rmdir failed:
+            #   ENOTEMPTY: directory not empty, rmdir
+            #   '/opt/monocle/app/agent-backend/node_modules/date-fns/esm/locale/he'
+            # npm exited 217, `set -e` aborted the run, and the old build kept
+            # serving — silently, because a failed deploy leaves a working server
+            # behind. Both deploys on 2026-08-11 died here, so production ran a
+            # frontend that expected endpoints its backend did not have.
+            rm -rf node_modules
             npm ci
             npm run build
 
