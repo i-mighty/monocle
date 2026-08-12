@@ -1,0 +1,66 @@
+name: Deploy dashboard to Cloudflare Workers
+
+# The backend has deployed itself on merge since #10, but the dashboard never
+# has — it shipped only when somebody remembered to run `npm run deploy` from
+# their laptop with wrangler logged in. So dashboard changes could sit merged on
+# main and simply not be live, with nothing anywhere saying so. That is exactly
+# what happened to the sign-in route gate (#14): merged, and still absent from
+# the live site, because a merge is not a deploy.
+#
+# Path-filtered like the backend workflow, so backend-only merges don't rebuild
+# the Worker.
+#
+# REQUIRED SECRET — this workflow cannot run until it is set:
+#   CLOUDFLARE_API_TOKEN   Workers deploy token, from the Cloudflare dashboard
+#                          (My Profile -> API Tokens -> "Edit Cloudflare Workers"
+#                          template). Add under Settings -> Secrets and variables
+#                          -> Actions.
+#
+# CLOUDFLARE_ACCOUNT_ID is only needed if the token can see more than one
+# account; add it the same way and uncomment it below if the deploy complains.
+#
+# NOT set here: MONOCLE_API_KEY is a *Worker* secret, not a CI one. It is managed
+# once with `wrangler secret put MONOCLE_API_KEY` and persists across deploys —
+# putting it in this file or in wrangler.jsonc would commit it to the repo.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent-dashboard/**"
+      - ".github/workflows/deploy-dashboard.yml"
+  # Lets you ship without an empty commit — useful for the first run, when the
+  # change to deploy is already sitting on main.
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent-dashboard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: agent-dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fail here rather than at deploy: a type error should stop the Worker
+      # being replaced, not surface as a broken live site.
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Builds Next, then bundles it (and middleware.ts) into .open-next/worker.js
+      # and uploads. `deploy` runs the build itself — see package.json.
+      - name: Build and deploy Worker
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
