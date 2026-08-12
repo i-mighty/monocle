@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
-import { requireOwnAgent } from "../middleware/requireOwnAgent";
+import { apiKeyAuth, apiKeyAuthOptional } from "../middleware/apiKeyAuthHardened";
+import { requireOwnAgent, requireOwnAgentOrOwner } from "../middleware/requireOwnAgent";
 import { hashAgentKey } from "../services/securityService";
 import { hasValidAdminKey, adminKeyAuth } from "../middleware/adminAuth";
 import { gateSensitiveActionByEmail, requireVerifiedEmail } from "../middleware/requireVerifiedEmail";
@@ -795,7 +795,7 @@ router.get("/:agentId/stats", asyncHandler(async (req, res) => {
  */
 // gateSensitiveActionByEmail (KYC) -> apiKeyAuth -> requireOwnAgent (replaces the
 // old ownership check that read apiKeyRecord.agentId — a field that never existed).
-router.post("/:agentId/withdraw", gateSensitiveActionByEmail, apiKeyAuth, requireOwnAgent("params.agentId"), asyncHandler(async (req, res) => {
+router.post("/:agentId/withdraw", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("params.agentId"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
   const { amount } = req.body;
 

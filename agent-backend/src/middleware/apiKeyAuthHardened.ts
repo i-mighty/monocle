@@ -409,3 +409,22 @@ export async function apiKeyAuth(req: Request, res: Response, next: NextFunction
   return next();
 }
 
+
+/**
+ * Populate req.apiKeyRecord when a key is offered, and do nothing when one is not.
+ *
+ * Mounted ahead of requireOwnAgentOrOwner on money routes, where a signed-in
+ * owner authorises by session instead. apiKeyAuth rejects a request with no
+ * x-api-key outright, which would refuse those callers before ownership could be
+ * considered.
+ *
+ * This grants nothing on its own: with no key it simply leaves the record unset,
+ * and the guard behind it still has to find either a session that owns the agent
+ * or a key that names it. An INVALID key is still rejected here rather than
+ * quietly ignored, so offering a bad key can never be a way to fall through to a
+ * weaker check.
+ */
+export async function apiKeyAuthOptional(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (!req.header("x-api-key")) return next();
+  return apiKeyAuth(req, res, next);
+}

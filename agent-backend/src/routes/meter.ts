@@ -1,6 +1,7 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
-import { requireOwnAgent } from "../middleware/requireOwnAgent";
+import { apiKeyAuth, apiKeyAuthOptional } from "../middleware/apiKeyAuthHardened";
+import { requireOwnAgentOrOwner } from "../middleware/requireOwnAgent";
+import { gateSensitiveActionByEmail } from "../middleware/requireVerifiedEmail";
 import { logToolCall, getToolCallHistory } from "../services/meterService";
 import { query } from "../db/client";
 import { recomputeAgentReputation } from "../services/reputationEngine";
@@ -49,7 +50,7 @@ const router = Router();
 // requireOwnAgent: callerId is debited, so the key must BE that caller. Without
 // this, callerId was an unverified claim and any key holder could bill any agent
 // and credit their own — draining a victim's balance into an agent they own.
-router.post("/execute", apiKeyAuth, requireOwnAgent("body.callerId"), async (req, res) => {
+router.post("/execute", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("body.callerId"), async (req, res) => {
   try {
     const { callerId, calleeId, toolName, tokensUsed, quoteId } = req.body;
 

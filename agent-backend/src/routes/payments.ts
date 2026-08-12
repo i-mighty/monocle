@@ -1,6 +1,6 @@
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
-import { requireOwnAgent } from "../middleware/requireOwnAgent";
+import { apiKeyAuth, apiKeyAuthOptional } from "../middleware/apiKeyAuthHardened";
+import { requireOwnAgentOrOwner } from "../middleware/requireOwnAgent";
 import { gateSensitiveActionByEmail } from "../middleware/requireVerifiedEmail";
 import { demoOnly } from "../middleware/demoOnly";
 import { sendMicropayment } from "../services/solanaService";
@@ -38,7 +38,7 @@ const router = Router();
  */
 // gateSensitiveActionByEmail (KYC when a session is present) -> apiKeyAuth (agent-
 // scoped key) -> requireOwnAgent (the key may only settle its OWN agent).
-router.post("/settle/:agentId", gateSensitiveActionByEmail, apiKeyAuth, requireOwnAgent("params.agentId"), async (req, res) => {
+router.post("/settle/:agentId", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("params.agentId"), async (req, res) => {
   try {
     const { agentId } = req.params;
 

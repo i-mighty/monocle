@@ -14,8 +14,8 @@
  */
 
 import { Router } from "express";
-import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
-import { requireOwnAgent } from "../middleware/requireOwnAgent";
+import { apiKeyAuth, apiKeyAuthOptional } from "../middleware/apiKeyAuthHardened";
+import { requireOwnAgentOrOwner } from "../middleware/requireOwnAgent";
 import { gateSensitiveActionByEmail } from "../middleware/requireVerifiedEmail";
 import {
   getTreasuryAddress,
@@ -228,7 +228,7 @@ router.post("/scan", apiKeyAuth, async (req, res) => {
  */
 // gateSensitiveActionByEmail (KYC) -> apiKeyAuth -> requireOwnAgent (only the
 // agent's own key can withdraw its balance).
-router.post("/withdraw", gateSensitiveActionByEmail, apiKeyAuth, requireOwnAgent("body.agentId"), async (req, res) => {
+router.post("/withdraw", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("body.agentId"), async (req, res) => {
   try {
     const { agentId, amountLamports, amountSOL } = req.body;
 

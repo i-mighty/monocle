@@ -26,6 +26,7 @@
 
 import { Request, Response, NextFunction } from "express";
 import { AppError, ErrorCodes } from "../errors";
+import { query } from "../db/client";
 
 type Source = `params.${string}` | `body.${string}`;
 
@@ -40,6 +41,61 @@ function readClaim(req: Request, source: Source): unknown {
  * @param source where the target agent id lives, e.g. "params.agentId" or
  *               "body.callerId" — the value the caller is *claiming* to be.
  */
+/**
+ * Same rule, but a signed-in owner may also act as their own agent.
+ *
+ * An agent key cannot be injected on the caller's behalf: only its sha256 digest
+ * is stored, so no plaintext exists server-side to forward. The equivalent is to
+ * accept proven ownership as standing in for the key — the owner is, after all,
+ * the person entitled to move that agent's money.
+ *
+ * Two ways in, and nothing else:
+ *
+ *   1. a session whose user owns the named agent, or
+ *   2. an agent-scoped key naming it (unchanged, and the only path for SDK
+ *      callers, which have no session).
+ *
+ * Neither widens who may act as somebody else's agent. What it widens is how the
+ * rightful owner proves it, which is what lets the dashboard settle and withdraw
+ * without putting an agent key in a browser.
+ *
+ * Two things carry the safety of path 1. The session cookie is SameSite=Lax, so
+ * a cross-site POST does not carry it and cannot spend on the user's behalf. And
+ * mounting gateSensitiveActionByEmail ahead of this means a session with an
+ * unverified email is refused before it gets here — the same KYC bar settle and
+ * withdraw already enforce.
+ */
+export function requireOwnAgentOrOwner(source: Source) {
+  return async function requireOwnAgentOrOwnerMiddleware(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    const claimed = readClaim(req, source);
+
+    if (req.user && typeof claimed === "string" && claimed.length > 0) {
+      try {
+        const owned = await query(
+          `select 1
+             from agents
+            where id = $1
+              and (owner_user_id = $2
+                   or ($3::text is not null and lower(owner_email) = lower($3)))
+            limit 1`,
+          [claimed, req.user.id, req.user.email ?? null]
+        );
+        if (owned.rows.length > 0) return next();
+      } catch (err) {
+        // A failed ownership lookup must not fall through to "allowed". Drop to
+        // the key path, which authorises on its own evidence.
+        console.error("[requireOwnAgentOrOwner] ownership lookup failed:", err);
+      }
+    }
+
+    return requireOwnAgent(source)(req, res, next);
+  };
+}
+
 export function requireOwnAgent(source: Source) {
   return function requireOwnAgentMiddleware(req: Request, res: Response, next: NextFunction) {
     const record = req.apiKeyRecord;
