@@ -64,13 +64,32 @@ function publicUser(u: UserRecord) {
   };
 }
 
-/** Set the HttpOnly session cookie for a freshly authenticated user. */
+/**
+ * Set the HttpOnly session cookie for a freshly authenticated user.
+ *
+ * SameSite=Lax, not None.
+ *
+ * The session only ever travels first-party: the browser talks to the dashboard's
+ * own origin and pages/api/proxy forwards to the backend server-side, so the
+ * cookie is never legitimately sent cross-site. `None` was needed back when the
+ * browser called the backend directly, and it survived the move to the proxy.
+ *
+ * Leaving it as None is not merely redundant, it is fragile. None declares the
+ * cookie available in cross-site contexts, which is exactly the category
+ * browsers are restricting: third-party cookie blocking, storage partitioning,
+ * Safari ITP and Brave's shields all treat such cookies as suspect. A session
+ * that curl keeps happily can therefore be dropped by a real browser, which
+ * looks like being bounced back to the login page immediately after signing in.
+ *
+ * Lax still accompanies top-level navigation to /dashboard, which is precisely
+ * the case that was failing.
+ */
 function setSessionCookie(res: Parameters<typeof sendSuccess>[0], user: UserRecord) {
   const token = signSessionToken(user);
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: isProduction(),
-    sameSite: isProduction() ? "none" : "lax",
+    sameSite: "lax",
     path: "/",
     maxAge: SESSION_TTL_SECONDS * 1000,
   });
@@ -575,10 +594,13 @@ router.post(
 router.post(
   "/logout",
   asyncHandler(async (_req, res) => {
+    // Attributes must match setSessionCookie exactly — a browser only clears a
+    // cookie when they line up, so a mismatch here leaves the session in place
+    // and logout silently does nothing.
     res.clearCookie(SESSION_COOKIE_NAME, {
       httpOnly: true,
       secure: isProduction(),
-      sameSite: isProduction() ? "none" : "lax",
+      sameSite: "lax",
       path: "/",
     });
     sendSuccess(res, { ok: true });
