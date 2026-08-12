@@ -256,7 +256,7 @@ export default function Login() {
         {notice && <p className="text-emerald-400 mt-4 text-sm text-center">{notice}</p>}
 
         <div className="mt-8 flex gap-4 justify-center border-t border-zinc-800/60 pt-6">
-          <FooterLink href="/">Marketplace</FooterLink>
+          <FooterLink href="/marketplace">Marketplace</FooterLink>
           <FooterLink href="/dashboard">Dashboard</FooterLink>
           <FooterLink href="/economy">Economy</FooterLink>
         </div>

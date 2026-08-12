@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getUsage, getEarnings, getToolLogs, getDeployedAgents, DeployedAgent } from "../lib/api";
 import { searchAgents, AgentSearchResult } from "../lib/reputation-api";
+import { getMe } from "../lib/auth-api";
 import Layout from "../components/Layout";
 
 type UsageRow = { agent_id: string; calls: number; spend: number };
@@ -25,13 +26,28 @@ export default function Dashboard() {
   const [marketplaceAgents, setMarketplaceAgents] = useState<AgentSearchResult[]>([]);
   const [deployedAgents, setDeployedAgents] = useState<DisplayAgent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
+  /**
+   * Whether the visitor has a session, asked of the session itself rather than
+   * inferred from a failed request.
+   *
+   * A failed agent fetch used to be treated as "not signed in", which put a Log
+   * In button in front of people who were already signed in — the request can
+   * fail for reasons that have nothing to do with the visitor, and did: the
+   * agents endpoint authenticates with an API key the proxy attaches
+   * server-side, so when that key is unset the call 401s no matter who is
+   * looking at it.
+   */
+  const [signedIn, setSignedIn] = useState(false);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      setAuthError(null);
-      
+      setAgentsError(null);
+
+      const me = await getMe().catch(() => null);
+      setSignedIn(!!me);
+
       try {
         const [usageData, earningsData, logsData, agentsData] = await Promise.allSettled([
           getUsage(),
@@ -45,8 +61,8 @@ export default function Dashboard() {
         if (logsData.status === 'fulfilled') setRecentLogs(logsData.value?.slice(0, 5) || []);
         if (agentsData.status === 'fulfilled') setMarketplaceAgents(agentsData.value?.agents || []);
         
-        // Deployed agents are authorised by the session via the proxy — no key
-        // is read from localStorage, and none is asked of the user.
+        // Deployed agents go through the proxy, which attaches the server-side
+        // key. Nothing is read from localStorage and nothing is asked of the user.
         try {
           const data = await getDeployedAgents();
           setDeployedAgents((data || []).map((agent: DeployedAgent) => ({
@@ -58,8 +74,11 @@ export default function Dashboard() {
             calls: 0, // Will be populated from metrics
           })));
         } catch (err) {
+          // Only a signed-out visitor is told to sign in. For everyone else this
+          // is a failure of the request, not of their session, and saying
+          // otherwise sends someone who is already signed in to the login page.
           console.warn("Failed to load deployed agents:", err);
-          setAuthError("Sign in to view your deployed agents");
+          setAgentsError("Couldn't load your agents just now. Try again shortly.");
         }
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
@@ -107,13 +126,21 @@ export default function Dashboard() {
             <Link href="/agents/register" className="text-xs bg-white text-zinc-900 font-medium px-3 py-1.5 rounded-lg hover:bg-zinc-200 transition-colors">+ Register Agent</Link>
           </div>
           <div className="space-y-3">
-            {authError && (
+            {/* Only a signed-out visitor is offered a way in. Someone already
+                signed in gets the actual problem instead of being told to do
+                the thing they have already done. */}
+            {!signedIn && (
               <div className="text-center py-6 text-zinc-500">
-                <p className="mb-3">{authError}</p>
+                <p className="mb-3">Sign in to view your deployed agents</p>
                 <Link href="/login" className="bg-white text-zinc-900 text-sm font-medium px-4 py-2 rounded-lg hover:bg-zinc-200 transition-colors">Log In</Link>
               </div>
             )}
-            {!authError && deployedAgents.map((agent) => (
+            {signedIn && agentsError && (
+              <div className="text-center py-6 text-zinc-500">
+                <p>{agentsError}</p>
+              </div>
+            )}
+            {signedIn && !agentsError && deployedAgents.map((agent) => (
               <div key={agent.id} className="flex items-center gap-4 p-4 bg-zinc-800/30 rounded-xl">
                 <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700/50 flex items-center justify-center text-white font-bold">
                   {agent.name.charAt(0)}
@@ -134,10 +161,10 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {!authError && deployedAgents.length === 0 && (
+            {signedIn && !agentsError && deployedAgents.length === 0 && (
               <div className="text-center py-8 text-zinc-600">
                 <p className="mb-3">No agents deployed yet</p>
-                <Link href="/" className="text-zinc-400 hover:text-white text-sm underline">Browse Marketplace</Link>
+                <Link href="/marketplace" className="text-zinc-400 hover:text-white text-sm underline">Browse Marketplace</Link>
               </div>
             )}
           </div>
@@ -171,7 +198,7 @@ export default function Dashboard() {
         <section className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-800/60">
             <h2 className="text-[15px] font-semibold text-white">Recommended Agents</h2>
-            <Link href="/" className="text-xs text-zinc-500 hover:text-white transition-colors">View All</Link>
+            <Link href="/marketplace" className="text-xs text-zinc-500 hover:text-white transition-colors">View All</Link>
           </div>
           <div className="space-y-2">
             {marketplaceAgents.filter(item => item.agent).map(({ agent, trustScore }) => (
