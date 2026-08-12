@@ -2,6 +2,7 @@ import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
+import AgentKeyPanel from "../../../components/AgentKeyPanel";
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
@@ -417,6 +418,10 @@ export default function AgentProfile() {
                   </div>
                 </dl>
               </section>
+
+              {/* Owner-only: the key this agent needs to bill, settle or
+                  withdraw. Renders nothing for anyone else. */}
+              <AgentKeyPanel agentId={agent.agentId} />
 
               {/* Endpoint */}
               <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 mb-6">

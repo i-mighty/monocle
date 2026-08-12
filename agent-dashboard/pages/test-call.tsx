@@ -115,7 +115,23 @@ export default function TestCall() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data?.error ?? data?.error?.message ?? `Request failed (${res.status})`);
+        // meter/execute debits the caller, so it demands a key that names the
+        // calling agent — and the proxy deliberately withholds the platform key
+        // from money paths. A bare "Invalid API key" leaves people hunting for a
+        // key they were never given; say where to get one.
+        const code = data?.error?.code;
+        if (res.status === 401 || code === "AUTH_INVALID_API_KEY") {
+          throw new Error(
+            `This call bills ${callerId || "the caller"}, so it needs that agent's own API key. ` +
+              `Open the agent's page and use "Issue API key", then run the call from your service with that key.`
+          );
+        }
+        if (code === "AUTH_INSUFFICIENT_PERMISSIONS") {
+          throw new Error(
+            "That key belongs to a different agent. A key may only bill the agent it was issued for."
+          );
+        }
+        throw new Error(data?.error?.message ?? data?.error ?? `Request failed (${res.status})`);
       }
       setResult(data as CallResult);
     } catch (err) {

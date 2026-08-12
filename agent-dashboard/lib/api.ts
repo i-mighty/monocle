@@ -182,6 +182,26 @@ export interface MyAgent {
 export const getMyAgents = (): Promise<{ agents: MyAgent[] }> =>
   authFetch("/v1/agents/mine");
 
+/**
+ * Issue this agent's `mk_` key — the credential every money route requires.
+ *
+ * Returns the plaintext once; only its digest is stored. `code` is required only
+ * when rotating, because rotation invalidates a key that live services may be
+ * using. Goes through sensitiveFetch so the session cookie rides along: this is
+ * authorised by who you are, not by a key you hold.
+ */
+export const issueAgentKey = (agentId: string, opts?: { rotate?: boolean; code?: string; name?: string }) =>
+  sensitiveFetch(`/v1/agents/${encodeURIComponent(agentId)}/keys/mine`, {
+    method: "POST",
+    body: JSON.stringify(opts ?? {}),
+  });
+
+/** Email a step-up code for rotating this agent's key. */
+export const sendAgentKeyCode = (agentId: string) =>
+  sensitiveFetch(`/v1/agents/${encodeURIComponent(agentId)}/keys/mine/send-code`, {
+    method: "POST",
+  });
+
 /** Get a single agent. */
 export const getAgentDetails = (agentId: string) =>
   authFetch(`/v1/agents/${agentId}`);
