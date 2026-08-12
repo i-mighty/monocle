@@ -132,22 +132,36 @@ router.post("/register", gateSensitiveActionByEmail, apiKeyAuth, asyncHandler(as
       // public_key. It is set once at creation; changing it afterwards requires
       // an admin (see PATCH /:agentId). Restore self-service here only once
       // agents carry a real owner to authorize against.
-      // owner_user_id is set on INSERT only, and deliberately absent from the
-      // update set. This is an upsert on a caller-chosen id, so assigning the
-      // owner on conflict would let anyone take over an existing agent by
-      // re-registering its id — the same reasoning that keeps public_key out.
-      // First registrant owns it; a later one changes nothing about who does.
+      // The agent is linked to the email that created it, the same way a payout
+      // wallet is linked: owner_email is the human-readable link, owner_user_id
+      // the referential one. Both are written together so the link survives an
+      // email change (the id) and stays legible in the database (the address).
       //
-      // Null when the caller is a pure SDK/API-key client with no session: we
-      // record an owner only when we actually know who it is, rather than
-      // inventing one.
-      `insert into agents (id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports, owner_user_id)
-       values ($1, $2, $3, $4, $5, 0, 0, $6)
+      // Ownership fills in on conflict ONLY when it is currently null. That
+      // matters twice: an agent registered before ownership existed becomes
+      // yours by registering it again from the dashboard, and an agent that
+      // already has an owner cannot be taken over by someone re-registering its
+      // id — the reasoning that keeps public_key out of this update set.
+      //
+      // Null for pure SDK/API-key callers with no session: an owner is recorded
+      // only when we actually know who it is.
+      `insert into agents (id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports, owner_user_id, owner_email)
+       values ($1, $2, $3, $4, $5, 0, 0, $6, $7)
        on conflict (id) do update set
          name = coalesce(excluded.name, agents.name),
-         categories = coalesce(excluded.categories, agents.categories)
-       returning id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports, owner_user_id`,
-      [agentId, name || null, publicKey || null, rate, categoriesJson, req.user?.id ?? null]
+         categories = coalesce(excluded.categories, agents.categories),
+         owner_user_id = coalesce(agents.owner_user_id, excluded.owner_user_id),
+         owner_email = coalesce(agents.owner_email, excluded.owner_email)
+       returning id, name, public_key, default_rate_per_1k_tokens, categories, balance_lamports, pending_lamports, owner_user_id, owner_email`,
+      [
+        agentId,
+        name || null,
+        publicKey || null,
+        rate,
+        categoriesJson,
+        req.user?.id ?? null,
+        req.user?.email ?? null,
+      ]
     );
 
     // Upsert the endpoint row if a URL was provided. Health stats reset on URL
@@ -953,9 +967,14 @@ router.get("/mine", requireUser, asyncHandler(async (req, res) => {
           order by updated_at desc nulls last
           limit 1
        ) e on true
+      -- Matched by id OR email. The id is the durable link; the email catches
+      -- agents registered against an address before user ids were recorded, and
+      -- anything registered through the public route with ownerEmail supplied.
+      -- Compared case-insensitively because addresses are stored as typed.
       where a.owner_user_id = $1
+         or ($2::text is not null and lower(a.owner_email) = lower($2))
       order by a.created_at desc`,
-    [req.user!.id]
+    [req.user!.id, req.user!.email ?? null]
   );
 
   sendSuccess(res, {
