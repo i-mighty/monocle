@@ -209,7 +209,12 @@ export interface VerificationChallenge {
  * The `purpose` column has existed since 0002 and was always written as
  * 'verify_email'; this makes it mean something.
  */
-export type VerificationPurpose = "verify_email" | "regenerate_api_key";
+export type VerificationPurpose =
+  | "verify_email"
+  /** Replacing the developer's own `Mon_` key. */
+  | "regenerate_api_key"
+  /** Replacing an agent's `mk_` key, which invalidates whatever is using it. */
+  | "rotate_agent_key";
 
 /**
  * Issue a fresh verification code for the user's current email. Invalidates

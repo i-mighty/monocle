@@ -4,7 +4,9 @@ import { requireOwnAgent } from "../middleware/requireOwnAgent";
 import { hashAgentKey } from "../services/securityService";
 import { hasValidAdminKey, adminKeyAuth } from "../middleware/adminAuth";
 import { gateSensitiveActionByEmail, requireVerifiedEmail } from "../middleware/requireVerifiedEmail";
-import { query } from "../db/client";
+import { query, pool } from "../db/client";
+import { consumeStepUpCode, createEmailVerification } from "../services/authService";
+import { sendVerificationEmail } from "../services/emailService";
 import { calculateCost, getAgentMetrics, PRICING_CONSTANTS } from "../services/pricingService";
 import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
 import * as agentRegistry from "../services/agentRegistryService";
@@ -2477,6 +2479,213 @@ router.post(
       },
       201
     );
+  })
+);
+
+/**
+ * POST /agents/:agentId/keys/mine
+ *   { name?, rotate?, code? }   (requires a verified email + ownership)
+ *
+ * Issue the caller's own agent a key. Until now only an admin could
+ * (POST /:agentId/keys), so a developer had no way to obtain the credential
+ * their agent needs — and every money route requires one. Registering an agent
+ * through the dashboard and then being unable to bill, settle or withdraw with
+ * it was the practical consequence.
+ *
+ * This is the self-service issuance 0001 anticipated once agents had an owner:
+ * "when agents get an owner, that becomes self-service and requireOwnAgent
+ * extends to per-user authorization".
+ *
+ * The key returned here can move this agent's money. So:
+ *
+ *   - the caller must own the agent, matched by user id or the email the agent
+ *     was registered under;
+ *   - their email must be verified, the same bar settle and withdraw already
+ *     enforce — issuing the key that unlocks those cannot be easier than using
+ *     them;
+ *   - ROTATION additionally requires a fresh emailed code. First issuance
+ *     invalidates nothing, but rotation kills a credential that services may be
+ *     using, which is the same reasoning that puts a step-up in front of
+ *     regenerating a developer key.
+ */
+router.post(
+  "/:agentId/keys/mine",
+  requireVerifiedEmail,
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+    const { name, rotate, code } = req.body ?? {};
+    const user = req.user!;
+
+    const agent = await query(
+      `select id, name, owner_user_id, owner_email from agents where id = $1`,
+      [agentId]
+    );
+    if (agent.rows.length === 0) throw AppError.agentNotFound(agentId);
+
+    const row = agent.rows[0];
+    const ownsIt =
+      (row.owner_user_id && row.owner_user_id === user.id) ||
+      (row.owner_email && user.email && row.owner_email.toLowerCase() === user.email.toLowerCase());
+
+    if (!ownsIt) {
+      // Deliberately the same response whether the agent is unowned or owned by
+      // somebody else: distinguishing them would turn this into a way to probe
+      // which agent ids are unclaimed and therefore worth trying to register.
+      throw new AppError(
+        ErrorCodes.AUTH_INSUFFICIENT_PERMISSIONS,
+        { reason: "not_agent_owner" },
+        "You can only issue keys for agents you own."
+      );
+    }
+
+    const existing = await query(
+      `select id from api_keys where agent_id = $1 and is_active = true and revoked_at is null`,
+      [agentId]
+    );
+    const isRotation = rotate === true || existing.rows.length > 0;
+
+    if (isRotation) {
+      if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
+        throw new AppError(
+          ErrorCodes.AUTH_VERIFICATION_INVALID,
+          { reason: "step_up_required" },
+          "Rotating this agent's key invalidates the current one. Request a code and confirm."
+        );
+      }
+      const consumed = await consumeStepUpCode(user.id, code, "rotate_agent_key");
+      if (!consumed.ok) {
+        throw new AppError(
+          consumed.reason === "expired"
+            ? ErrorCodes.AUTH_VERIFICATION_EXPIRED
+            : ErrorCodes.AUTH_VERIFICATION_INVALID,
+          { reason: consumed.reason }
+        );
+      }
+    }
+
+    const apiKey = `mk_${randomUUID().replace(/-/g, "")}${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+
+    // Revoke-then-issue in one transaction: a revoke that committed without its
+    // replacement would leave the agent with no working credential and no way to
+    // bill or settle, which is worse than leaving the old key alive.
+    if (!pool) throw new Error("DATABASE_URL is required to issue an agent key");
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      if (isRotation) {
+        await client.query(
+          `update api_keys set is_active = false, revoked_at = now()
+            where agent_id = $1 and is_active = true`,
+          [agentId]
+        );
+      }
+      await client.query(
+        `insert into api_keys (id, key_hash, agent_id, name, scopes, is_active, created_at)
+         values ($1, $2, $3, $4, $5, true, now())`,
+        [
+          randomUUID(),
+          hashAgentKey(apiKey),
+          agentId,
+          typeof name === "string" && name.trim() ? name.trim() : `${row.name ?? agentId} - Key`,
+          JSON.stringify(["read:own", "write:own"]),
+        ]
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    console.warn(`[Keys] ${user.email} issued an agent key for ${agentId} (rotation=${isRotation})`);
+
+    sendSuccess(
+      res,
+      {
+        agentId,
+        apiKey, // shown once — only the digest is persisted
+        rotated: isRotation,
+        warning: "Store this key now. It cannot be retrieved again.",
+      },
+      201
+    );
+  })
+);
+
+/**
+ * POST /agents/:agentId/keys/mine/send-code   (requires a verified email + ownership)
+ *
+ * Email a step-up code for rotating this agent's key. Rate limited per user the
+ * same way the developer-key flow is, so it cannot be used to hammer the mail
+ * provider or as a spam vector aimed at the owner's inbox.
+ */
+router.post(
+  "/:agentId/keys/mine/send-code",
+  requireVerifiedEmail,
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+    const user = req.user!;
+
+    const agent = await query(
+      `select owner_user_id, owner_email from agents where id = $1`,
+      [agentId]
+    );
+    if (agent.rows.length === 0) throw AppError.agentNotFound(agentId);
+
+    const row = agent.rows[0];
+    const ownsIt =
+      (row.owner_user_id && row.owner_user_id === user.id) ||
+      (row.owner_email && user.email && row.owner_email.toLowerCase() === user.email.toLowerCase());
+    if (!ownsIt) {
+      throw new AppError(
+        ErrorCodes.AUTH_INSUFFICIENT_PERMISSIONS,
+        { reason: "not_agent_owner" },
+        "You can only issue keys for agents you own."
+      );
+    }
+
+    // Same cooldown and hourly cap as the developer-key step-up, enforced from
+    // email_verifications so it survives a restart and holds across processes.
+    const recent = await query(
+      `select max(created_at) as last_sent,
+              count(*) filter (where created_at > now() - interval '1 hour') as sent_last_hour
+         from email_verifications
+        where user_id = $1 and purpose = 'rotate_agent_key'`,
+      [user.id]
+    );
+    const lastSent: Date | null = recent.rows[0]?.last_sent ?? null;
+    if (lastSent) {
+      const elapsed = (Date.now() - new Date(lastSent).getTime()) / 1000;
+      if (elapsed < 60) {
+        const retryAfter = Math.ceil(60 - elapsed);
+        res.setHeader("Retry-After", retryAfter);
+        throw new AppError(
+          ErrorCodes.RATE_LIMIT_EXCEEDED,
+          { retryAfter, reason: "cooldown" },
+          `Wait ${retryAfter}s before requesting another code.`
+        );
+      }
+    }
+    if (Number(recent.rows[0]?.sent_last_hour ?? 0) >= 5) {
+      res.setHeader("Retry-After", 3600);
+      throw new AppError(
+        ErrorCodes.RATE_LIMIT_EXCEEDED,
+        { retryAfter: 3600, reason: "hourly_cap" },
+        "Too many code requests. Try again later."
+      );
+    }
+
+    const challenge = await createEmailVerification(user, "rotate_agent_key");
+    let sent = true;
+    try {
+      await sendVerificationEmail(challenge.email, challenge.code, challenge.ttlMinutes);
+    } catch (err) {
+      console.error("[Keys] agent-key step-up email failed to send:", err);
+      sent = false;
+    }
+
+    sendSuccess(res, { sent, email: user.email, expiresAt: challenge.expiresAt });
   })
 );
 
