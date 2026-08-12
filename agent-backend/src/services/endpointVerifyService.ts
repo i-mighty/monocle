@@ -274,7 +274,19 @@ export async function runVerificationJob(): Promise<{
  * Disable agents that have been unhealthy for too long
  * Called after verification job to clean up bad actors
  */
-export async function disableUnhealthyAgents(consecutiveFailureThreshold: number = 5): Promise<number> {
+/**
+ * Consecutive failed checks before an endpoint is deactivated — and with it,
+ * removed from the marketplace, which lists only active healthy endpoints.
+ *
+ * Exported so the number lives in one place: routes/agents.ts reports how many
+ * failures remain before deactivation, and that countdown is wrong the moment it
+ * disagrees with the job that enforces it.
+ */
+export const ENDPOINT_DEACTIVATION_THRESHOLD = 5;
+
+export async function disableUnhealthyAgents(
+  consecutiveFailureThreshold: number = ENDPOINT_DEACTIVATION_THRESHOLD
+): Promise<number> {
   try {
     const result = await query(
       `UPDATE agent_endpoints

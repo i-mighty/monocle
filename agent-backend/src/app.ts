@@ -33,7 +33,11 @@ import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 import { getDemoStatus } from "./middleware/demoOnly";
 import { rateLimit, ipRateLimit, slowDown } from "./middleware/rateLimit";
 import { enforceProductionRequirements, isProduction } from "./middleware/requireProduction";
-import { runVerificationJob, disableUnhealthyAgents } from "./services/endpointVerifyService";
+import {
+  runVerificationJob,
+  disableUnhealthyAgents,
+  ENDPOINT_DEACTIVATION_THRESHOLD,
+} from "./services/endpointVerifyService";
 import { query } from "./db/client";
 import { PRICING_CONSTANTS } from "./services/pricingService";
 import { x402ProtectMiddleware, x402Enabled } from "./middleware/x402Official";
@@ -264,7 +268,9 @@ app.listen(port, () => {
 
   // Endpoint health verification - runs every 15 minutes
   const VERIFICATION_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
-  const DISABLE_THRESHOLD = 5; // Consecutive failures before auto-disable
+  // Consecutive failures before auto-disable. Shared with routes/agents.ts, which
+  // tells an owner how many checks remain before their agent is delisted.
+  const DISABLE_THRESHOLD = ENDPOINT_DEACTIVATION_THRESHOLD;
 
   if (process.env.DATABASE_URL) {
     console.log(`  📡 Starting endpoint verification scheduler (every 15 min)`);

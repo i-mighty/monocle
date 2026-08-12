@@ -13,7 +13,10 @@ import { demoOnly } from "../middleware/demoOnly";
 import { rateLimit, ipRateLimit } from "../middleware/rateLimit";
 import { randomUUID } from "crypto";
 import { Connection, PublicKey, Transaction, SystemProgram, Keypair, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { checkEndpointHealth } from "../services/endpointVerifyService";
+import {
+  checkEndpointHealth,
+  ENDPOINT_DEACTIVATION_THRESHOLD,
+} from "../services/endpointVerifyService";
 import { pingCustomAgent } from "../services/customAgentAdapter";
 import { verifySolOwnership, assignSolName } from "../services/snsIdentityService";
 import { createAgentDWallet, getDWalletInfo, getSpendingPolicy } from "../services/ikaDWalletService";
@@ -924,7 +927,12 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     `select a.id, a.name, a.public_key, a.default_rate_per_1k_tokens, a.categories, a.bio,
             a.verified_status, a.verified_at, a.sol_name,
             a.balance_lamports, a.pending_lamports, a.created_at,
-            e.endpoint_url, e.is_healthy as endpoint_healthy, e.last_check_at as endpoint_last_check_at
+            e.endpoint_url, e.is_healthy as endpoint_healthy, e.last_check_at as endpoint_last_check_at,
+            -- Enough for an owner to act on a failing endpoint rather than only
+            -- learn that it failed: why it failed, how close it is to being
+            -- deactivated, and what its record looks like.
+            e.is_active as endpoint_active, e.last_check_error, e.consecutive_failures,
+            e.total_checks, e.successful_checks, e.last_check_latency_ms
      from agents a
      left join agent_endpoints e on e.agent_id = a.id
      where a.id = $1`,
@@ -960,6 +968,44 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
     endpointUrl: agent.endpoint_url ?? null,
     endpointHealthy: agent.endpoint_healthy ?? null,
     endpointLastCheckAt: agent.endpoint_last_check_at,
+    /**
+     * Endpoint health, in the terms the owner needs.
+     *
+     * The scheduler checks every 15 minutes and deactivates after 5 consecutive
+     * failures, and the marketplace only lists agents whose endpoint is active
+     * AND healthy — so an agent can vanish from discovery with nothing telling
+     * its owner why. `lastError` is the actionable part; `deactivated` is the
+     * consequence they can already be suffering.
+     */
+    endpointHealth: agent.endpoint_url
+      ? {
+          url: agent.endpoint_url,
+          isHealthy: agent.endpoint_healthy === true,
+          isActive: agent.endpoint_active === true,
+          deactivated: agent.endpoint_active === false,
+          consecutiveFailures: Number(agent.consecutive_failures ?? 0),
+          failuresUntilDeactivation: Math.max(
+            0,
+            ENDPOINT_DEACTIVATION_THRESHOLD - Number(agent.consecutive_failures ?? 0)
+          ),
+          lastError: agent.last_check_error ?? null,
+          lastCheckAt: agent.endpoint_last_check_at ?? null,
+          lastLatencyMs:
+            agent.last_check_latency_ms === null || agent.last_check_latency_ms === undefined
+              ? null
+              : Number(agent.last_check_latency_ms),
+          totalChecks: Number(agent.total_checks ?? 0),
+          successfulChecks: Number(agent.successful_checks ?? 0),
+          uptimePercent:
+            Number(agent.total_checks ?? 0) > 0
+              ? Math.round(
+                  (Number(agent.successful_checks ?? 0) / Number(agent.total_checks)) * 1000
+                ) / 10
+              : null,
+          // Why this matters, so the UI doesn't have to encode the rule itself.
+          listedInMarketplace: agent.endpoint_healthy === true && agent.endpoint_active === true,
+        }
+      : null,
     reputation,
     balanceLamports: Number(agent.balance_lamports),
     pendingLamports: Number(agent.pending_lamports),

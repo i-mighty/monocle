@@ -37,6 +37,21 @@ interface AgentDetail {
   solName?: string | null;
   endpointUrl?: string | null;
   endpointHealthy?: boolean | null;
+  endpointHealth?: {
+    url: string;
+    isHealthy: boolean;
+    isActive: boolean;
+    deactivated: boolean;
+    consecutiveFailures: number;
+    failuresUntilDeactivation: number;
+    lastError: string | null;
+    lastCheckAt: string | null;
+    lastLatencyMs: number | null;
+    totalChecks: number;
+    successfulChecks: number;
+    uptimePercent: number | null;
+    listedInMarketplace: boolean;
+  } | null;
   reputation?: ReputationBreakdown | null;
   balanceLamports: number;
   pendingLamports: number;
@@ -446,6 +461,90 @@ export default function AgentProfile() {
                     No endpoint configured. Set one in <Link href={`/agents/${encodeURIComponent(agent.agentId)}/edit`} className="text-zinc-400 underline hover:text-white">edit</Link> so callers can reach this agent and the marketplace can list it.
                   </p>
                 )}
+
+                {/* Why the agent is or isn't discoverable.
+                    A failing endpoint is checked every 15 minutes and deactivated
+                    after 5 strikes, and the marketplace lists only active healthy
+                    endpoints — so an agent can disappear from discovery with
+                    nothing anywhere telling its owner why. This is that "why". */}
+                {agent.endpointHealth && (
+                  <div className="mt-4 pt-4 border-t border-zinc-800/60">
+                    {agent.endpointHealth.deactivated ? (
+                      <div className="bg-red-950/40 border border-red-900/50 rounded-lg p-4 mb-4">
+                        <p className="text-red-200 text-sm font-medium mb-1">
+                          This agent has been removed from the marketplace.
+                        </p>
+                        <p className="text-red-200/70 text-sm">
+                          Its endpoint failed {agent.endpointHealth.consecutiveFailures} consecutive
+                          health checks. Fix the endpoint and it will be relisted automatically once
+                          a check succeeds.
+                        </p>
+                      </div>
+                    ) : agent.endpointHealth.isHealthy === false ? (
+                      <div className="bg-amber-950/40 border border-amber-900/50 rounded-lg p-4 mb-4">
+                        <p className="text-amber-200 text-sm font-medium mb-1">
+                          Health checks are failing.
+                        </p>
+                        <p className="text-amber-200/70 text-sm">
+                          {agent.endpointHealth.failuresUntilDeactivation > 0
+                            ? `${agent.endpointHealth.failuresUntilDeactivation} more failed check${
+                                agent.endpointHealth.failuresUntilDeactivation === 1 ? "" : "s"
+                              } and this agent is removed from the marketplace.`
+                            : "This agent is about to be removed from the marketplace."}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {agent.endpointHealth.lastError && (
+                      <div className="mb-4">
+                        <div className="text-[10px] uppercase tracking-widest text-zinc-600 mb-1.5">
+                          Last error
+                        </div>
+                        <code className="block text-xs font-mono text-red-300 bg-zinc-950 border border-zinc-800/60 rounded-lg px-3 py-2 break-all">
+                          {agent.endpointHealth.lastError}
+                        </code>
+                      </div>
+                    )}
+
+                    <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                      <HealthRow
+                        label="In marketplace"
+                        value={agent.endpointHealth.listedInMarketplace ? "Yes" : "No"}
+                        tone={agent.endpointHealth.listedInMarketplace ? "good" : "bad"}
+                      />
+                      <HealthRow
+                        label="Uptime"
+                        value={
+                          agent.endpointHealth.uptimePercent === null
+                            ? "No checks yet"
+                            : `${agent.endpointHealth.uptimePercent}%`
+                        }
+                      />
+                      <HealthRow
+                        label="Last checked"
+                        value={
+                          agent.endpointHealth.lastCheckAt
+                            ? new Date(agent.endpointHealth.lastCheckAt).toLocaleString()
+                            : "Never"
+                        }
+                      />
+                      <HealthRow
+                        label="Last response"
+                        value={
+                          agent.endpointHealth.lastLatencyMs === null
+                            ? "—"
+                            : `${agent.endpointHealth.lastLatencyMs} ms`
+                        }
+                      />
+                    </dl>
+
+                    <p className="text-zinc-600 text-xs mt-4">
+                      Checked every 15 minutes. The check calls <code>/health</code> on your
+                      endpoint&apos;s origin, falling back to <code>/</code> — any 2xx counts as
+                      healthy.
+                    </p>
+                  </div>
+                )}
               </section>
 
               {/* Reputation breakdown */}
@@ -583,5 +682,29 @@ export default function AgentProfile() {
         </main>
       </div>
     </>
+  );
+}
+
+/** One label/value pair in the endpoint health grid. */
+function HealthRow({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "good" | "bad";
+}) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-zinc-500">{label}</dt>
+      <dd
+        className={
+          tone === "good" ? "text-emerald-400" : tone === "bad" ? "text-red-400" : "text-zinc-300"
+        }
+      >
+        {value}
+      </dd>
+    </div>
   );
 }
