@@ -37,7 +37,25 @@ export default function Login() {
   // exactly what the copy on screen tells the user.
   const [issuedKey, setIssuedKey] = useState<string | null>(null);
 
-  const goToApp = () => router.push("/economy");
+  /**
+   * Return the visitor to whatever they were trying to reach before the gate sent
+   * them here, falling back to the app's home.
+   *
+   * Only same-origin paths are honoured. `next` arrives in the URL where anyone
+   * can edit it, so an absolute or protocol-relative value would turn sign-in
+   * into an open redirect — a credible phishing hop, since the victim really did
+   * just authenticate on the genuine site.
+   */
+  const goToApp = () => {
+    const next = router.query.next;
+    const target = typeof next === "string" ? next : null;
+    // Must be a single-slash absolute path. "//evil.com" is protocol-relative,
+    // and browsers normalise the backslash form "/\evil.com" to the same thing,
+    // so both are rejected rather than only the obvious one.
+    const isSameOriginPath =
+      !!target && /^\/(?![/\\])/.test(target);
+    router.push(isSameOriginPath ? target! : "/dashboard");
+  };
 
   function afterAuth(user: AuthUser, sent?: boolean) {
     if (user.emailVerified) {
