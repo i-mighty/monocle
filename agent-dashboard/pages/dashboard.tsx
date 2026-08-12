@@ -38,6 +38,8 @@ export default function Dashboard() {
    * looking at it.
    */
   const [signedIn, setSignedIn] = useState(false);
+  /** False until getMe() answers, so the panel never guesses which state to show. */
+  const [authChecked, setAuthChecked] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,28 +47,31 @@ export default function Dashboard() {
       setLoading(true);
       setAgentsError(null);
 
-      const me = await getMe().catch(() => null);
-      setSignedIn(!!me);
+      // Everything is requested at once, and each panel fills in the moment its
+      // own request lands.
+      //
+      // This used to run in three waves — await getMe(), then a batch of four,
+      // then the agents — so the agents, the thing people come here for, arrived
+      // only after every other request had finished. Individually each call takes
+      // well under a second; it was the queueing that made the page feel slow,
+      // and it put the most-wanted panel last in the queue.
+      //
+      // Failures stay isolated: one endpoint being down must not blank the
+      // panels next to it.
+      getMe()
+        .then((me) => setSignedIn(!!me))
+        .catch(() => setSignedIn(false))
+        // Until this resolves we do not know who the visitor is, and guessing
+        // shows a signed-in user a "Sign in" button for a moment. The panel
+        // stays neutral until the answer arrives.
+        .finally(() => setAuthChecked(true));
 
-      try {
-        const [usageData, earningsData, logsData, agentsData] = await Promise.allSettled([
-          getUsage(),
-          getEarnings(),
-          getToolLogs(),
-          searchAgents({ limit: 3, minTrust: 70 })
-        ]);
-        
-        if (usageData.status === 'fulfilled') setUsage(usageData.value);
-        if (earningsData.status === 'fulfilled') setTotalEarned(Number(earningsData.value?.total_sol || 0));
-        if (logsData.status === 'fulfilled') setRecentLogs(logsData.value?.slice(0, 5) || []);
-        if (agentsData.status === 'fulfilled') setMarketplaceAgents(agentsData.value?.agents || []);
-        
-        // The user's OWN agents. This previously called getDeployedAgents(),
-        // which lists every agent in the system — so a panel headed "Deployed
-        // Agents" showed each developer everyone else's agent ids, rates and
-        // balances. /mine is scoped by the session.
-        try {
-          const { agents } = await getMyAgents();
+      // The user's OWN agents. Previously getDeployedAgents(), which lists every
+      // agent in the system — so a panel headed "Deployed Agents" showed each
+      // developer everyone else's agent ids, rates and balances. /mine is scoped
+      // by the session.
+      getMyAgents()
+        .then(({ agents }) => {
           setDeployedAgents((agents || []).map((agent) => ({
             id: agent.agentId,
             name: agent.name || agent.agentId,
@@ -75,13 +80,27 @@ export default function Dashboard() {
             spend: agent.balanceLamports / 1e9, // Convert lamports to SOL
             calls: 0, // Will be populated from metrics
           })));
-        } catch (err) {
+        })
+        .catch((err) => {
           // Only a signed-out visitor is told to sign in. For everyone else this
           // is a failure of the request, not of their session, and saying
           // otherwise sends someone who is already signed in to the login page.
           console.warn("Failed to load deployed agents:", err);
           setAgentsError("Couldn't load your agents just now. Try again shortly.");
-        }
+        });
+
+      try {
+        const [usageData, earningsData, logsData, agentsData] = await Promise.allSettled([
+          getUsage(),
+          getEarnings(),
+          getToolLogs(),
+          searchAgents({ limit: 3, minTrust: 70 })
+        ]);
+
+        if (usageData.status === 'fulfilled') setUsage(usageData.value);
+        if (earningsData.status === 'fulfilled') setTotalEarned(Number(earningsData.value?.total_sol || 0));
+        if (logsData.status === 'fulfilled') setRecentLogs(logsData.value?.slice(0, 5) || []);
+        if (agentsData.status === 'fulfilled') setMarketplaceAgents(agentsData.value?.agents || []);
       } catch (err) {
         console.error("Failed to load dashboard data:", err);
       }
@@ -131,18 +150,21 @@ export default function Dashboard() {
             {/* Only a signed-out visitor is offered a way in. Someone already
                 signed in gets the actual problem instead of being told to do
                 the thing they have already done. */}
-            {!signedIn && (
+            {!authChecked && (
+              <div className="text-center py-6 text-zinc-600 text-sm">Loading…</div>
+            )}
+            {authChecked && !signedIn && (
               <div className="text-center py-6 text-zinc-500">
                 <p className="mb-3">Sign in to view your deployed agents</p>
                 <Link href="/login" className="bg-white text-zinc-900 text-sm font-medium px-4 py-2 rounded-lg hover:bg-zinc-200 transition-colors">Log In</Link>
               </div>
             )}
-            {signedIn && agentsError && (
+            {authChecked && signedIn && agentsError && (
               <div className="text-center py-6 text-zinc-500">
                 <p>{agentsError}</p>
               </div>
             )}
-            {signedIn && !agentsError && deployedAgents.map((agent) => (
+            {authChecked && signedIn && !agentsError && deployedAgents.map((agent) => (
               <div key={agent.id} className="flex items-center gap-4 p-4 bg-zinc-800/30 rounded-xl">
                 <div className="w-10 h-10 rounded-lg bg-zinc-800 border border-zinc-700/50 flex items-center justify-center text-white font-bold">
                   {agent.name.charAt(0)}
@@ -163,7 +185,7 @@ export default function Dashboard() {
                 </div>
               </div>
             ))}
-            {signedIn && !agentsError && deployedAgents.length === 0 && (
+            {authChecked && signedIn && !agentsError && deployedAgents.length === 0 && (
               <div className="text-center py-8 text-zinc-600">
                 <p className="mb-3">No agents deployed yet</p>
                 <Link href="/marketplace" className="text-zinc-400 hover:text-white text-sm underline">Browse Marketplace</Link>
