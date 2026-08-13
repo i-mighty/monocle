@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import RequireAdmin from "../components/RequireAdmin";
 import {
   getPlatformOverview,
   getCostAnalytics,
@@ -81,6 +82,7 @@ export default function Analytics() {
 
   return (
     <Layout title="Analytics">
+     <RequireAdmin>
       {/* Period Selector */}
       <div className="flex gap-2 mb-6">
         {(["hour", "day", "week"] as const).map((p) => (
@@ -281,6 +283,7 @@ export default function Analytics() {
           </section>
         </>
       )}
+     </RequireAdmin>
     </Layout>
   );
 }

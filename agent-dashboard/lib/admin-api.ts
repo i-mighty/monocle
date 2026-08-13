@@ -1,39 +1,30 @@
 /**
  * Admin API Client
  *
- * Hits the analytics endpoints with admin authentication.
- * Requires ADMIN_API_KEY to be set in environment or passed directly.
+ * Hits the operator analytics endpoints as the signed-in operator.
+ *
+ * This used to ask the human to paste ADMIN_API_KEY into a password box and
+ * kept it in sessionStorage, sending it as X-Admin-Key on every call. Three
+ * things were wrong with that. It put the server's master key in a browser,
+ * where a single XSS or a shoulder-glance takes the whole platform. It was a
+ * shared secret, so nothing could be attributed to a person or revoked for one.
+ * And ADMIN_API_KEY is not set in production, so the page could never load at
+ * all — the prompt accepted anything and then failed.
+ *
+ * Operators now have a role on their own account (users.is_admin), so the
+ * session cookie they already hold is the credential. Nothing to paste, nothing
+ * stored client-side, and revoking one operator does not rotate a key everyone
+ * shares.
  */
 
 const base = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
-export interface AdminFetchOptions {
-  adminKey?: string;
-}
-
-async function adminFetch(path: string, options: AdminFetchOptions = {}) {
-  // Passed in, or held for this tab only. Deliberately NOT read from
-  // NEXT_PUBLIC_ADMIN_API_KEY, which used to be the last fallback here:
-  // NEXT_PUBLIC_ values are inlined into the client bundle at build time, so
-  // setting it to make the admin page work would have shipped the operator's
-  // admin key to every visitor's browser. It was never set, so nothing leaked —
-  // but the fallback made that a one-line mistake away, and ADMIN_API_KEY is
-  // meant to stay internal to the server.
-  //
-  // sessionStorage rather than localStorage: it dies with the tab.
-  const adminKey =
-    options.adminKey ||
-    (typeof window !== "undefined" ? sessionStorage.getItem("adminKey") : null);
-
-  if (!adminKey) {
-    throw new Error("Admin API key required");
-  }
-
+async function adminFetch(path: string) {
   const res = await fetch(`${base}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      "X-Admin-Key": adminKey
-    }
+    // The session cookie is the credential. It is HttpOnly, so this code cannot
+    // read it — which is the point.
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
   });
 
   if (!res.ok) {

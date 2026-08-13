@@ -9,7 +9,11 @@
 
 import { Router, Request, Response } from "express";
 import { apiKeyAuth } from "../middleware/apiKeyAuth";
-import { adminAuth } from "../middleware/adminAuth";
+// requireAdmin, not adminAuth: adminAuth only accepts the ADMIN_API_KEY header
+// or an admin_users bearer token, and neither is configured on this deployment —
+// so every analytics route below answered 503 and the admin page was dead. An
+// operator signing in with their ordinary account is the path that exists.
+import { requireAdmin } from "../middleware/requireAdmin";
 import { routeRequest, classifyTask, getSpecialistAgents, logRoutingDecision, TaskType } from "../services/routerService";
 import { executeChat, calculateCost } from "../services/specialistService";
 import { logRequest, buildLogEntry, getAgentStats, getClassificationStats, getTaskTypeStats, getRecentFailures, explainRoutingDecision } from "../services/requestLogger";
@@ -593,7 +597,7 @@ router.get("/stats", apiKeyAuth, async (req: Request, res: Response) => {
 // Set ADMIN_API_KEY in environment and provide X-Admin-Key header.
 
 // GET /chat/analytics/agents - Agent performance stats
-router.get("/analytics/agents", adminAuth, async (req: Request, res: Response) => {
+router.get("/analytics/agents", requireAdmin, async (req: Request, res: Response) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
     const agentId = req.query.agentId as string;
@@ -611,7 +615,7 @@ router.get("/analytics/agents", adminAuth, async (req: Request, res: Response) =
 });
 
 // GET /chat/analytics/classification - Classification method breakdown
-router.get("/analytics/classification", adminAuth, async (req: Request, res: Response) => {
+router.get("/analytics/classification", requireAdmin, async (req: Request, res: Response) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
     const stats = await getClassificationStats(days);
@@ -627,7 +631,7 @@ router.get("/analytics/classification", adminAuth, async (req: Request, res: Res
 });
 
 // GET /chat/analytics/tasks - Task type distribution
-router.get("/analytics/tasks", adminAuth, async (req: Request, res: Response) => {
+router.get("/analytics/tasks", requireAdmin, async (req: Request, res: Response) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
     const stats = await getTaskTypeStats(days);
@@ -643,7 +647,7 @@ router.get("/analytics/tasks", adminAuth, async (req: Request, res: Response) =>
 });
 
 // GET /chat/analytics/failures - Recent failures for debugging
-router.get("/analytics/failures", adminAuth, async (req: Request, res: Response) => {
+router.get("/analytics/failures", requireAdmin, async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
     const failures = await getRecentFailures(limit);
@@ -658,7 +662,7 @@ router.get("/analytics/failures", adminAuth, async (req: Request, res: Response)
 });
 
 // GET /chat/analytics/explain/:logId - Explain a routing decision
-router.get("/analytics/explain/:logId", adminAuth, async (req: Request, res: Response) => {
+router.get("/analytics/explain/:logId", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { logId } = req.params;
     const explanation = await explainRoutingDecision(logId);

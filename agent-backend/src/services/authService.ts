@@ -29,6 +29,8 @@ export interface UserRecord {
   displayName: string | null;
   email: string | null;
   emailVerifiedAt: string | null;
+  /** Monocle operator: may see every agent's data, not just their own. */
+  isAdmin: boolean;
   createdAt: string;
   lastSeenAt: string;
 }
@@ -36,7 +38,7 @@ export interface UserRecord {
 // Columns selected wherever we build a UserRecord — keep this list and the
 // mapper below in sync.
 const USER_COLUMNS =
-  "id, wallet_pubkey, sol_name, display_name, email, email_verified_at, created_at, last_seen_at";
+  "id, wallet_pubkey, sol_name, display_name, email, email_verified_at, is_admin, created_at, last_seen_at";
 
 function mapUserRow(r: any): UserRecord {
   return {
@@ -46,6 +48,9 @@ function mapUserRow(r: any): UserRecord {
     displayName: r.display_name ?? null,
     email: r.email ?? null,
     emailVerifiedAt: r.email_verified_at ? new Date(r.email_verified_at).toISOString() : null,
+    // Anything other than an explicit true is not an admin — a missing column on
+    // an un-migrated database must read as "no", never as "yes".
+    isAdmin: r.is_admin === true,
     createdAt: new Date(r.created_at).toISOString(),
     lastSeenAt: new Date(r.last_seen_at).toISOString(),
   };

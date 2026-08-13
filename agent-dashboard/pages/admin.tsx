@@ -2,11 +2,14 @@
  * Admin Dashboard - AI Router Analytics
  *
  * Visualizes routing performance, agent health, and cost metrics.
- * Requires admin authentication via X-Admin-Key header.
+ *
+ * Operators only. The gate is requireAdmin on the backend, which checks the
+ * role on the signed-in account; RequireAdmin below only decides what to draw.
  */
 
 import { useEffect, useState } from "react";
 import Layout from "../components/Layout";
+import RequireAdmin from "../components/RequireAdmin";
 import {
   getDashboardSummary,
   DashboardSummary,
@@ -391,28 +394,18 @@ function ExplainModal({ logId, onClose }: { logId: string; onClose: () => void }
 }
 
 export default function AdminDashboard() {
-  const [adminKey, setAdminKey] = useState("");
-  const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DashboardSummary | null>(null);
   const [days, setDays] = useState(7);
   const [explainLogId, setExplainLogId] = useState<string | null>(null);
 
-  // Check for stored key on mount (sessionStorage clears on tab close for security)
+  // RequireAdmin below only renders this component for an operator, and the
+  // backend re-checks the role on every request, so there is nothing to
+  // authenticate here — just load.
   useEffect(() => {
-    const stored = sessionStorage.getItem("adminKey");
-    if (stored) {
-      setAdminKey(stored);
-      setAuthenticated(true);
-    }
-  }, []);
-
-  // Load data when authenticated
-  useEffect(() => {
-    if (!authenticated) return;
     loadData();
-  }, [authenticated, days]);
+  }, [days]);
 
   const loadData = async () => {
     setLoading(true);
@@ -422,59 +415,14 @@ export default function AdminDashboard() {
       setData(summary);
     } catch (err: any) {
       setError(err.message);
-      if (err.message.includes("401") || err.message.includes("403")) {
-        setAuthenticated(false);
-        sessionStorage.removeItem("adminKey");
-      }
     }
     setLoading(false);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!adminKey.trim()) return;
-    sessionStorage.setItem("adminKey", adminKey);
-    setAuthenticated(true);
-  };
-
-  const handleLogout = () => {
-    sessionStorage.removeItem("adminKey");
-    setAdminKey("");
-    setAuthenticated(false);
-    setData(null);
-  };
-
-  // Login screen
-  if (!authenticated) {
-    return (
-      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
-        <form onSubmit={handleLogin} className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-8 w-[360px]">
-          <h1 className="text-white text-2xl font-bold mb-2">Admin Dashboard</h1>
-          <p className="text-zinc-500 text-sm mb-6">Enter your admin API key to access analytics</p>
-
-          <input
-            type="password"
-            value={adminKey}
-            onChange={(e) => setAdminKey(e.target.value)}
-            placeholder="Admin API Key"
-            className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800/60 rounded-lg text-white text-sm mb-4 focus:outline-none focus:border-zinc-600 transition-colors"
-          />
-
-          <button type="submit" className="w-full py-3 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors">
-            Sign In
-          </button>
-
-          {error && (
-            <div className="text-red-500 mt-4 text-sm">{error}</div>
-          )}
-        </form>
-      </div>
-    );
-  }
-
   // Dashboard
   return (
     <Layout title="Admin">
+     <RequireAdmin>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-white">Admin Analytics</h1>
@@ -497,12 +445,6 @@ export default function AdminDashboard() {
             className={`px-4 py-2 bg-white text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-200 transition-colors ${loading ? "opacity-50 cursor-wait" : ""}`}
           >
             {loading ? "Loading..." : "Refresh"}
-          </button>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 border border-zinc-800/60 rounded-lg text-zinc-500 text-sm hover:text-white hover:border-zinc-600 transition-colors"
-          >
-            Logout
           </button>
         </div>
       </div>
@@ -567,6 +509,7 @@ export default function AdminDashboard() {
           onClose={() => setExplainLogId(null)}
         />
       )}
+     </RequireAdmin>
     </Layout>
   );
 }

@@ -18,7 +18,8 @@
     "test:integration": "npx ts-node-dev --transpile-only src/tests/integration.test.ts",
     "test:edge": "npx ts-node-dev --transpile-only src/tests/failure-edge.test.ts",
     "test:e2e": "npx ts-node-dev --transpile-only src/tests/e2e-pricing.ts",
-    "test:pricing": "node src/tests/pricing-unit-test.js"
+    "test:pricing": "node src/tests/pricing-unit-test.js",
+    "admin:grant": "node scripts/grant-admin.js"
   },
   "dependencies": {
     "@bonfida/spl-name-service": "^3.0.20",

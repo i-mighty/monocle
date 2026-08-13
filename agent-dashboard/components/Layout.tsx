@@ -17,6 +17,16 @@ const NAV_LINKS = [
   { href: "/messaging", label: "Messaging" },
 ];
 
+/**
+ * Operator views: platform-wide data across every account. Shown only to
+ * operators, and only as a matter of not advertising a door you cannot open —
+ * requireAdmin on the backend is what actually keeps them out.
+ */
+const ADMIN_NAV_LINKS = [
+  { href: "/analytics", label: "Analytics" },
+  { href: "/admin", label: "Admin" },
+];
+
 export default function Layout({ children, title }: LayoutProps) {
   const router = useRouter();
 
@@ -25,12 +35,15 @@ export default function Layout({ children, title }: LayoutProps) {
   // else's identity, and a failure just hides the control rather than blocking
   // the page around it.
   const [email, setEmail] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     getMe()
       .then((u) => {
-        if (!cancelled) setEmail(u?.email ?? null);
+        if (cancelled) return;
+        setEmail(u?.email ?? null);
+        setIsAdmin(u?.isAdmin === true);
       })
       .catch(() => {
         /* signed out, or /me unreachable — the nav simply omits the account link */
@@ -54,7 +67,7 @@ export default function Layout({ children, title }: LayoutProps) {
             Monocle
           </Link>
           <nav className="flex items-center gap-1">
-            {NAV_LINKS.map((link) => {
+            {[...NAV_LINKS, ...(isAdmin ? ADMIN_NAV_LINKS : [])].map((link) => {
               const isActive = router.pathname === link.href;
               return (
                 <Link

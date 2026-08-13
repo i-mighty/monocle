@@ -59,6 +59,11 @@ function publicUser(u: UserRecord) {
     displayName: u.displayName,
     email: u.email,
     emailVerified: !!u.emailVerifiedAt,
+    // The dashboard uses this to decide whether to offer the operator views. It
+    // is a hint for rendering, not a gate — requireAdmin on the backend is the
+    // gate, and it re-reads the flag rather than trusting anything the client
+    // sends back.
+    isAdmin: u.isAdmin,
     createdAt: u.createdAt,
     lastSeenAt: u.lastSeenAt,
   };
@@ -435,6 +440,58 @@ router.post(
       `[KYC] admin force-verified ${user.email} (user ${user.id}) via X-Admin-Key`
     );
     sendSuccess(res, { user: publicUser(user) });
+  })
+);
+
+/**
+ * POST /v1/auth/admin/role   (X-Admin-Key)
+ *
+ * Grant or revoke operator access: { email, isAdmin }.
+ *
+ * Gated by the machine key rather than by an existing admin, so the first
+ * operator can be created at all — an admin-only grant endpoint cannot mint the
+ * admin it requires. Once ADMIN_API_KEY is set, this is the ordinary way to add
+ * and remove operators; before that, scripts/grant-admin.js does the same thing
+ * against the database directly, which is how the first one gets made.
+ *
+ * Revocation goes through the same door on purpose. A grant path without a
+ * matching revoke path means the only way to remove an operator is SQL, and
+ * that is the moment you need it to be easy.
+ */
+router.post(
+  "/admin/role",
+  adminKeyAuth,
+  asyncHandler(async (req, res) => {
+    const { email, isAdmin } = req.body ?? {};
+    if (!isValidEmail(email)) {
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, { field: "email" });
+    }
+    if (typeof isAdmin !== "boolean") {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "isAdmin" },
+        "isAdmin must be true or false — say which, rather than toggling blind"
+      );
+    }
+
+    const result = await query(
+      `update users set is_admin = $2 where lower(email) = lower($1) returning id, email`,
+      [normalizeEmail(email), isAdmin]
+    );
+    if (result.rows.length === 0) {
+      throw new AppError(
+        ErrorCodes.AGENT_NOT_FOUND,
+        { email: normalizeEmail(email) },
+        "No account with that email"
+      );
+    }
+
+    // Loud: this is the change that lets somebody see everyone else's data.
+    console.warn(
+      `[admin] ${isAdmin ? "GRANTED" : "REVOKED"} operator access for ` +
+        `${result.rows[0].email} (user ${result.rows[0].id}) via X-Admin-Key`
+    );
+    sendSuccess(res, { email: result.rows[0].email, isAdmin });
   })
 );
 

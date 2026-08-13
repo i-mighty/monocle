@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { query } from "../db/client";
-import { apiKeyAuth } from "../middleware/apiKeyAuthHardened";
+import { requireAdmin } from "../middleware/requireAdmin";
 import {
   getCostAnalytics,
   getAgentSpendReports,
@@ -17,6 +17,21 @@ import {
 } from "../services/analyticsService";
 
 const router = Router();
+
+/**
+ * Everything below is operator data — platform revenue, the failure log, what
+ * each agent spends and earns, who the top spenders are. None of it is scoped to
+ * the caller, so none of it may be served to whoever asks.
+ *
+ * Mounted on the router rather than route by route on purpose: this file had
+ * apiKeyAuth imported at the top and applied to nothing, which reads as
+ * protected right up until you check. A router-level gate cannot be forgotten by
+ * the next route added below it.
+ *
+ * Confirmed unauthenticated in production before this change: GET
+ * /v1/dashboard/platform-revenue answered 200 with no credentials at all.
+ */
+router.use(requireAdmin);
 
 // =============================================================================
 // PLATFORM OVERVIEW

@@ -50,6 +50,13 @@
       "when": 1784130489908,
       "tag": "0006_wallet_audit_log",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784130489909,
+      "tag": "0007_admin_role",
+      "breakpoints": true
     }
   ]
 }

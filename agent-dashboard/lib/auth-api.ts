@@ -19,6 +19,12 @@ export interface AuthUser {
   displayName: string | null;
   email: string | null;
   emailVerified: boolean;
+  /**
+   * Monocle operator. Decides whether the operator views are offered, never
+   * whether they are permitted — the backend re-checks on every request, so
+   * flipping this in a debugger changes what is drawn and nothing else.
+   */
+  isAdmin?: boolean;
   createdAt?: string;
   lastSeenAt?: string;
 }
