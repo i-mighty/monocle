@@ -9,12 +9,16 @@
     // the frontend paths already include /v1 where needed, and marketplace/legacy
     // calls hit the backend's deprecated root mounts.
     // Must be a HOSTNAME, not a raw IP: Cloudflare Workers reject fetch() to a
-    // raw IP with "error code: 1003". Uses HTTP on :3001 because nginx TLS on
-    // api.monocle.3lvn4g.xyz (443) isn't reachable yet. Once TLS/port 443 is
-    // working, switch this to "https://api.monocle.3lvn4g.xyz".
+    // raw IP with "error code: 1003".
+    //
+    // HTTPS since the Let's Encrypt certificate was issued (see
+    // .github/workflows/setup-tls.yml). Previously http://…:3001, which meant
+    // every proxied request — session cookies, and the API keys that authorise
+    // money movement — crossed the network in clear text. No port: nginx
+    // terminates TLS on 443 and proxies to the app on 3001.
     // NOTE: MONOCLE_API_KEY is a secret — set it with `wrangler secret put`,
     // never here (this file is committed).
-    "MONOCLE_BACKEND_URL": "http://api.monocle.3lvn4g.xyz:3001",
+    "MONOCLE_BACKEND_URL": "https://api.monocle.3lvn4g.xyz",
   },
   "assets": {
     "directory": ".open-next/assets",
