@@ -1,0 +1,59 @@
+name: Grant or revoke operator access
+
+# Operator access (users.is_admin) is what lets an account see platform-wide
+# data: revenue, the failure log, every agent's earnings. The first one cannot be
+# granted through the API — POST /v1/auth/admin/role needs ADMIN_API_KEY, which
+# is not set, and an admin-gated endpoint could not mint the first admin anyway.
+#
+# The database URL lives on the EC2 box and nowhere else, so this runs the grant
+# script there. Manual dispatch only: it never fires on a push, and GitHub records
+# who ran it with which inputs, which is the audit trail this action deserves.
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email of an existing Monocle account (must have signed up already)"
+        required: false
+        type: string
+      action:
+        description: "What to do"
+        required: true
+        default: list
+        type: choice
+        options:
+          - list
+          - grant
+          - revoke
+
+jobs:
+  grant:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check inputs
+        run: |
+          if [ "${{ inputs.action }}" != "list" ] && [ -z "${{ inputs.email }}" ]; then
+            echo "::error::'${{ inputs.action }}' needs an email."
+            exit 1
+          fi
+
+      - name: Run on EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 54.242.122.233
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/monocle/app/agent-backend
+
+            # DATABASE_URL lives in the service's env file, not the shell's.
+            set -a
+            . /opt/monocle/app/deploy/backend.env
+            set +a
+
+            case "${{ inputs.action }}" in
+              list)   node scripts/grant-admin.js --list ;;
+              grant)  node scripts/grant-admin.js "${{ inputs.email }}" ;;
+              revoke) node scripts/grant-admin.js "${{ inputs.email }}" --revoke ;;
+            esac
