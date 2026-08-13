@@ -18,9 +18,6 @@ const MOCK_CONVERSATIONS: Conversation[] = [
   { id: '5', title: 'Auth module unit tests',          messages: [], createdAt: new Date(Date.now() - 2 * 24 * 60 * 60000), lastAgent: 'anthropic' },
 ];
 
-// Replace with real API key from env / user session
-const API_KEY = process.env.NEXT_PUBLIC_MONOCLE_API_KEY ?? '';
-
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -47,7 +44,6 @@ export default function ChatPage() {
     messages,
     setMessages,
     {
-      apiKey: API_KEY,
       conversationId: activeConvId ?? undefined,
       skipUserMessage: true,
       onRoutingDecision: (routing) => {

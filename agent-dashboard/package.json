@@ -8,7 +8,8 @@
     "build:worker": "opennextjs-cloudflare build",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload"
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "lint:env": "node scripts/check-public-env.js"
   },
   "dependencies": {
     "next": "^16.2.6",

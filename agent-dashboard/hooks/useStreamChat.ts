@@ -4,7 +4,11 @@ import type { Message, StreamChunk, RoutingDecision, AgentProvider, Orchestratio
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? '/api/proxy';
 
 interface UseStreamChatOptions {
-  apiKey: string;
+  /**
+   * No apiKey. Requests go through /api/proxy, which attaches the server-side
+   * key on non-money paths and overwrites anything the browser sends — so
+   * threading a key through here published a credential to no effect.
+   */
   conversationId?: string;
   skipUserMessage?: boolean;
   onRoutingDecision?: (routing: RoutingDecision) => void;
@@ -74,7 +78,6 @@ export function useStreamChat(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': options.apiKey,
         },
         body: JSON.stringify({
           message: content,

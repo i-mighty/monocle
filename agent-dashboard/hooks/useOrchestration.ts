@@ -14,7 +14,10 @@
 import { useState, useCallback, useRef } from "react";
 
 const BASE_URL = process.env.NEXT_PUBLIC_MONOCLE_API_URL ?? "/api/proxy";
-const API_KEY  = process.env.NEXT_PUBLIC_MONOCLE_API_KEY  ?? "";
+// No API key here. Requests go through /api/proxy, which attaches the
+// server-side key on non-money paths — and overwrites whatever the browser
+// sent, so a NEXT_PUBLIC_ key was both redundant and a way to publish a
+// credential to every visitor. See scripts/check-public-env.js.
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -264,7 +267,6 @@ export function useOrchestration() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": API_KEY,
         },
         body: JSON.stringify({ message, stream: true }),
       });
