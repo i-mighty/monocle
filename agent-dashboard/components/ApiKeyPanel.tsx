@@ -6,6 +6,7 @@ import {
   ApiKeyMetadata,
   AuthError,
 } from "../lib/auth-api";
+import { API_BASE_URL } from "../lib/api";
 
 /**
  * The developer's API key, shown once and regenerated thereafter.
@@ -182,6 +183,9 @@ export default function ApiKeyPanel() {
                 value={meta.lastUsedAt ? new Date(meta.lastUsedAt).toLocaleString() : "Never"}
               />
               <Row label="Scopes" value={meta.scopes.length ? meta.scopes.join(", ") : "Default"} />
+              {/* Visible without regenerating: the key cannot be shown again,
+                  but where to send it is not a secret. */}
+              <Row label="Base URL" value={API_BASE_URL} />
             </dl>
           ) : (
             <p className="text-zinc-500 text-sm mb-5">
@@ -210,6 +214,7 @@ export default function ApiKeyPanel() {
  */
 export function RevealedKey({ keyValue, onDone }: { keyValue: string; onDone: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [copiedCurl, setCopiedCurl] = useState(false);
 
   async function copy() {
     try {
@@ -218,6 +223,21 @@ export function RevealedKey({ keyValue, onDone }: { keyValue: string; onDone: ()
       setTimeout(() => setCopied(false), 2000);
     } catch {
       /* clipboard blocked — the value is selectable on screen regardless */
+    }
+  }
+
+  /**
+   * A runnable first call, key and URL already filled in. This is the one moment
+   * the plaintext exists, so it is the only moment such a snippet can be built.
+   */
+  async function copyCurl() {
+    const snippet = `curl ${API_BASE_URL}/agents \\\n  -H "x-api-key: ${keyValue}"`;
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopiedCurl(true);
+      setTimeout(() => setCopiedCurl(false), 2000);
+    } catch {
+      /* clipboard blocked */
     }
   }
 
@@ -243,6 +263,25 @@ export function RevealedKey({ keyValue, onDone }: { keyValue: string; onDone: ()
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
+
+      {/* A key on its own is not enough to make a call, and nothing else in the
+          product says where to send it. */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] uppercase tracking-widest text-zinc-600">Base URL</span>
+          <button onClick={copyCurl} className="text-xs text-zinc-500 hover:text-white transition-colors">
+            {copiedCurl ? "Copied" : "Copy curl example"}
+          </button>
+        </div>
+        <code className="block px-3 py-2 bg-zinc-950 border border-zinc-800/60 rounded-lg text-zinc-300 text-xs font-mono break-all select-all">
+          {API_BASE_URL}
+        </code>
+        <p className="text-zinc-600 text-xs mt-2">
+          Send it as the <code className="text-zinc-500">x-api-key</code> header. The SDK uses this
+          URL by default.
+        </p>
+      </div>
+
       <button
         onClick={onDone}
         className="w-full py-2.5 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors"

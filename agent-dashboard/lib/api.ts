@@ -157,6 +157,19 @@ export interface DeployedAgent {
 export const getDeployedAgents = (limit: number = 50) =>
   authFetch(`/v1/agents?limit=${limit}`);
 
+/**
+ * The API base URL shown next to a key, so a developer knows where to send it.
+ *
+ * Display only — nothing in the dashboard fetches from here. That distinction
+ * matters: NEXT_PUBLIC_BACKEND_URL changes where the browser actually calls, and
+ * setting it strips the session cookie and the server-side key from every
+ * request. This is a string we print.
+ *
+ * Kept in step with the SDK's own default (agent-sdk/src/client.ts).
+ */
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://api.monocle.3lvn4g.xyz/v1";
+
 export interface MyAgent {
   agentId: string;
   name: string | null;

@@ -12,10 +12,18 @@ export interface AdminFetchOptions {
 }
 
 async function adminFetch(path: string, options: AdminFetchOptions = {}) {
-  // Use sessionStorage (not localStorage) to avoid XSS exposure
-  const adminKey = options.adminKey || 
-    (typeof window !== "undefined" ? sessionStorage.getItem("adminKey") : null) ||
-    process.env.NEXT_PUBLIC_ADMIN_API_KEY;
+  // Passed in, or held for this tab only. Deliberately NOT read from
+  // NEXT_PUBLIC_ADMIN_API_KEY, which used to be the last fallback here:
+  // NEXT_PUBLIC_ values are inlined into the client bundle at build time, so
+  // setting it to make the admin page work would have shipped the operator's
+  // admin key to every visitor's browser. It was never set, so nothing leaked —
+  // but the fallback made that a one-line mistake away, and ADMIN_API_KEY is
+  // meant to stay internal to the server.
+  //
+  // sessionStorage rather than localStorage: it dies with the tab.
+  const adminKey =
+    options.adminKey ||
+    (typeof window !== "undefined" ? sessionStorage.getItem("adminKey") : null);
 
   if (!adminKey) {
     throw new Error("Admin API key required");

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getMyAgents, issueAgentKey, sendAgentKeyCode, ApiError } from "../lib/api";
+import { getMyAgents, issueAgentKey, sendAgentKeyCode, ApiError, API_BASE_URL } from "../lib/api";
 
 /**
  * Issue or rotate this agent's `mk_` key.
@@ -118,6 +118,22 @@ export default function AgentKeyPanel({ agentId }: { agentId: string }) {
             >
               {copied ? "Copied" : "Copy"}
             </button>
+          </div>
+
+          {/* Where to send it, and a call that actually uses it. Without this the
+              key is a string with no destination. */}
+          <div className="mb-4">
+            <div className="text-[10px] uppercase tracking-widest text-zinc-600 mb-1.5">Base URL</div>
+            <code className="block px-3 py-2 bg-zinc-950 border border-zinc-800/60 rounded-lg text-zinc-300 text-xs font-mono break-all select-all mb-2">
+              {API_BASE_URL}
+            </code>
+            <div className="text-[10px] uppercase tracking-widest text-zinc-600 mb-1.5">Example call</div>
+            <code className="block px-3 py-2 bg-zinc-950 border border-zinc-800/60 rounded-lg text-zinc-400 text-[11px] font-mono break-all select-all whitespace-pre-wrap">
+              {`curl -X POST ${API_BASE_URL}/meter/execute \\
+  -H "content-type: application/json" \\
+  -H "x-api-key: ${issued}" \\
+  -d '{"callerId":"${agentId}","calleeId":"<callee>","toolName":"default-tool","tokensUsed":1000}'`}
+            </code>
           </div>
           <button
             onClick={() => {
