@@ -43,6 +43,13 @@
       "when": 1784130489907,
       "tag": "0005_x402_quote_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784130489908,
+      "tag": "0006_wallet_audit_log",
+      "breakpoints": true
     }
   ]
 }
