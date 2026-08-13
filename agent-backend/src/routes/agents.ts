@@ -6,7 +6,7 @@ import { hasValidAdminKey, adminKeyAuth } from "../middleware/adminAuth";
 import { gateSensitiveActionByEmail, requireVerifiedEmail } from "../middleware/requireVerifiedEmail";
 import { query, pool } from "../db/client";
 import { consumeStepUpCode, createEmailVerification } from "../services/authService";
-import { sendVerificationEmail } from "../services/emailService";
+import { sendVerificationEmail, sendPayoutWalletChangedEmail } from "../services/emailService";
 import { calculateCost, getAgentMetrics, PRICING_CONSTANTS } from "../services/pricingService";
 import { AppError, asyncHandler, sendSuccess, ErrorCodes } from "../errors";
 import * as agentRegistry from "../services/agentRegistryService";
@@ -1177,17 +1177,77 @@ router.put(
       }
     }
 
-    await query(`update agents set public_key = $1, updated_at = now() where id = $2`, [
-      publicKey,
-      agentId,
-    ]);
+    // The change and its audit record commit together. A console line is not an
+    // audit trail — it rotates away, and this is the write an attacker would
+    // most want unrecorded. In one transaction, a wallet cannot be re-pointed
+    // without a row saying who did it.
+    if (!pool) throw new Error("DATABASE_URL is required to change a payout wallet");
+    const changedAt = new Date();
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(`update agents set public_key = $1, updated_at = now() where id = $2`, [
+        publicKey,
+        agentId,
+      ]);
+      await client.query(
+        `insert into wallet_audit_log (agent_id, action, details, created_at)
+         values ($1, 'payout_wallet_changed', $2, $3)`,
+        [
+          agentId,
+          JSON.stringify({
+            previousWallet: agent.public_key ?? null,
+            newWallet: publicKey,
+            changedByUserId: user.id,
+            changedByEmail: user.email,
+            // Records whether an emailed code was required, so a first-set and a
+            // redirect of live earnings are distinguishable after the fact.
+            stepUpRequired: isChange,
+            pendingLamportsAtChange: Number(agent.pending_lamports ?? 0),
+          }),
+          changedAt,
+        ]
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
 
-    // Loud, because this is the write an attacker would want and the one an
-    // owner would want a record of.
     console.warn(
       `[Payout] ${user.email} set payout wallet for ${agentId}: ` +
         `${agent.public_key ?? "(none)"} -> ${publicKey}`
     );
+
+    // Tell the owner, so a change they did not make is visible rather than
+    // silent. Sent to the address on the AGENT as well as the acting user's,
+    // because those differ if a session is compromised after an email change —
+    // and the address on record is the one that needs to hear about it.
+    //
+    // Best-effort: the change is already committed, and failing the request now
+    // would report an error for something that succeeded. Delivery failures are
+    // logged and reported in the response instead.
+    const recipients = Array.from(
+      new Set([agent.owner_email, user.email].filter((e): e is string => !!e).map((e) => e.toLowerCase()))
+    );
+    let notified = true;
+    for (const to of recipients) {
+      try {
+        await sendPayoutWalletChangedEmail({
+          to,
+          agentId,
+          previousWallet: agent.public_key ?? null,
+          newWallet: publicKey,
+          changedBy: user.email ?? user.id,
+          when: changedAt,
+        });
+      } catch (err) {
+        notified = false;
+        console.error(`[Payout] failed to notify ${to}:`, (err as Error)?.message ?? err);
+      }
+    }
 
     sendSuccess(res, {
       agentId,
@@ -1197,6 +1257,9 @@ router.put(
       // Anything already earned settles to the NEW address. Both are the owner's,
       // but they should know rather than discover it.
       pendingLamports: Number(agent.pending_lamports ?? 0),
+      // Surfaced so the UI can say the confirmation email did not arrive, rather
+      // than letting an owner assume they would have been told.
+      ownerNotified: notified,
     });
   })
 );

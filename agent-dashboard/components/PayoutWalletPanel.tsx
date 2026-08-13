@@ -70,10 +70,16 @@ export default function PayoutWalletPanel({
       setStage("idle");
       setInput("");
       setCode("");
+      // A change is emailed to the owner as a security notice. If that send
+      // failed, say so — otherwise an owner assumes they'd have been told, and a
+      // change they didn't make passes unnoticed.
+      const base = res.previousWallet
+        ? "Payout wallet changed. Anything already earned settles to the new address."
+        : "Payout wallet set. This agent can now be paid.";
       setNotice(
-        res.previousWallet
-          ? "Payout wallet changed. Anything already earned settles to the new address."
-          : "Payout wallet set. This agent can now be paid."
+        res.ownerNotified === false
+          ? `${base} We couldn't email the confirmation — the change is recorded either way.`
+          : base
       );
       onSaved?.(res.publicKey);
     } catch (err) {

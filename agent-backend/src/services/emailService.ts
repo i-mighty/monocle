@@ -207,3 +207,67 @@ export function isValidEmail(email: unknown): email is string {
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
+
+/**
+ * Tell an agent's owner that its payout wallet changed.
+ *
+ * This is a security notice, not a receipt. Whoever controls the payout wallet
+ * collects the agent's income, so an unexpected one arriving is how an owner
+ * finds out about a hijacked session — which is the entire point of sending it.
+ * It therefore names both addresses and says what to do, rather than merely
+ * confirming that something happened.
+ */
+export async function sendPayoutWalletChangedEmail(input: {
+  to: string;
+  agentId: string;
+  previousWallet: string | null;
+  newWallet: string;
+  changedBy: string;
+  when: Date;
+}): Promise<void> {
+  const { to, agentId, previousWallet, newWallet, changedBy, when } = input;
+  const subject = `Payout wallet changed for ${agentId}`;
+
+  const text =
+    `The payout wallet for your agent "${agentId}" was changed.\n\n` +
+    `  Previous: ${previousWallet ?? "(none — this was the first wallet set)"}\n` +
+    `  New:      ${newWallet}\n` +
+    `  Changed by: ${changedBy}\n` +
+    `  When: ${when.toISOString()}\n\n` +
+    `Payments to this agent now go to the new address, including anything ` +
+    `already earned but not yet settled.\n\n` +
+    `If you did not do this, your account may be compromised. Change your ` +
+    `password and set the payout wallet back immediately.`;
+
+  const html = `
+  <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;color:#18181b">
+    <h1 style="font-size:19px;margin:0 0 8px">Payout wallet changed</h1>
+    <p style="color:#52525b;font-size:14px;margin:0 0 20px">
+      The payout wallet for your agent <strong>${agentId}</strong> was changed.
+    </p>
+    <table style="width:100%;font-size:13px;border-collapse:collapse;margin-bottom:20px">
+      <tr><td style="color:#71717a;padding:6px 0">Previous</td>
+          <td style="font-family:ui-monospace,Menlo,monospace;word-break:break-all;text-align:right">${
+            previousWallet ?? "none"
+          }</td></tr>
+      <tr><td style="color:#71717a;padding:6px 0">New</td>
+          <td style="font-family:ui-monospace,Menlo,monospace;word-break:break-all;text-align:right"><strong>${newWallet}</strong></td></tr>
+      <tr><td style="color:#71717a;padding:6px 0">Changed by</td>
+          <td style="text-align:right">${changedBy}</td></tr>
+      <tr><td style="color:#71717a;padding:6px 0">When</td>
+          <td style="text-align:right">${when.toISOString()}</td></tr>
+    </table>
+    <p style="color:#52525b;font-size:14px;margin:0 0 20px">
+      Payments now go to the new address, including anything already earned but not
+      yet settled.
+    </p>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:14px">
+      <p style="color:#991b1b;font-size:13px;margin:0">
+        <strong>Didn't do this?</strong> Your account may be compromised. Change your
+        password and set the payout wallet back immediately.
+      </p>
+    </div>
+  </div>`;
+
+  await sendEmail({ to, subject, html, text });
+}

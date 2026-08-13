@@ -144,6 +144,34 @@ async function main() {
       String(withCode.body?.data?.pendingLamports)
     );
 
+    console.log("\nAudit trail");
+    const audit = await query(
+      `select action, details, created_at from wallet_audit_log
+        where agent_id = $1 order by created_at asc`,
+      [AGENT]
+    );
+    check("both changes are recorded", audit.rows.length === 2, `${audit.rows.length} rows`);
+    const last = audit.rows[audit.rows.length - 1];
+    const detail = typeof last?.details === "string" ? JSON.parse(last.details) : last?.details;
+    check("action names the change", last?.action === "payout_wallet_changed", last?.action);
+    check("it records where the money moved from and to", detail?.previousWallet === WALLET_A && detail?.newWallet === WALLET_B);
+    check("and who did it", detail?.changedByEmail === owner.email, detail?.changedByEmail);
+    check(
+      "and whether a code was required — a first-set and a redirect are different events",
+      detail?.stepUpRequired === true
+    );
+    const firstDetail =
+      typeof audit.rows[0]?.details === "string" ? JSON.parse(audit.rows[0].details) : audit.rows[0]?.details;
+    check("the first-set is recorded as needing no code", firstDetail?.stepUpRequired === false);
+
+    check("the owner was notified", withCode.body?.data?.ownerNotified === true);
+
+    console.log("\nA refused change writes nothing");
+    const auditBefore = audit.rows.length;
+    await setWallet(owner.cookie, WALLET_C, "000000");
+    const auditAfter = await query(`select count(*)::int n from wallet_audit_log where agent_id = $1`, [AGENT]);
+    check("a rejected change leaves no audit row", auditAfter.rows[0].n === auditBefore, `${auditAfter.rows[0].n}`);
+
     console.log("\nCode hygiene");
     const replay = await setWallet(owner.cookie, WALLET_C, challenge.code);
     check("the same code cannot be reused", replay.status >= 400, `got ${replay.status}`);
@@ -172,6 +200,7 @@ async function main() {
     check("a wallet already used by another agent is refused", taken.status >= 400, `got ${taken.status}`);
     await query(`delete from agents where id = $1`, [other]);
   } finally {
+    await query(`delete from wallet_audit_log where agent_id like $1`, [`payout-%`]);
     await query(`delete from agents where id like $1`, [`payout-%${tag}`]);
     await query(`delete from agents where id = $1`, [AGENT]);
     await query(`delete from users where email like $1`, [`%-${tag}@example.test`]);
