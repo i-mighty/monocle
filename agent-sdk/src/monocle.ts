@@ -22,6 +22,7 @@
  * ```
  */
 
+import { MONOCLE_API_URL } from "./client";
 import { ChatModule, StreamChunk, ChatOptions, ChatResponse, StreamOptions } from "./modules/chat";
 import { AgentsModule } from "./modules/agents";
 import { ConversationsModule } from "./modules/conversations";
@@ -41,7 +42,7 @@ import {
 export interface MonocleClientOptions {
   /** Your Monocle API key */
   apiKey: string;
-  /** API base URL (default: http://localhost:3001/v1) */
+  /** API base URL (default: https://api.monocle.3lvn4g.xyz/v1) */
   baseUrl?: string;
   /** Maximum retry attempts for failed requests (default: 3) */
   maxRetries?: number;
@@ -73,7 +74,10 @@ export class MonocleClient {
 
   constructor(options: MonocleClientOptions) {
     this.apiKey = options.apiKey;
-    this.baseUrl = options.baseUrl || process.env.MONOCLE_API_URL || "http://localhost:3001/v1";
+    // Production by default; MONOCLE_API_URL points it at localhost for
+    // development. See MONOCLE_API_URL in client.ts for why the default is not
+    // localhost.
+    this.baseUrl = options.baseUrl || process.env.MONOCLE_API_URL || MONOCLE_API_URL;
     this.maxRetries = options.maxRetries ?? 3;
     this.timeoutMs = options.timeoutMs ?? 30000;
 

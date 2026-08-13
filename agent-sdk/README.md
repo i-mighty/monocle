@@ -297,7 +297,10 @@ const client = new MonocleClient({
 
 ```bash
 MONOCLE_API_KEY=your-api-key
-MONOCLE_API_URL=https://api.monocle.dev/v1
+
+# Optional. Defaults to https://api.monocle.3lvn4g.xyz/v1 — set this only to
+# point the SDK somewhere else, such as a local backend during development.
+MONOCLE_API_URL=http://localhost:3001/v1
 ```
 
 ## Advanced Features

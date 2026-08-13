@@ -2,7 +2,20 @@ import { AgentSdkOptions, AgentSdkError, ApiErrorResponse } from "./types";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const defaultBaseUrl = process.env.AGENT_BACKEND_URL || "http://localhost:3001/v1";
+/**
+ * Where the SDK talks to unless told otherwise.
+ *
+ * Production, not localhost. Someone who installs this, pastes the `Mon_` key
+ * they were shown at signup and makes a call should reach Monocle — the previous
+ * default sent them to their own machine, where they got a connection error with
+ * nothing to suggest a base URL existed at all.
+ *
+ * AGENT_BACKEND_URL still overrides, which is how you point at localhost while
+ * developing against the backend.
+ */
+export const MONOCLE_API_URL = "https://api.monocle.3lvn4g.xyz/v1";
+
+const defaultBaseUrl = process.env.AGENT_BACKEND_URL || MONOCLE_API_URL;
 
 /**
  * Check if a response body looks like our standardized error format
