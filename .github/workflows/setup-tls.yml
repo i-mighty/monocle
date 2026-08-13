@@ -1,0 +1,88 @@
+name: Issue TLS certificate for the backend
+
+# One-time (and renewal-safe) TLS setup for api.monocle.3lvn4g.xyz.
+#
+# The backend is served over plain HTTP today: port 80 answers, port 443 refuses
+# the connection, so nothing is listening for TLS. Every API key — the developer
+# `Mon_` keys and the agent `mk_` keys that authorise money movement — crosses
+# the network in clear text, as does the session cookie on any direct call.
+#
+# deploy/ssl.sh does this already but expects an SSH key on the operator's
+# laptop. This runs the same thing through the EC2_SSH_KEY secret the deploy
+# workflow already uses, so nobody needs the key locally.
+#
+# MANUAL ONLY. Certbot edits the live nginx config and reloads it, so this should
+# never fire on a push. Run it from the Actions tab.
+#
+# Safe to re-run: certbot detects an existing certificate and renews rather than
+# reissuing, and Let's Encrypt rate-limits duplicate certificates (5 per week for
+# an identical domain set) rather than failing destructively.
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: "Domain to certify"
+        required: true
+        default: "api.monocle.3lvn4g.xyz"
+      email:
+        description: "Contact address for expiry notices"
+        required: true
+        default: "admin@3lvn4g.xyz"
+
+jobs:
+  tls:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Issue certificate and enable HTTPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 54.242.122.233
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            DOMAIN="${{ github.event.inputs.domain }}"
+            EMAIL="${{ github.event.inputs.email }}"
+
+            echo "==> Preconditions"
+            # certbot must reach this host over port 80 for the HTTP-01
+            # challenge. If nginx is not already answering for this name the
+            # challenge fails, and it fails more legibly here than inside certbot.
+            curl -fsS -o /dev/null "http://$DOMAIN/health" \
+              || { echo "port 80 is not serving $DOMAIN — fix that before requesting a certificate"; exit 1; }
+
+            if ! command -v certbot >/dev/null 2>&1; then
+              echo "==> Installing certbot"
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq certbot python3-certbot-nginx
+            fi
+
+            echo "==> Requesting certificate for $DOMAIN"
+            # --nginx edits the existing server block in place: it adds the 443
+            # listener, the certificate paths and an http->https redirect. That is
+            # why the checked-in deploy/nginx.conf does not need to be installed
+            # first — its cert paths do not exist yet, so nginx would refuse to
+            # start with it.
+            sudo certbot --nginx \
+              -d "$DOMAIN" \
+              --non-interactive --agree-tos -m "$EMAIL" \
+              --redirect --keep-until-expiring
+
+            echo "==> Validating nginx config before reload"
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            echo "==> Renewal timer"
+            # Certbot ships a systemd timer; without it the certificate silently
+            # expires in 90 days and every client starts failing at once.
+            sudo systemctl enable --now certbot.timer || true
+            systemctl is-enabled certbot.timer || echo "WARNING: certbot.timer is not enabled — renewal will not be automatic"
+
+            echo "==> Verifying from the host"
+            curl -fsS -o /dev/null "https://$DOMAIN/health" && echo "HTTPS OK"
+            echo "==> http should now redirect:"
+            curl -s -o /dev/null -w "  http -> %{http_code} %{redirect_url}\n" "http://$DOMAIN/health"
