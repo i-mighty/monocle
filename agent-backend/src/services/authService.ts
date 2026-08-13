@@ -214,7 +214,9 @@ export type VerificationPurpose =
   /** Replacing the developer's own `Mon_` key. */
   | "regenerate_api_key"
   /** Replacing an agent's `mk_` key, which invalidates whatever is using it. */
-  | "rotate_agent_key";
+  | "rotate_agent_key"
+  /** Re-pointing an agent's payout wallet, which redirects where its money lands. */
+  | "change_payout_wallet";
 
 /**
  * Issue a fresh verification code for the user's current email. Invalidates

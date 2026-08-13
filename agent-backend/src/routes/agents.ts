@@ -996,6 +996,212 @@ router.post("/:agentId/withdraw", gateSensitiveActionByEmail, apiKeyAuthOptional
 }));
 
 /**
+ * Is this user the owner of this agent?
+ *
+ * Matched by user id or by the email the agent was registered under, the same
+ * pair /agents/mine uses. Returns the agent row so callers do not query twice.
+ */
+async function loadOwnedAgent(agentId: string, user: { id: string; email: string | null }) {
+  const result = await query(
+    `select id, name, public_key, pending_lamports, owner_user_id, owner_email
+       from agents where id = $1`,
+    [agentId]
+  );
+  if (result.rows.length === 0) return { found: false as const, owned: false as const, agent: null };
+
+  const a = result.rows[0];
+  const owned =
+    (a.owner_user_id && a.owner_user_id === user.id) ||
+    (a.owner_email && user.email && a.owner_email.toLowerCase() === user.email.toLowerCase());
+  return { found: true as const, owned: !!owned, agent: a };
+}
+
+/**
+ * POST /agents/:agentId/payout-wallet/send-code   (verified email + ownership)
+ *
+ * Emails a step-up code for CHANGING an existing payout wallet. Not needed to
+ * set one for the first time — see the PUT below for why.
+ */
+router.post(
+  "/:agentId/payout-wallet/send-code",
+  requireVerifiedEmail,
+  asyncHandler(async (req, res) => {
+    const user = req.user!;
+    const { found, owned } = await loadOwnedAgent(req.params.agentId, user);
+    if (!found) throw AppError.agentNotFound(req.params.agentId);
+    if (!owned) {
+      throw new AppError(
+        ErrorCodes.AUTH_INSUFFICIENT_PERMISSIONS,
+        { reason: "not_agent_owner" },
+        "You can only change the payout wallet of an agent you own."
+      );
+    }
+
+    // Same cooldown and hourly cap as the other step-up flows, enforced from
+    // email_verifications so it survives a restart and holds across processes.
+    const recent = await query(
+      `select max(created_at) as last_sent,
+              count(*) filter (where created_at > now() - interval '1 hour') as sent_last_hour
+         from email_verifications
+        where user_id = $1 and purpose = 'change_payout_wallet'`,
+      [user.id]
+    );
+    const lastSent: Date | null = recent.rows[0]?.last_sent ?? null;
+    if (lastSent) {
+      const elapsed = (Date.now() - new Date(lastSent).getTime()) / 1000;
+      if (elapsed < 60) {
+        const retryAfter = Math.ceil(60 - elapsed);
+        res.setHeader("Retry-After", retryAfter);
+        throw new AppError(
+          ErrorCodes.RATE_LIMIT_EXCEEDED,
+          { retryAfter, reason: "cooldown" },
+          `Wait ${retryAfter}s before requesting another code.`
+        );
+      }
+    }
+    if (Number(recent.rows[0]?.sent_last_hour ?? 0) >= 5) {
+      res.setHeader("Retry-After", 3600);
+      throw new AppError(
+        ErrorCodes.RATE_LIMIT_EXCEEDED,
+        { retryAfter: 3600, reason: "hourly_cap" },
+        "Too many code requests. Try again later."
+      );
+    }
+
+    const challenge = await createEmailVerification(user, "change_payout_wallet");
+    let sent = true;
+    try {
+      await sendVerificationEmail(challenge.email, challenge.code, challenge.ttlMinutes);
+    } catch (err) {
+      console.error("[Payout] step-up email failed to send:", err);
+      sent = false;
+    }
+    sendSuccess(res, { sent, email: user.email, expiresAt: challenge.expiresAt });
+  })
+);
+
+/**
+ * PUT /agents/:agentId/payout-wallet
+ *   { publicKey, code? }   (verified email + ownership)
+ *
+ * Set or change where an agent is paid.
+ *
+ * This is the single most dangerous write in the API. The payout wallet is where
+ * settlements land and where x402 callers transfer directly, so whoever controls
+ * it collects the agent's income. Re-pointing someone else's is exactly the theft
+ * PATCH /:agentId was hardened against, which is why that route still refuses to
+ * touch public_key and this one exists separately with its own rules:
+ *
+ *   - the caller must own the agent, and their email must be verified;
+ *   - CHANGING an existing wallet additionally requires a fresh emailed code,
+ *     because it redirects money that is already flowing. SETTING a first wallet
+ *     does not: there is no existing destination to divert, the agent cannot be
+ *     paid at all until it has one, and demanding a code to fix an agent that
+ *     earns nothing is friction with nothing behind it;
+ *   - the address is validated, not merely stored. Under x402 a payer transfers
+ *     to it directly, so a typo does not bounce — it sends money somewhere
+ *     unrecoverable.
+ */
+router.put(
+  "/:agentId/payout-wallet",
+  requireVerifiedEmail,
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+    const { publicKey, code } = req.body ?? {};
+    const user = req.user!;
+
+    const { found, owned, agent } = await loadOwnedAgent(agentId, user);
+    if (!found) throw AppError.agentNotFound(agentId);
+    if (!owned) {
+      // Same answer whether unowned or owned by somebody else, so this cannot be
+      // used to discover which agents are unclaimed.
+      throw new AppError(
+        ErrorCodes.AUTH_INSUFFICIENT_PERMISSIONS,
+        { reason: "not_agent_owner" },
+        "You can only change the payout wallet of an agent you own."
+      );
+    }
+
+    if (!publicKey || typeof publicKey !== "string") {
+      throw new AppError(
+        ErrorCodes.VALIDATION_REQUIRED_FIELD,
+        { field: "publicKey" },
+        "publicKey is required"
+      );
+    }
+    try {
+      new PublicKey(publicKey);
+    } catch {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "publicKey" },
+        "publicKey must be a valid Solana wallet address (base58, 32 bytes)"
+      );
+    }
+
+    if (publicKey === agent.public_key) {
+      return sendSuccess(res, { agentId, publicKey, changed: false });
+    }
+
+    // One wallet, one agent — mirrors the check at registration and the unique
+    // constraint, so this fails cleanly rather than as a 500.
+    const clash = await query(
+      `select id from agents where public_key = $1 and id <> $2`,
+      [publicKey, agentId]
+    );
+    if (clash.rows.length > 0) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "publicKey", existingAgent: clash.rows[0].id },
+        `That wallet is already the payout address for agent "${clash.rows[0].id}".`
+      );
+    }
+
+    const isChange = !!agent.public_key;
+    if (isChange) {
+      if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
+        throw new AppError(
+          ErrorCodes.AUTH_VERIFICATION_INVALID,
+          { reason: "step_up_required", currentWallet: agent.public_key },
+          "Changing where this agent is paid requires confirmation. Request a code and try again."
+        );
+      }
+      const consumed = await consumeStepUpCode(user.id, code, "change_payout_wallet");
+      if (!consumed.ok) {
+        throw new AppError(
+          consumed.reason === "expired"
+            ? ErrorCodes.AUTH_VERIFICATION_EXPIRED
+            : ErrorCodes.AUTH_VERIFICATION_INVALID,
+          { reason: consumed.reason }
+        );
+      }
+    }
+
+    await query(`update agents set public_key = $1, updated_at = now() where id = $2`, [
+      publicKey,
+      agentId,
+    ]);
+
+    // Loud, because this is the write an attacker would want and the one an
+    // owner would want a record of.
+    console.warn(
+      `[Payout] ${user.email} set payout wallet for ${agentId}: ` +
+        `${agent.public_key ?? "(none)"} -> ${publicKey}`
+    );
+
+    sendSuccess(res, {
+      agentId,
+      publicKey,
+      changed: true,
+      previousWallet: agent.public_key ?? null,
+      // Anything already earned settles to the NEW address. Both are the owner's,
+      // but they should know rather than discover it.
+      pendingLamports: Number(agent.pending_lamports ?? 0),
+    });
+  })
+);
+
+/**
  * GET /agents/mine
  *
  * The agents owned by the signed-in user.
