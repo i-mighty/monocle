@@ -30,6 +30,7 @@
 import { Request, Response, NextFunction } from "express";
 import { Connection, PublicKey } from "@solana/web3.js";
 import crypto from "crypto";
+import { query } from "../db/client";
 
 // x402 Configuration
 export interface X402Config {
@@ -66,19 +67,26 @@ export interface PaymentVerification {
   amount?: number;
 }
 
-// In-memory nonce store (use Redis in production)
-const usedNonces = new Map<string, { timestamp: number; amount: number }>();
-const NONCE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
-
-// Clean expired nonces periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [nonce, data] of usedNonces.entries()) {
-    if (now - data.timestamp > NONCE_EXPIRY_MS) {
-      usedNonces.delete(nonce);
-    }
-  }
-}, 60_000);
+/**
+ * Replay protection lives in Postgres, in x402_payments.
+ *
+ * It used to be a Map in this module, with a 5-minute expiry sweep. Two problems,
+ * both of which cost money rather than requests:
+ *
+ *   1. It died with the process. Restarting the backend — a deploy, a crash —
+ *      made every recently spent proof replayable, so one payment could buy
+ *      service repeatedly.
+ *   2. It keyed on the caller-chosen nonce alone. The unforgeable identifier of a
+ *      payment is its transaction signature; the same signature submitted under a
+ *      fresh nonce was a different key and passed.
+ *
+ * x402_payments already existed with `tx_signature text unique not null` and
+ * `nonce text unique not null` — the right constraints, simply never used. The
+ * insert below is the claim: whoever inserts first owns the payment, and the
+ * database rejects the second attempt. That is atomic, so two concurrent
+ * submissions of one proof cannot both succeed, which a check-then-set never
+ * guaranteed however short the window.
+ */
 
 /**
  * Generate a unique payment nonce
@@ -170,9 +178,22 @@ export async function verifyPaymentProof(
   proof: PaymentProof,
   expectedAmount: number
 ): Promise<PaymentVerification> {
-  // Check nonce hasn't been used (replay protection)
-  if (usedNonces.has(proof.nonce)) {
-    return { valid: false, error: "Nonce already used (replay attack prevented)" };
+  // Cheap early rejection for an obviously-spent proof. This is a courtesy, not
+  // the guard — the atomic claim below is what actually prevents a replay, and it
+  // has to be, because anything read here can be spent by another request before
+  // the on-chain check finishes.
+  try {
+    const seen = await query(
+      `select 1 from x402_payments where tx_signature = $1 or nonce = $2 limit 1`,
+      [proof.signature, proof.nonce]
+    );
+    if (seen.rows.length > 0) {
+      return { valid: false, error: "Payment already used (replay prevented)" };
+    }
+  } catch (err) {
+    // A failed lookup must not wave the payment through: the claim below still
+    // has to succeed, so a database outage rejects rather than double-spends.
+    console.error("[x402] replay pre-check failed:", (err as Error)?.message ?? err);
   }
 
   // Validate amount
@@ -223,8 +244,31 @@ export async function verifyPaymentProof(
       };
     }
 
-    // Mark nonce as used
-    usedNonces.set(proof.nonce, { timestamp: Date.now(), amount: proof.amount });
+    // Claim the payment. This INSERT is the replay guard: tx_signature and nonce
+    // are both unique, so a second submission of either loses the race and gets
+    // zero rows back. Deliberately after the on-chain check — claiming first
+    // would burn a legitimate payer's proof whenever an RPC lookup failed.
+    const claim = await query(
+      `insert into x402_payments
+         (tx_signature, nonce, payer_wallet, recipient_wallet, amount_lamports, network, verified_at)
+       values ($1, $2, $3, $4, $5, $6, now())
+       on conflict do nothing
+       returning id`,
+      [
+        proof.signature,
+        proof.nonce,
+        proof.payer,
+        config.recipientWallet,
+        received,
+        config.network,
+      ]
+    );
+
+    if (claim.rows.length === 0) {
+      // Someone else claimed this signature or nonce between our pre-check and
+      // here. That is precisely the race the in-memory store could not see.
+      return { valid: false, error: "Payment already used (replay prevented)" };
+    }
 
     return {
       valid: true,
