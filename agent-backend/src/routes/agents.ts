@@ -78,6 +78,20 @@ router.post("/register", gateSensitiveActionByEmail, apiKeyAuth, asyncHandler(as
     throw AppError.required("agentId");
   }
 
+  // Required. An agent without a payout address cannot be paid: x402 refuses to
+  // quote for it, and settlement has nowhere to send funds. Registering one was
+  // therefore only ever a way to create something unusable — and it used to be
+  // worse than that, because a null key was silently filled in with a wallet
+  // derived from a constant published in the source, which anybody could spend
+  // from (see agentIdentityService).
+  if (!publicKey) {
+    throw new AppError(
+      ErrorCodes.VALIDATION_REQUIRED_FIELD,
+      { field: "publicKey" },
+      "publicKey is required — an agent cannot be paid without a Solana wallet address you control."
+    );
+  }
+
   // Validate rate (must be positive integer)
   const rate = ratePer1kTokens ? Math.max(1, Math.floor(Number(ratePer1kTokens))) : 1000;
 
@@ -93,6 +107,25 @@ router.post("/register", gateSensitiveActionByEmail, apiKeyAuth, asyncHandler(as
       )
     ).slice(0, 5);
     if (cleaned.length > 0) categoriesJson = JSON.stringify(cleaned);
+  }
+
+  // A payout address is money-critical: callers transfer to it directly under
+  // x402, so a malformed one is not a validation nicety — it sends funds
+  // somewhere nobody can recover them from. Only uniqueness was checked before,
+  // so an Ethereum address or a typo would be stored and paid to.
+  //
+  // PublicKey() rather than a regex: it also confirms the decoded value is 32
+  // bytes and on the ed25519 curve, which base58 shape alone does not.
+  if (publicKey !== undefined && publicKey !== null && publicKey !== "") {
+    try {
+      new PublicKey(publicKey);
+    } catch {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "publicKey" },
+        "publicKey must be a valid Solana wallet address (base58, 32 bytes)"
+      );
+    }
   }
 
   // Pre-check: if a publicKey was supplied, verify it isn't already attached
@@ -273,6 +306,27 @@ router.post("/register/public",
         ErrorCodes.VALIDATION_REQUIRED_FIELD,
         { field: "name" },
         "name is required (3-100 characters)"
+      );
+    }
+
+    // Same requirement as the session-authenticated route: an agent with no
+    // payout address cannot be paid, and a malformed one sends funds somewhere
+    // unrecoverable. PublicKey() also confirms 32 decoded bytes, which base58
+    // shape alone does not.
+    if (!publicKey || typeof publicKey !== "string") {
+      throw new AppError(
+        ErrorCodes.VALIDATION_REQUIRED_FIELD,
+        { field: "publicKey" },
+        "publicKey is required — an agent cannot be paid without a Solana wallet address you control."
+      );
+    }
+    try {
+      new PublicKey(publicKey);
+    } catch {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "publicKey" },
+        "publicKey must be a valid Solana wallet address (base58, 32 bytes)"
       );
     }
 

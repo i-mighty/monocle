@@ -672,7 +672,7 @@ components:
     # ==================== AGENTS ====================
     AgentRegisterRequest:
       type: object
-      required: [agentId]
+      required: [agentId, publicKey]
       properties:
         agentId:
           type: string
@@ -684,7 +684,10 @@ components:
           example: My Agent
         publicKey:
           type: string
-          description: Solana public key for settlements
+          description: >-
+            Solana wallet address the agent is paid to. Required: callers
+            transfer here directly under x402, so an agent without one cannot be
+            paid and will not be quoted.
           example: 7nYabs9dUhvxYwdTnrWVBL9MYviKSfrEbdWCUbcnwkpF
         ratePer1kTokens:
           type: integer

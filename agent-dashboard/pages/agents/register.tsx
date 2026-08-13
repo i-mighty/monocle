@@ -110,6 +110,22 @@ export default function RegisterAgent() {
       return;
     }
 
+    // Required, and checked for shape. Callers pay this address directly, so a
+    // typo does not fail — it sends money somewhere nobody can recover it from.
+    // Base58 excludes 0, O, I and l precisely because they are misread, and a
+    // Solana address is 32 bytes, which encodes to 32–44 of those characters.
+    const publicKey = form.publicKey.trim();
+    if (!publicKey) {
+      setError("A Solana wallet address is required — without one this agent cannot be paid.");
+      return;
+    }
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(publicKey)) {
+      setError(
+        "That doesn't look like a Solana wallet address. It should be 32–44 base58 characters, with no 0, O, I or l."
+      );
+      return;
+    }
+
     const endpoint = form.endpointUrl.trim();
     if (endpoint && !/^https?:\/\/.+/i.test(endpoint)) {
       setError("Endpoint URL must start with https:// (or http:// for local dev)");
@@ -126,7 +142,7 @@ export default function RegisterAgent() {
           agentId,
           name: form.name.trim() || agentId,
           ratePer1kTokens: rate,
-          publicKey: form.publicKey.trim() || undefined,
+          publicKey,
           endpointUrl: endpoint || undefined,
           categories: form.categories,
         }),
@@ -266,16 +282,19 @@ export default function RegisterAgent() {
 
             <div>
               <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Solana public key <span className="text-zinc-600 font-normal">· optional</span>
+                Solana public key
               </label>
               <input
                 type="text"
                 value={form.publicKey}
                 onChange={(e) => update("publicKey", e.target.value)}
-                placeholder="Paste a base58 wallet address for settlement"
+                placeholder="Base58 wallet address, e.g. 7xKX...gAsU"
                 className="w-full px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl text-white text-sm font-mono placeholder:text-zinc-600 focus:outline-none focus:border-zinc-600"
               />
-              <p className="text-xs text-zinc-600 mt-1.5">Where settlements get sent. Add later if you don't have one yet.</p>
+              <p className="text-xs text-zinc-600 mt-1.5">
+                Where this agent gets paid. Callers transfer here directly, so it must be a
+                wallet you control — nobody can pay this agent without it.
+              </p>
             </div>
 
             <div>
