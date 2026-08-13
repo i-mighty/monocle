@@ -162,14 +162,31 @@ export async function adminSessionAuth(
     }
 
     // Verify signature
-    const secret = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_API_KEY || "default-secret";
+    const secret = getAdminSessionSecret();
+    if (!secret) {
+      // Fail closed, exactly as adminKeyAuth does when ADMIN_API_KEY is unset.
+      // A misconfigured server must deny admin access, not invent a key.
+      res.status(503).json({
+        success: false,
+        error: "Admin sessions are not configured",
+      });
+      return;
+    }
+
     const expectedSig = crypto
       .createHmac("sha256", secret)
       .update(`${adminId}:${timestamp}`)
       .digest("hex")
       .slice(0, 16);
 
-    if (signature !== expectedSig) {
+    // Constant-time: a byte-by-byte early exit leaks how much of a guessed
+    // signature was right, which is enough to forge one a byte at a time.
+    const expectedBuf = Buffer.from(expectedSig);
+    const actualBuf = Buffer.from(signature);
+    if (
+      expectedBuf.length !== actualBuf.length ||
+      !crypto.timingSafeEqual(expectedBuf, actualBuf)
+    ) {
       throw new Error("Invalid signature");
     }
 
@@ -187,10 +204,14 @@ export async function adminSessionAuth(
     next();
     
   } catch (error: any) {
+    // The reason stays in the logs. Returning error.message told the caller
+    // whether a token was malformed, expired, wrongly signed, or named an admin
+    // that does not exist — which is a map for guessing a valid one, and leaked
+    // database errors verbatim when a lookup failed.
+    console.warn("[adminAuth] session token rejected:", error?.message ?? error);
     res.status(403).json({
       success: false,
       error: "Invalid admin token",
-      details: error.message
     });
   }
 }
@@ -228,13 +249,70 @@ export async function adminAuth(
 // HELPERS
 // =============================================================================
 
+/** Warn once rather than on every signature check. */
+let adminSecretWarningIssued = false;
+
 /**
- * Generate admin session token
+ * The HMAC key admin session tokens are signed with, or null when unconfigured.
+ *
+ * There is no fallback, and that is the entire point. This previously read:
+ *
+ *   ADMIN_SESSION_SECRET || ADMIN_API_KEY || "default-secret"
+ *
+ * Neither variable is set on this deployment, so tokens were signed with the
+ * literal string "default-secret" — a value published in this file. Anyone could
+ * mint a token that passed signature verification:
+ *
+ *   admin:<id>:<ts>:HMAC-SHA256("default-secret", "<id>:<ts>").slice(0,16)
+ *
+ * Confirmed against the running server: such a token passed the signature check
+ * and failed only at the admin_users lookup, while a deliberately wrong
+ * signature was rejected at the signature check. The only thing standing between
+ * an attacker and admin access was knowing a valid admin UUID — a second factor,
+ * not a substitute for a secret.
+ *
+ * ADMIN_API_KEY is no longer accepted here either. Signing sessions with the API
+ * key means one leak compromises both, and they have different lifetimes and
+ * blast radii. Sessions need their own secret.
+ */
+function getAdminSessionSecret(): string | null {
+  const secret = process.env.ADMIN_SESSION_SECRET;
+  if (!secret) {
+    if (!adminSecretWarningIssued) {
+      console.warn(
+        "[adminAuth] ADMIN_SESSION_SECRET is not set — admin session tokens are disabled. " +
+          "Set it to a long random value to enable them. X-Admin-Key auth is unaffected."
+      );
+      adminSecretWarningIssued = true;
+    }
+    return null;
+  }
+  if (secret.length < 32 && !adminSecretWarningIssued) {
+    console.warn(
+      `[adminAuth] ADMIN_SESSION_SECRET is only ${secret.length} characters. ` +
+        "Use at least 32 random characters; a short HMAC key is brute-forceable offline."
+    );
+    adminSecretWarningIssued = true;
+  }
+  return secret;
+}
+
+/**
+ * Generate admin session token.
+ *
+ * Throws when no signing secret is configured rather than producing a token
+ * signed with something guessable — a token that cannot be verified is better
+ * than one anybody can mint.
  */
 export function generateAdminToken(adminId: string): string {
+  const secret = getAdminSessionSecret();
+  if (!secret) {
+    throw new Error(
+      "ADMIN_SESSION_SECRET is not configured — refusing to issue an admin session token"
+    );
+  }
+
   const timestamp = Date.now().toString();
-  const secret = process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_API_KEY || "default-secret";
-  
   const signature = crypto
     .createHmac("sha256", secret)
     .update(`${adminId}:${timestamp}`)
