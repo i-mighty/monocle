@@ -49,25 +49,29 @@ export async function getAgentIdentity(agentId: string): Promise<{
   publicKey: string;
   keypair: Keypair;
 }> {
+  // Returns the messaging identity only. It deliberately no longer touches
+  // agents.public_key.
+  //
+  // It used to write this derived key into agents.public_key — the PAYOUT wallet
+  // settlements and x402 payments are sent to — for any agent that had none, and
+  // set verified_status = 'verified' at the same time. Two problems with that:
+  //
+  //   1. Custody. The key is derived from IDENTITY_SEED + agentId, and
+  //      IDENTITY_SEED falls back to the literal "monocle-agent-identity-v1"
+  //      published in this file. Agent ids are public in the marketplace, so
+  //      anyone reading the repository could compute the private key of any
+  //      wallet assigned this way and spend from it. Not "the operator holds the
+  //      key" — anybody does.
+  //
+  //   2. It granted the verified badge as a side effect of having no wallet,
+  //      which is the opposite of what verification is supposed to mean, and the
+  //      marketplace surfaces that badge as a trust signal.
+  //
+  // An agent with no payout wallet now simply has none. That is already handled
+  // downstream: x402 refuses to quote for it (AGENT_NO_PAYOUT_WALLET) rather
+  // than quoting a payment nobody can claim.
   const kp = deriveKeypair(agentId);
-  const publicKey = kp.publicKey.toBase58();
-
-  // Check if public key is already stored
-  const result = await query(
-    `SELECT public_key FROM agents WHERE id = $1`,
-    [agentId]
-  );
-
-  if (result.rows.length > 0 && !result.rows[0].public_key) {
-    // Store the derived public key
-    await query(
-      `UPDATE agents SET public_key = $1, verified_status = 'verified', verified_at = NOW()
-       WHERE id = $2 AND public_key IS NULL`,
-      [publicKey, agentId]
-    );
-  }
-
-  return { publicKey, keypair: kp };
+  return { publicKey: kp.publicKey.toBase58(), keypair: kp };
 }
 
 // ─── Message signing ──────────────────────────────────────────────────────────
@@ -166,9 +170,19 @@ export async function verifyAgentMessage(
  * Call once at startup to populate public keys.
  */
 export async function initializeAgentIdentities(): Promise<void> {
+  // Warms the messaging-keypair cache. It no longer assigns payout wallets: it
+  // used to select every agent with a null public_key and fill one in from a
+  // key derived off a published constant, which handed spendable wallets to
+  // anyone who could read the repository. See getAgentIdentity.
+  //
+  // Derivation is deterministic and cached in-process, so nothing needs storing.
+  // Agents without a payout wallet stay without one until their owner supplies
+  // an address they control.
   const result = await query(`SELECT id FROM agents WHERE public_key IS NULL`);
-  for (const row of result.rows) {
-    await getAgentIdentity(row.id);
+  if (result.rows.length > 0) {
+    console.warn(
+      `[Identity] ${result.rows.length} agent(s) have no payout wallet and cannot be paid. ` +
+        `Their owners must register an address they control.`
+    );
   }
-  console.log(`[Identity] Initialized ${result.rows.length} agent identities`);
 }
