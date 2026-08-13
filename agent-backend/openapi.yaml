@@ -11,10 +11,10 @@ info:
     name: MIT
 
 servers:
+  - url: https://api.monocle.3lvn4g.xyz/v1
+    description: Production
   - url: http://localhost:3001/v1
-    description: Local development server
-  - url: https://api.agentpay.io/v1
-    description: Production server
+    description: Local development
 
 security:
   - ApiKeyAuth: []
