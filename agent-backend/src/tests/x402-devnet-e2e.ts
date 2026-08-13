@@ -12,7 +12,20 @@
  *
  * Devnet only, and it asserts that: a mistake here should cost nothing.
  *
+ * Last run green on 2026-08-13, 10/10, against this transaction:
+ *
+ *   5shMYZMBoYzLFReY2v21tX8L8WJMFkfWX4HYJYhQfF87opWsF8CVruRBinEeeDgx2wTzkWp3rL3wxurZUTGq3PKi
+ *   https://explorer.solana.com/tx/5shMYZMBoYzLFReY2v21tX8L8WJMFkfWX4HYJYhQfF87opWsF8CVruRBinEeeDgx2wTzkWp3rL3wxurZUTGq3PKi?cluster=devnet
+ *
+ * That run is the first evidence the recipient and amount checks work against a
+ * real transaction rather than a fabricated signature the on-chain lookup
+ * rejects early. Worth re-running after any change to quoting, verification or
+ * the payout wallet — those paths cannot be covered by a test that fakes the
+ * chain.
+ *
  * Requires: DATABASE_URL, a running backend on BASE_URL, and devnet reachable.
+ * Funding: the public faucet rate-limits hard; set DEVNET_PAYER_SECRET to a
+ * funded keypair instead.
  */
 
 import "dotenv/config";
