@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import AgentKeyPanel from "../../../components/AgentKeyPanel";
+import PayoutWalletPanel from "../../../components/PayoutWalletPanel";
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
@@ -422,6 +423,15 @@ export default function AgentProfile() {
               {/* Owner-only: the key this agent needs to bill, settle or
                   withdraw. Renders nothing for anyone else. */}
               <AgentKeyPanel agentId={agent.agentId} />
+
+              {/* Owner-only: where the money goes. Refreshes the page's copy of
+                  the agent on save so the settle panel above stops offering to
+                  pay an address that is no longer current. */}
+              <PayoutWalletPanel
+                agentId={agent.agentId}
+                currentWallet={agent.publicKey}
+                onSaved={(wallet) => setAgent((prev) => (prev ? { ...prev, publicKey: wallet } : prev))}
+              />
 
               {/* Endpoint */}
               <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 mb-6">

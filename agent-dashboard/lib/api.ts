@@ -215,6 +215,24 @@ export const sendAgentKeyCode = (agentId: string) =>
     method: "POST",
   });
 
+/**
+ * Set or change where this agent is paid.
+ *
+ * `code` is required only when a wallet already exists: changing one redirects
+ * money that is already flowing, whereas setting the first diverts nothing.
+ */
+export const setPayoutWallet = (agentId: string, publicKey: string, code?: string) =>
+  sensitiveFetch(`/v1/agents/${encodeURIComponent(agentId)}/payout-wallet`, {
+    method: "PUT",
+    body: JSON.stringify(code ? { publicKey, code } : { publicKey }),
+  });
+
+/** Email a step-up code for changing this agent's payout wallet. */
+export const sendPayoutWalletCode = (agentId: string) =>
+  sensitiveFetch(`/v1/agents/${encodeURIComponent(agentId)}/payout-wallet/send-code`, {
+    method: "POST",
+  });
+
 /** Get a single agent. */
 export const getAgentDetails = (agentId: string) =>
   authFetch(`/v1/agents/${agentId}`);
