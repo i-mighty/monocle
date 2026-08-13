@@ -104,18 +104,47 @@ router.post("/quote", async (req: Request, res: Response) => {
     });
   }
 
-  // Get agent's pricing rate
+  // The agent's rate AND its payout wallet. Both must come from the database:
+  // this quote decides where money lands, so a failure here cannot fall back to a
+  // default the way an unknown price could.
+  //
+  // The previous version swallowed database errors and continued with a default
+  // rate. That was survivable when every payment went to the platform wallet
+  // regardless. It is not survivable now — continuing without knowing the payee
+  // would quote a payment to nobody.
   let ratePer1kTokens = PRICING_CONSTANTS.DEFAULT_RATE_PER_1K_TOKENS;
+  let recipientWallet: string;
   try {
     const result = await query(
-      "SELECT default_rate_per_1k_tokens FROM agents WHERE id = $1",
+      "SELECT default_rate_per_1k_tokens, public_key FROM agents WHERE id = $1",
       [agentId]
     );
-    if (result.rows.length > 0) {
-      ratePer1kTokens = result.rows[0].default_rate_per_1k_tokens || ratePer1kTokens;
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        error: "Agent not found",
+        code: "AGENT_NOT_FOUND",
+        details: { agentId },
+      });
     }
-  } catch {
-    // Use default rate if DB unavailable
+    ratePer1kTokens = result.rows[0].default_rate_per_1k_tokens || ratePer1kTokens;
+    recipientWallet = result.rows[0].public_key;
+  } catch (err) {
+    console.error("[x402] quote lookup failed:", (err as Error)?.message ?? err);
+    return res.status(503).json({
+      error: "Cannot price this call right now",
+      code: "QUOTE_UNAVAILABLE",
+    });
+  }
+
+  // No wallet, no quote. Quoting a payment to an agent that cannot receive it
+  // would take the payer's money and strand it — previously invisible, because
+  // the platform wallet was always the recipient no matter who served the call.
+  if (!recipientWallet) {
+    return res.status(409).json({
+      error: "This agent cannot accept payments yet — it has no payout wallet configured.",
+      code: "AGENT_NO_PAYOUT_WALLET",
+      details: { agentId },
+    });
   }
 
   const cost = calculateCost(estimatedTokens, ratePer1kTokens);
@@ -141,9 +170,30 @@ router.post("/quote", async (req: Request, res: Response) => {
     }
   }
 
+  // Record what was quoted, keyed by the nonce the payer will present. This is
+  // what lets verification check the payment against the agent that served the
+  // call rather than against a wallet chosen at verify time by the payer.
+  try {
+    await query(
+      `insert into x402_quotes
+         (nonce, callee_agent_id, recipient_wallet, amount_lamports, tool_name, caller_agent_id, expires_at)
+       values ($1, $2, $3, $4, $5, $6, $7)`,
+      [nonce, agentId, recipientWallet, cost, toolName, callerAgentId ?? null, expiresAt]
+    );
+  } catch (err) {
+    // Without the record, verification has nothing to check the payment against
+    // and would have to trust the payer. Refuse to quote instead.
+    console.error("[x402] failed to record quote binding:", (err as Error)?.message ?? err);
+    return res.status(503).json({
+      error: "Cannot issue a payment quote right now",
+      code: "QUOTE_UNAVAILABLE",
+    });
+  }
+
   const requirement: PaymentRequirement = {
     amountLamports: cost,
-    recipientWallet: x402Config.recipientWallet,
+    // The agent being paid, not the platform.
+    recipientWallet,
     network: x402Config.network,
     expiresAt,
     nonce,
@@ -171,7 +221,9 @@ router.post("/quote", async (req: Request, res: Response) => {
     payment: {
       amount: cost,
       currency: "lamports",
-      recipient: x402Config.recipientWallet,
+      // The agent's payout wallet. This is the field payers actually transfer
+      // to — the headers and `requirement` above agreeing was not enough.
+      recipient: requirement.recipientWallet,
       network: x402Config.network,
       expires: expiresAt.toISOString(),
       nonce,
@@ -211,18 +263,38 @@ router.post(
       });
     }
 
-    // Get agent's pricing rate
+    // The callee's rate and payout wallet.
+    //
+    // This queried `rate_per_1k_tokens`, which is not a column on agents — the
+    // column is `default_rate_per_1k_tokens`. Postgres raised, the bare catch
+    // swallowed it, and every call here was billed at the default rate no matter
+    // what the agent charged. A silent fallback around a query that could never
+    // succeed hid the bug completely.
     let ratePer1kTokens = PRICING_CONSTANTS.DEFAULT_RATE_PER_1K_TOKENS;
+    let calleeWallet: string | null = null;
     try {
       const result = await query(
-        "SELECT rate_per_1k_tokens FROM agents WHERE id = $1",
+        "SELECT default_rate_per_1k_tokens, public_key FROM agents WHERE id = $1",
         [calleeId]
       );
-      if (result.rows.length > 0) {
-        ratePer1kTokens = result.rows[0].rate_per_1k_tokens;
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Callee agent not found", details: { calleeId } });
       }
-    } catch {
-      // Use default rate
+      ratePer1kTokens = result.rows[0].default_rate_per_1k_tokens || ratePer1kTokens;
+      calleeWallet = result.rows[0].public_key;
+    } catch (err) {
+      // Pricing and payee both come from here, so a failure cannot fall through
+      // to a default — that would quote a price nobody set, payable to nobody.
+      console.error("[x402] execute lookup failed:", (err as Error)?.message ?? err);
+      return res.status(503).json({ error: "Cannot price this call right now" });
+    }
+
+    if (!calleeWallet) {
+      return res.status(409).json({
+        error: "This agent cannot accept payments yet — it has no payout wallet configured.",
+        code: "AGENT_NO_PAYOUT_WALLET",
+        details: { calleeId },
+      });
     }
 
     const requiredCost = calculateCost(tokensUsed, ratePer1kTokens);
@@ -235,7 +307,8 @@ router.post(
       const nonce = generatePaymentNonce();
       const requirement: PaymentRequirement = {
         amountLamports: requiredCost,
-        recipientWallet: x402Config.recipientWallet,
+        // The callee, not the platform.
+        recipientWallet: calleeWallet,
         network: x402Config.network,
         expiresAt: new Date(Date.now() + x402Config.priceQuoteValidityMs),
         nonce,
@@ -306,10 +379,13 @@ router.post(
  * Verify a payment signature without executing.
  * Useful for checking if a payment is valid before use.
  * 
- * Body: { signature, payer, amount, nonce, expectedAmount }
+ * Body: { signature, payer, amount, nonce }
+ *
+ * expectedAmount is no longer accepted: the price is whatever the quote fixed,
+ * not what the payer says it should be.
  */
 router.post("/verify", async (req: Request, res: Response) => {
-  const { signature, payer, amount, nonce, expectedAmount } = req.body;
+  const { signature, payer, amount, nonce } = req.body;
 
   if (!signature || !payer || !amount || !nonce) {
     return res.status(400).json({
@@ -317,10 +393,39 @@ router.post("/verify", async (req: Request, res: Response) => {
     });
   }
 
+  // Resolve who this nonce was quoted to pay. The payer does not get to nominate
+  // the recipient here: if they could, they could pay a wallet they control and
+  // present it as payment for somebody else's service.
+  let quoted: { recipient_wallet: string; amount_lamports: string; expires_at: Date } | null = null;
+  try {
+    const q = await query(
+      `select recipient_wallet, amount_lamports, expires_at from x402_quotes where nonce = $1`,
+      [nonce]
+    );
+    quoted = q.rows[0] ?? null;
+  } catch (err) {
+    console.error("[x402] quote lookup failed during verify:", (err as Error)?.message ?? err);
+    return res.status(503).json({ valid: false, error: "Cannot verify payments right now" });
+  }
+
+  if (!quoted) {
+    return res.status(400).json({
+      valid: false,
+      error: "Unknown payment nonce — request a quote first",
+    });
+  }
+
+  if (new Date(quoted.expires_at).getTime() < Date.now()) {
+    return res.status(400).json({ valid: false, error: "Quote expired — request a new one" });
+  }
+
   const verification = await verifyPaymentProof(
-    x402Config,
+    // Verify against the wallet that was quoted, not the platform's.
+    { ...x402Config, recipientWallet: quoted.recipient_wallet },
     { signature, payer, amount, nonce },
-    expectedAmount || amount
+    // The quoted amount is authoritative. Honouring a caller-supplied
+    // expectedAmount would let the payer declare their own price.
+    Number(quoted.amount_lamports)
   );
 
   res.json({
