@@ -593,8 +593,9 @@ router.get("/stats", apiKeyAuth, async (req: Request, res: Response) => {
 // =============================================================================
 // OBSERVABILITY ENDPOINTS (Admin-only)
 // =============================================================================
-// These endpoints expose sensitive business data and require admin authentication.
-// Set ADMIN_API_KEY in environment and provide X-Admin-Key header.
+// These endpoints expose sensitive business data and are operator-only.
+// Access comes from users.is_admin on the signed-in account (see requireAdmin);
+// X-Admin-Key still works for scripts, when ADMIN_API_KEY is configured.
 
 // GET /chat/analytics/agents - Agent performance stats
 router.get("/analytics/agents", requireAdmin, async (req: Request, res: Response) => {
