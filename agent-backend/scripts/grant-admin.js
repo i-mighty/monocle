@@ -1,9 +1,14 @@
 /**
  * Grant or revoke Monocle operator access.
  *
- *   node scripts/grant-admin.js you@example.com          # grant
- *   node scripts/grant-admin.js you@example.com --revoke # revoke
- *   node scripts/grant-admin.js --list                   # who has it
+ *   node scripts/grant-admin.js you@example.com                 # grant (owner)
+ *   node scripts/grant-admin.js you@example.com --role=admin    # grant a level
+ *   node scripts/grant-admin.js you@example.com --revoke        # revoke
+ *   node scripts/grant-admin.js --list                          # who has what
+ *
+ * Levels: viewer (agents and calls), admin (+ money), owner (+ manage
+ * operators). Grants default to owner because this is the bootstrap path — the
+ * first operator has to be able to create the others.
  *
  * Why this exists as a script rather than only as an endpoint: POST
  * /v1/auth/admin/role is gated by ADMIN_API_KEY, which is not set on this
@@ -21,9 +26,17 @@ const { Client } = require("pg");
 
 async function main() {
   const args = process.argv.slice(2);
+  const ROLES = ["viewer", "admin", "owner"];
   const list = args.includes("--list");
   const revoke = args.includes("--revoke");
   const email = args.find((a) => !a.startsWith("--"));
+  const roleArg = args.find((a) => a.startsWith("--role="));
+  const role = revoke ? null : roleArg ? roleArg.slice("--role=".length) : "owner";
+
+  if (role !== null && !ROLES.includes(role)) {
+    console.error(`Unknown role "${role}". Use one of: ${ROLES.join(", ")}.`);
+    process.exit(1);
+  }
 
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -49,17 +62,46 @@ async function main() {
   try {
     if (list) {
       const r = await client.query(
-        "select email, id from users where is_admin = true order by email"
+        `select email, id, admin_role from users where admin_role is not null
+          order by case admin_role when 'owner' then 0 when 'admin' then 1 else 2 end, email`
       );
       console.log(`\nOperators on ${where}: ${r.rows.length}`);
-      r.rows.forEach((row) => console.log(`  ${row.email ?? "(no email)"}  ${row.id}`));
+      r.rows.forEach((row) =>
+        console.log(`  ${(row.admin_role ?? "?").padEnd(6)}  ${row.email ?? "(no email)"}  ${row.id}`)
+      );
       console.log("");
       return;
     }
 
+    // Refuse to strip the last owner: operator management would become
+    // unreachable from the dashboard, recoverable only by running this script
+    // again — which assumes whoever needs it has database access.
+    if (role !== "owner") {
+      const target = await client.query(
+        "select admin_role from users where lower(email) = lower($1)",
+        [email.trim()]
+      );
+      if (target.rows[0]?.admin_role === "owner") {
+        const owners = await client.query(
+          "select count(*)::int as c from users where admin_role = 'owner'"
+        );
+        if (owners.rows[0].c <= 1) {
+          console.error(
+            `
+${email} is the only owner. Promote somebody else first:
+` +
+              `  node scripts/grant-admin.js someone@else.com --role=owner
+`
+          );
+          process.exit(1);
+        }
+      }
+    }
+
     const r = await client.query(
-      "update users set is_admin = $2 where lower(email) = lower($1) returning id, email",
-      [email.trim(), !revoke]
+      `update users set admin_role = $2, is_admin = $3
+        where lower(email) = lower($1) returning id, email`,
+      [email.trim(), role, role !== null]
     );
 
     if (r.rows.length === 0) {
@@ -71,11 +113,18 @@ async function main() {
     }
 
     console.log(
-      `\n${revoke ? "Revoked" : "Granted"} operator access for ${r.rows[0].email} on ${where}.` +
+      `\n${revoke ? "Revoked operator access for" : `Set ${role} on`} ${r.rows[0].email} on ${where}.` +
         `\n  user id: ${r.rows[0].id}\n`
     );
     if (!revoke) {
-      console.log("They can now open /admin and /analytics in the dashboard.\n");
+      // Say what this level actually opens. "You can open /analytics" is wrong
+      // for a viewer, and a wrong instruction is worse than none.
+      const opens = {
+        viewer: "the Agents and Calls tabs of /operator",
+        admin: "all of /operator including Money, plus /analytics",
+        owner: "all of /operator including Operators, plus /analytics",
+      };
+      console.log(`They can now see ${opens[role]}.\n`);
     }
   } finally {
     await client.end();
@@ -84,9 +133,9 @@ async function main() {
 
 main().catch((err) => {
   // A missing column means the migration has not run on this database.
-  if (String(err.message).includes("is_admin")) {
+  if (String(err.message).includes("is_admin") || String(err.message).includes("admin_role")) {
     console.error(
-      "\nThis database has no is_admin column — run `npm run db:migrate:deploy` first.\n"
+      "\nThis database has no admin_role column — run `npm run db:migrate:deploy` first.\n"
     );
     process.exit(1);
   }

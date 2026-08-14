@@ -22,9 +22,11 @@ export interface AuthUser {
   /**
    * Monocle operator. Decides whether the operator views are offered, never
    * whether they are permitted — the backend re-checks on every request, so
-   * flipping this in a debugger changes what is drawn and nothing else.
+   * flipping either of these in a debugger changes what is drawn and nothing else.
    */
   isAdmin?: boolean;
+  /** Operator level: viewer < admin < owner. Null for everyone else. */
+  adminRole?: "viewer" | "admin" | "owner" | null;
   createdAt?: string;
   lastSeenAt?: string;
 }

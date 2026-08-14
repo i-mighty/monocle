@@ -64,10 +64,14 @@ const OPERATOR_ROUTES = [
 async function makeUser(label: string, isAdmin: boolean) {
   const email = `${label}-${tag}@example.test`;
   const { signSessionToken } = await import("../services/authService");
+  // admin_role is authoritative since 0008; is_admin is the transitional mirror.
+  // Setting only the boolean here would create a user the code no longer counts
+  // as an operator, and the test would fail for a reason that is not the gate.
   const r = (
     await query(
-      `insert into users (email, email_verified_at, is_admin) values ($1, now(), $2) returning *`,
-      [email, isAdmin]
+      `insert into users (email, email_verified_at, is_admin, admin_role)
+       values ($1, now(), $2, $3) returning *`,
+      [email, isAdmin, isAdmin ? "owner" : null]
     )
   ).rows[0];
   return {
@@ -186,11 +190,11 @@ async function main() {
     // The session token is a signed snapshot from before the change. If the role
     // were carried in the token, revocation would not take effect until it
     // expired — which for a 30-day session is not revocation at all.
-    await query(`update users set is_admin = false where id = $1`, [operator.id]);
+    await query(`update users set admin_role = null, is_admin = false where id = $1`, [operator.id]);
     const afterRevoke = await get("/v1/dashboard/overview", { cookie: operator.cookie });
     check("revoking access takes effect on the next request", afterRevoke === 403, `got ${afterRevoke}`);
 
-    await query(`update users set is_admin = true where id = $1`, [operator.id]);
+    await query(`update users set admin_role = 'owner', is_admin = true where id = $1`, [operator.id]);
     const afterRegrant = await get("/v1/dashboard/overview", { cookie: operator.cookie });
     check("and restoring it works the same way", afterRegrant === 200, `got ${afterRegrant}`);
 
@@ -222,10 +226,13 @@ async function main() {
 
     console.log("\nDefaults");
     const fresh = await query(
-      `insert into users (email) values ($1) returning is_admin`,
+      `insert into users (email) values ($1) returning is_admin, admin_role`,
       [`fresh-${tag}@example.test`]
     );
-    check("a new account is not an operator", fresh.rows[0].is_admin === false);
+    check(
+      "a new account is not an operator",
+      fresh.rows[0].is_admin === false && fresh.rows[0].admin_role === null
+    );
   } finally {
     await query(`delete from users where email like $1`, [`%-${tag}@example.test`]);
     console.log(`\n${colors.dim}cleaned up${colors.reset}`);

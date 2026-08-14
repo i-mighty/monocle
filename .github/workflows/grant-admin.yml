@@ -25,6 +25,15 @@ on:
           - list
           - grant
           - revoke
+      role:
+        description: "Level to grant — viewer (agents+calls), admin (+money), owner (+manage operators)"
+        required: false
+        default: owner
+        type: choice
+        options:
+          - viewer
+          - admin
+          - owner
 
 jobs:
   grant:
@@ -54,6 +63,6 @@ jobs:
 
             case "${{ inputs.action }}" in
               list)   node scripts/grant-admin.js --list ;;
-              grant)  node scripts/grant-admin.js "${{ inputs.email }}" ;;
+              grant)  node scripts/grant-admin.js "${{ inputs.email }}" --role="${{ inputs.role }}" ;;
               revoke) node scripts/grant-admin.js "${{ inputs.email }}" --revoke ;;
             esac

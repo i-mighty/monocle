@@ -28,6 +28,7 @@ import x402Feed from "./routes/x402Feed";
 import orchestrate from "./routes/orchestrate";
 import wallet from "./routes/wallet";
 import arena from "./routes/arena";
+import admin from "./routes/admin";
 import { getArena } from "./arena/engine";
 import { requestIdMiddleware, errorHandler, notFoundHandler } from "./errors";
 import { getDemoStatus } from "./middleware/demoOnly";
@@ -128,6 +129,8 @@ v1.use("/chat", chat);
 v1.use("/orchestrate", orchestrate);
 v1.use("/wallet", wallet);
 v1.use("/arena", arena);
+// Operator console — see routes/admin.ts. Every route inside is role-gated.
+v1.use("/admin", admin);
 
 // Mount v1 API
 app.use("/v1", v1);

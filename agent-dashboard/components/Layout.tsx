@@ -23,6 +23,7 @@ const NAV_LINKS = [
  * requireAdmin on the backend is what actually keeps them out.
  */
 const ADMIN_NAV_LINKS = [
+  { href: "/operator", label: "Operator" },
   { href: "/analytics", label: "Analytics" },
   { href: "/admin", label: "Admin" },
 ];

@@ -22,6 +22,25 @@ const COOKIE_NAME = "monocle_session";
 const VERIFICATION_TTL_MINUTES = Number(process.env.EMAIL_VERIFICATION_TTL_MINUTES) || 15;
 const MAX_VERIFICATION_ATTEMPTS = 5;
 
+/**
+ * Operator levels, least to most privileged. Order is meaningful: rank() below
+ * compares by index, so a new level is inserted at its place in the list rather
+ * than given a number somebody has to keep in sync.
+ */
+export const ADMIN_ROLES = ["viewer", "admin", "owner"] as const;
+export type AdminRole = (typeof ADMIN_ROLES)[number];
+
+/** Where a role sits in the hierarchy. 0 means no operator access at all. */
+export function adminRank(role: AdminRole | null | undefined): number {
+  const i = ADMIN_ROLES.indexOf(role as AdminRole);
+  return i < 0 ? 0 : i + 1;
+}
+
+/** Does `role` meet or exceed `required`? */
+export function hasAdminLevel(role: AdminRole | null | undefined, required: AdminRole): boolean {
+  return adminRank(role) >= adminRank(required);
+}
+
 export interface UserRecord {
   id: string;
   walletPubkey: string | null;
@@ -29,7 +48,13 @@ export interface UserRecord {
   displayName: string | null;
   email: string | null;
   emailVerifiedAt: string | null;
-  /** Monocle operator: may see every agent's data, not just their own. */
+  /**
+   * Operator level, or null for the overwhelming majority who are not operators.
+   * See AdminRole — viewer sees operations, admin also sees money, owner also
+   * grants access.
+   */
+  adminRole: AdminRole | null;
+  /** True for any operator level. Convenience over `adminRole !== null`. */
   isAdmin: boolean;
   createdAt: string;
   lastSeenAt: string;
@@ -38,7 +63,7 @@ export interface UserRecord {
 // Columns selected wherever we build a UserRecord — keep this list and the
 // mapper below in sync.
 const USER_COLUMNS =
-  "id, wallet_pubkey, sol_name, display_name, email, email_verified_at, is_admin, created_at, last_seen_at";
+  "id, wallet_pubkey, sol_name, display_name, email, email_verified_at, is_admin, admin_role, created_at, last_seen_at";
 
 function mapUserRow(r: any): UserRecord {
   return {
@@ -48,9 +73,12 @@ function mapUserRow(r: any): UserRecord {
     displayName: r.display_name ?? null,
     email: r.email ?? null,
     emailVerifiedAt: r.email_verified_at ? new Date(r.email_verified_at).toISOString() : null,
-    // Anything other than an explicit true is not an admin — a missing column on
-    // an un-migrated database must read as "no", never as "yes".
-    isAdmin: r.is_admin === true,
+    // An unrecognised value is not a role. A typo in the database, or a level
+    // this build predates, must read as "no access" rather than as some access.
+    adminRole: ADMIN_ROLES.includes(r.admin_role) ? (r.admin_role as AdminRole) : null,
+    // Kept from the boolean era: true for any operator level. Reads admin_role,
+    // not is_admin, so the two cannot drift apart in opposite directions.
+    isAdmin: ADMIN_ROLES.includes(r.admin_role),
     createdAt: new Date(r.created_at).toISOString(),
     lastSeenAt: new Date(r.last_seen_at).toISOString(),
   };

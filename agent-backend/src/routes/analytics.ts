@@ -31,7 +31,9 @@ const router = Router();
  * Confirmed unauthenticated in production before this change: GET
  * /v1/dashboard/platform-revenue answered 200 with no credentials at all.
  */
-router.use(requireAdmin);
+// "admin", not "viewer": everything in this file is money — revenue, spend,
+// earnings, leaderboards ranked by both.
+router.use(requireAdmin("admin"));
 
 // =============================================================================
 // PLATFORM OVERVIEW

@@ -10,6 +10,8 @@ import {
 } from "../services/siwsService";
 import { adminKeyAuth } from "../middleware/adminAuth";
 import {
+  ADMIN_ROLES,
+  AdminRole,
   upsertUserByWallet,
   createUserWithEmail,
   verifyEmailLogin,
@@ -59,11 +61,12 @@ function publicUser(u: UserRecord) {
     displayName: u.displayName,
     email: u.email,
     emailVerified: !!u.emailVerifiedAt,
-    // The dashboard uses this to decide whether to offer the operator views. It
-    // is a hint for rendering, not a gate — requireAdmin on the backend is the
-    // gate, and it re-reads the flag rather than trusting anything the client
-    // sends back.
+    // The dashboard uses these to decide which operator views to offer. They are
+    // hints for rendering, not gates — requireAdmin on the backend is the gate,
+    // and it re-reads the role rather than trusting anything the client sends
+    // back.
     isAdmin: u.isAdmin,
+    adminRole: u.adminRole,
     createdAt: u.createdAt,
     lastSeenAt: u.lastSeenAt,
   };
@@ -462,21 +465,38 @@ router.post(
   "/admin/role",
   adminKeyAuth,
   asyncHandler(async (req, res) => {
-    const { email, isAdmin } = req.body ?? {};
+    const { email, isAdmin, role } = req.body ?? {};
     if (!isValidEmail(email)) {
       throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, { field: "email" });
     }
-    if (typeof isAdmin !== "boolean") {
+
+    // Accepts either the graded role or the original boolean. The boolean is
+    // kept because this endpoint predates roles and something may still call it;
+    // true means owner, which is what is_admin meant when it was the only level.
+    let nextRole: AdminRole | null;
+    if (role !== undefined) {
+      if (role !== null && !ADMIN_ROLES.includes(role)) {
+        throw new AppError(
+          ErrorCodes.VALIDATION_INVALID_FORMAT,
+          { field: "role", allowed: [...ADMIN_ROLES, null] },
+          `role must be one of ${ADMIN_ROLES.join(", ")}, or null to revoke`
+        );
+      }
+      nextRole = role;
+    } else if (typeof isAdmin === "boolean") {
+      nextRole = isAdmin ? "owner" : null;
+    } else {
       throw new AppError(
         ErrorCodes.VALIDATION_INVALID_FORMAT,
-        { field: "isAdmin" },
-        "isAdmin must be true or false — say which, rather than toggling blind"
+        { field: "role" },
+        "Provide role (viewer|admin|owner|null) — say which, rather than toggling blind"
       );
     }
 
     const result = await query(
-      `update users set is_admin = $2 where lower(email) = lower($1) returning id, email`,
-      [normalizeEmail(email), isAdmin]
+      `update users set admin_role = $2, is_admin = $3
+        where lower(email) = lower($1) returning id, email`,
+      [normalizeEmail(email), nextRole, nextRole !== null]
     );
     if (result.rows.length === 0) {
       throw new AppError(
@@ -488,10 +508,10 @@ router.post(
 
     // Loud: this is the change that lets somebody see everyone else's data.
     console.warn(
-      `[admin] ${isAdmin ? "GRANTED" : "REVOKED"} operator access for ` +
-        `${result.rows[0].email} (user ${result.rows[0].id}) via X-Admin-Key`
+      `[admin] operator role for ${result.rows[0].email} (user ${result.rows[0].id}) ` +
+        `set to ${nextRole ?? "none"} via X-Admin-Key`
     );
-    sendSuccess(res, { email: result.rows[0].email, isAdmin });
+    sendSuccess(res, { email: result.rows[0].email, role: nextRole, isAdmin: nextRole !== null });
   })
 );
 

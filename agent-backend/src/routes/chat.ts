@@ -598,7 +598,7 @@ router.get("/stats", apiKeyAuth, async (req: Request, res: Response) => {
 // X-Admin-Key still works for scripts, when ADMIN_API_KEY is configured.
 
 // GET /chat/analytics/agents - Agent performance stats
-router.get("/analytics/agents", requireAdmin, async (req: Request, res: Response) => {
+router.get("/analytics/agents", requireAdmin("viewer"), async (req: Request, res: Response) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
     const agentId = req.query.agentId as string;
@@ -616,7 +616,7 @@ router.get("/analytics/agents", requireAdmin, async (req: Request, res: Response
 });
 
 // GET /chat/analytics/classification - Classification method breakdown
-router.get("/analytics/classification", requireAdmin, async (req: Request, res: Response) => {
+router.get("/analytics/classification", requireAdmin("viewer"), async (req: Request, res: Response) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
     const stats = await getClassificationStats(days);
@@ -632,7 +632,7 @@ router.get("/analytics/classification", requireAdmin, async (req: Request, res: 
 });
 
 // GET /chat/analytics/tasks - Task type distribution
-router.get("/analytics/tasks", requireAdmin, async (req: Request, res: Response) => {
+router.get("/analytics/tasks", requireAdmin("viewer"), async (req: Request, res: Response) => {
   try {
     const days = parseInt(req.query.days as string) || 7;
     const stats = await getTaskTypeStats(days);
@@ -648,7 +648,7 @@ router.get("/analytics/tasks", requireAdmin, async (req: Request, res: Response)
 });
 
 // GET /chat/analytics/failures - Recent failures for debugging
-router.get("/analytics/failures", requireAdmin, async (req: Request, res: Response) => {
+router.get("/analytics/failures", requireAdmin("viewer"), async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
     const failures = await getRecentFailures(limit);
@@ -663,7 +663,7 @@ router.get("/analytics/failures", requireAdmin, async (req: Request, res: Respon
 });
 
 // GET /chat/analytics/explain/:logId - Explain a routing decision
-router.get("/analytics/explain/:logId", requireAdmin, async (req: Request, res: Response) => {
+router.get("/analytics/explain/:logId", requireAdmin("viewer"), async (req: Request, res: Response) => {
   try {
     const { logId } = req.params;
     const explanation = await explainRoutingDecision(logId);

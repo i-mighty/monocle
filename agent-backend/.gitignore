@@ -1,0 +1,3 @@
+
+# Throwaway probe scripts (shape.tmp.ts, probe.tmp.ts) used to inspect a live DB.
+*.tmp.ts
