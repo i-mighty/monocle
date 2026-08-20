@@ -4,6 +4,7 @@ import { requireOwnAgent, requireOwnAgentOrOwner } from "../middleware/requireOw
 import { hashAgentKey } from "../services/securityService";
 import { hasValidAdminKey, adminKeyAuth } from "../middleware/adminAuth";
 import { gateSensitiveActionByEmail, requireVerifiedEmail } from "../middleware/requireVerifiedEmail";
+import { requireAdmin } from "../middleware/requireAdmin";
 import { query, pool } from "../db/client";
 import { consumeStepUpCode, createEmailVerification } from "../services/authService";
 import { sendVerificationEmail, sendPayoutWalletChangedEmail } from "../services/emailService";
@@ -1437,7 +1438,7 @@ router.get("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
  * own wallet. Until agents carry an owner to authorize against, changing it
  * requires an admin key. Every other field stays self-service.
  */
-router.patch("/:agentId", apiKeyAuth, asyncHandler(async (req, res) => {
+router.patch("/:agentId", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("params.agentId"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
   const { name, publicKey, ratePer1kTokens, categories, bio, endpointUrl } = req.body ?? {};
 
@@ -1949,7 +1950,7 @@ router.post(
  * Request:
  *   { ratePer1kTokens: number }
  */
-router.patch("/:agentId/pricing", apiKeyAuth, asyncHandler(async (req, res) => {
+router.patch("/:agentId/pricing", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("params.agentId"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
   const { ratePer1kTokens } = req.body;
 
@@ -2310,7 +2311,7 @@ router.get("/:agentId/full-profile", apiKeyAuth, asyncHandler(async (req, res) =
  *     supportUrl?: string
  *   }
  */
-router.patch("/:agentId/profile", apiKeyAuth, asyncHandler(async (req, res) => {
+router.patch("/:agentId/profile", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("params.agentId"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
   const { name, bio, websiteUrl, logoUrl, categories, version, ownerEmail, supportUrl } = req.body;
 
@@ -2369,7 +2370,7 @@ router.get("/:agentId/reputation", apiKeyAuth, asyncHandler(async (req, res) => 
  *
  * Recalculate and store the agent's reputation score.
  */
-router.post("/:agentId/reputation/recalculate", apiKeyAuth, asyncHandler(async (req, res) => {
+router.post("/:agentId/reputation/recalculate", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("params.agentId"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
 
   const calcResult = await agentRegistry.calculateReputationScore(agentId);
@@ -2407,7 +2408,7 @@ router.post("/:agentId/reputation/recalculate", apiKeyAuth, asyncHandler(async (
  * Request body:
  *   { status: "unverified" | "pending" | "verified" | "suspended", verifiedBy?: string }
  */
-router.patch("/:agentId/verification", apiKeyAuth, asyncHandler(async (req, res) => {
+router.patch("/:agentId/verification", requireAdmin("admin"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
   const { status, verifiedBy } = req.body;
 
@@ -2485,7 +2486,7 @@ router.get("/:agentId/audits", apiKeyAuth, asyncHandler(async (req, res) => {
  *     notes?: string
  *   }
  */
-router.post("/:agentId/audits", apiKeyAuth, asyncHandler(async (req, res) => {
+router.post("/:agentId/audits", requireAdmin("admin"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
   const { auditType, auditorId, auditorName, auditorType, summary, details, evidenceUrl, validUntil, score, notes } = req.body;
 
@@ -2521,7 +2522,7 @@ router.post("/:agentId/audits", apiKeyAuth, asyncHandler(async (req, res) => {
  * Request body:
  *   { result: "passed" | "failed" | "pending" | "expired", score?: number, notes?: string }
  */
-router.patch("/:agentId/audits/:auditId", apiKeyAuth, asyncHandler(async (req, res) => {
+router.patch("/:agentId/audits/:auditId", requireAdmin("admin"), asyncHandler(async (req, res) => {
   const { auditId } = req.params;
   const { result: auditResult, score, notes } = req.body;
 
@@ -2579,7 +2580,7 @@ router.get("/:agentId/capabilities", apiKeyAuth, asyncHandler(async (req, res) =
  *     metadata?: object
  *   }
  */
-router.post("/:agentId/capabilities", apiKeyAuth, asyncHandler(async (req, res) => {
+router.post("/:agentId/capabilities", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("params.agentId"), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
   const { capability, proficiencyLevel, metadata } = req.body;
 
@@ -2610,7 +2611,7 @@ router.post("/:agentId/capabilities", apiKeyAuth, asyncHandler(async (req, res) 
  *
  * Remove a capability from an agent.
  */
-router.delete("/:agentId/capabilities/:capability", apiKeyAuth, asyncHandler(async (req, res) => {
+router.delete("/:agentId/capabilities/:capability", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("params.agentId"), asyncHandler(async (req, res) => {
   const { agentId, capability } = req.params;
 
   const result = await agentRegistry.removeCapability(agentId, capability);
@@ -2700,7 +2701,7 @@ router.get("/:agentId/version-history", apiKeyAuth, asyncHandler(async (req, res
  *     deprecationMessage?: string
  *   }
  */
-router.patch("/:agentId/tools/:toolId/metadata", apiKeyAuth, asyncHandler(async (req, res) => {
+router.patch("/:agentId/tools/:toolId/metadata", gateSensitiveActionByEmail, apiKeyAuthOptional, requireOwnAgentOrOwner("params.agentId"), asyncHandler(async (req, res) => {
   const { toolId } = req.params;
 
   const result = await agentRegistry.updateToolMetadata(toolId, req.body);

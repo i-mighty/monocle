@@ -88,6 +88,53 @@ function isSensitive(path: string): boolean {
   return SENSITIVE_PATHS.some((re) => re.test(normalizePath(path)));
 }
 
+/**
+ * Writes that legitimately have no session, because they are how you get one, or
+ * because they are public protocol endpoints agents call without an account.
+ *
+ * Everything else that changes state requires a signed-in user — see
+ * requiresSession below.
+ */
+const PUBLIC_WRITE_PATHS: RegExp[] = [
+  // Sign-up, sign-in, SIWS challenge/verify, code entry. By definition there is
+  // no session yet.
+  /^(v1\/)?auth\//,
+  // x402 quoting and payment verification. Deliberately unauthenticated: the
+  // agent checking whether it was paid holds no Monocle credential.
+  /^(v1\/)?x402\//,
+];
+
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Does this request need a signed-in user before we inject the platform key?
+ *
+ * DEFAULT-DENY, and that inversion is the point.
+ *
+ * This used to be an allowlist: only paths named in SENSITIVE_PATHS required a
+ * session, and everything else got the platform key injected for free. Which
+ * meant PATCH /v1/agents/:id — not on the list, because nobody thought to add
+ * it — let an anonymous request edit ANY agent's name, rate, endpoint URL and
+ * verified badge. Confirmed against production: the call returned 404 for an
+ * unknown agent rather than 401, so authentication had been passed entirely by
+ * a caller with no cookie and no key.
+ *
+ * The bug was not the missing entry. It was that forgetting an entry granted
+ * authority rather than withholding it. Now any state-changing method needs a
+ * session unless it is explicitly, deliberately public — so the next route
+ * added is private until somebody decides otherwise, which is the safer
+ * direction to be wrong in.
+ *
+ * This is defence in depth, not the fix. The backend enforces ownership on
+ * those routes now; this stops a future route from being reachable before
+ * anybody notices it needs it.
+ */
+function requiresSession(path: string, method: string): boolean {
+  if (isSensitive(path)) return true;
+  if (!WRITE_METHODS.has(method.toUpperCase())) return false;
+  return !PUBLIC_WRITE_PATHS.some((re) => re.test(normalizePath(path)));
+}
+
 const HOP_BY_HOP = new Set([
   "connection",
   "keep-alive",
@@ -132,7 +179,7 @@ export default async function handler(
   // inject below would let any anonymous browser request settle/withdraw/register.
   // Presence is checked here; the backend validates the session for real and
   // enforces email verification (KYC).
-  if (isSensitive(path) && !req.cookies?.[SESSION_COOKIE]) {
+  if (requiresSession(path, req.method ?? "GET") && !req.cookies?.[SESSION_COOKIE]) {
     res.status(401).json({
       success: false,
       error: {

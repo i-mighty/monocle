@@ -73,7 +73,21 @@ export function requireOwnAgentOrOwner(source: Source) {
   ) {
     const claimed = readClaim(req, source);
 
-    if (req.user && typeof claimed === "string" && claimed.length > 0) {
+    // Who is claiming to own this? A browser session, or a developer key, which
+    // names a user even though it names no agent.
+    //
+    // The developer key matters for parity: the documented API path is `Mon_...`
+    // in an x-api-key header, and without this an owner could edit their agent
+    // from the dashboard but not from the SDK the README tells them to use. It
+    // widens nothing — the key still has to belong to the account that owns the
+    // named agent.
+    const claimant = req.user
+      ? { id: req.user.id, email: req.user.email ?? null }
+      : req.apiKeyRecord?.userId
+      ? { id: req.apiKeyRecord.userId, email: null }
+      : null;
+
+    if (claimant && typeof claimed === "string" && claimed.length > 0) {
       try {
         const owned = await query(
           `select 1
@@ -82,7 +96,7 @@ export function requireOwnAgentOrOwner(source: Source) {
               and (owner_user_id = $2
                    or ($3::text is not null and lower(owner_email) = lower($3)))
             limit 1`,
-          [claimed, req.user.id, req.user.email ?? null]
+          [claimed, claimant.id, claimant.email]
         );
         if (owned.rows.length > 0) return next();
       } catch (err) {
@@ -90,6 +104,21 @@ export function requireOwnAgentOrOwner(source: Source) {
         // the key path, which authorises on its own evidence.
         console.error("[requireOwnAgentOrOwner] ownership lookup failed:", err);
       }
+    }
+
+    // We know who this is, and they do not own the agent. Falling through to the
+    // key path would answer 401 "authentication required", which is wrong and
+    // actively unhelpful: they ARE authenticated, and a client seeing 401 will
+    // send them to sign in again, which cannot possibly help. Say 403 — unless
+    // they also presented an agent-scoped key, which is a separate claim and
+    // deserves to be judged on its own.
+    if (claimant && !req.apiKeyRecord?.agentId) {
+      const err = new AppError(
+        ErrorCodes.AUTH_INSUFFICIENT_PERMISSIONS,
+        { agentId: typeof claimed === "string" ? claimed : undefined },
+        "You can only do this to an agent you own."
+      );
+      return res.status(err.httpStatus).json(err.toResponse((req as any).requestId));
     }
 
     return requireOwnAgent(source)(req, res, next);
