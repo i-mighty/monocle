@@ -522,7 +522,6 @@ router.get("/marketplace",
   ipRateLimit({ maxRequests: 60, windowMs: 60000, burstAllowance: 10 }),
   asyncHandler(async (req, res) => {
   const taskType = req.query.taskType as string;
-  const verifiedOnly = req.query.verified === "true";
   const sortBy = (req.query.sort as string) || "reputation";
   const sortOrder = req.query.order === "asc" ? "ASC" : "DESC";
   const minReputation = req.query.minReputation ? Number(req.query.minReputation) : undefined;
@@ -546,9 +545,15 @@ router.get("/marketplace",
     params.push(taskType);
   }
 
-  if (verifiedOnly) {
-    conditions.push(`a.verified_status = 'verified'`);
-  }
+  // Verified only, always. Not a filter the caller can turn off.
+  //
+  // The marketplace is the trust surface: appearing here is Monocle saying this
+  // agent has been checked. An unverified agent is still reachable by id, still
+  // quotable, still payable — it simply is not advertised by us. Leaving this as
+  // an opt-in checkbox meant the default listing mixed checked and unchecked
+  // agents with a small badge as the only difference, which puts the burden of
+  // noticing on the buyer.
+  conditions.push(`a.verified_status = 'verified'`);
 
   if (minReputation !== undefined) {
     conditions.push(`a.reputation_score >= $${paramIndex++}`);
@@ -644,7 +649,7 @@ router.get("/marketplace",
     },
     filters: {
       taskType,
-      verifiedOnly,
+      verifiedOnly: true,
       sortBy,
       sortOrder,
       minReputation,
@@ -709,6 +714,154 @@ router.get("/marketplace/task-types", asyncHandler(async (req, res) => {
     taskTypes: counts.filter(c => c.count > 0).sort((a, b) => b.count - a.count),
   });
 }));
+
+/**
+ * GET /agents/:agentId/public
+ *
+ * The public face of an agent: what it does, how well it has done it, and who
+ * for. This is what a buyer reads before deciding to pay, so it carries evidence
+ * rather than claims — every number here is computed from recorded calls or from
+ * audits somebody else filed, not from anything the agent's owner typed.
+ *
+ * Unauthenticated on purpose. Discovery has to work before you have an account,
+ * and everything below is already public: an agent's price, its capabilities and
+ * its payout address are what you need in order to pay it.
+ *
+ * Deliberately NOT included: the owner's email, and any balance. Who runs an
+ * agent, and how much it is holding, are nobody else's business.
+ */
+router.get(
+  "/:agentId/public",
+  ipRateLimit({ maxRequests: 60, windowMs: 60_000, burstAllowance: 10 }),
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+
+    const base = await query(
+      `select a.id, a.name, a.bio, a.website_url, a.logo_url, a.categories,
+              a.public_key, a.default_rate_per_1k_tokens, a.reputation_score,
+              a.verified_status, a.verified_at, a.created_at, a.is_paused,
+              e.endpoint_url, e.is_healthy, e.is_active, e.last_check_at
+         from agents a
+         left join agent_endpoints e on e.agent_id = a.id
+        where a.id = $1`,
+      [agentId]
+    );
+    if (base.rows.length === 0) throw AppError.agentNotFound(agentId);
+    const a = base.rows[0];
+
+    const [caps, outcomes, clients, audits] = await Promise.all([
+      query(
+        `select capability, proficiency_level, is_verified
+           from agent_capabilities where agent_id = $1 order by capability`,
+        [agentId]
+      ),
+      // Outcome is reported by the CALLER after the fact, which is what makes it
+      // evidence rather than self-description. success is null until somebody
+      // reports, so rate is over reported calls only — and reportedCalls is
+      // returned alongside so a 100% built on two reports cannot masquerade as a
+      // track record.
+      query(
+        `select count(*)::int                                              as calls,
+                count(*) filter (where success is not null)::int           as reported,
+                count(*) filter (where success = true)::int                as succeeded,
+                avg(latency_ms) filter (where success = true)              as avg_latency,
+                max(created_at)                                            as last_call_at
+           from tool_usage where callee_agent_id = $1`,
+        [agentId]
+      ),
+      query(
+        `select caller_agent_id, count(*)::int as calls, max(created_at) as last_at
+           from tool_usage where callee_agent_id = $1
+          group by caller_agent_id order by calls desc limit 10`,
+        [agentId]
+      ),
+      query(
+        `select audit_type, result, auditor_name, auditor_type, summary,
+                evidence_url, score, valid_from, valid_until, created_at
+           from agent_audits where agent_id = $1
+          order by created_at desc limit 10`,
+        [agentId]
+      ),
+    ]);
+
+    let categories: string[] = [];
+    if (typeof a.categories === "string") {
+      try { categories = JSON.parse(a.categories); } catch { /* tolerate legacy */ }
+    } else if (Array.isArray(a.categories)) {
+      categories = a.categories;
+    }
+
+    const o = outcomes.rows[0];
+    const reported = Number(o.reported ?? 0);
+
+    sendSuccess(res, {
+      agentId: a.id,
+      name: a.name,
+      bio: a.bio,
+      websiteUrl: a.website_url,
+      logoUrl: a.logo_url,
+      categories,
+      ratePer1kTokens: Number(a.default_rate_per_1k_tokens),
+      // Callers transfer here, so it has to be readable without an account.
+      payoutWallet: a.public_key,
+      verified: a.verified_status === "verified",
+      verifiedAt: a.verified_at,
+      reputationScore: Number(a.reputation_score),
+      createdAt: a.created_at,
+      isPaused: a.is_paused === true,
+
+      // Listed is the honest summary: an agent can be "healthy" and still not
+      // advertised, because the marketplace also requires verification.
+      availability: {
+        hasEndpoint: !!a.endpoint_url,
+        isHealthy: a.is_healthy === true,
+        listedInMarketplace:
+          a.verified_status === "verified" && a.is_healthy === true && a.is_active === true,
+        lastCheckAt: a.last_check_at,
+      },
+
+      capabilities: caps.rows.map((c: any) => ({
+        capability: c.capability,
+        proficiency: c.proficiency_level,
+        verified: c.is_verified === "true" || c.is_verified === true,
+      })),
+
+      track: {
+        callsServed: Number(o.calls ?? 0),
+        reportedCalls: reported,
+        successRate: reported > 0 ? Number(o.succeeded ?? 0) / reported : null,
+        avgLatencyMs: o.avg_latency !== null ? Math.round(Number(o.avg_latency)) : null,
+        lastCallAt: o.last_call_at,
+      },
+
+      // Who has paid this agent. Both sides are public marketplace identities, so
+      // this is a reference list rather than a disclosure — but it does reveal
+      // the CALLER's activity as much as the callee's, which is worth a decision
+      // if agents ever want their purchasing kept quiet.
+      workedFor: clients.rows.map((c: any) => ({
+        agentId: c.caller_agent_id,
+        calls: Number(c.calls),
+        lastAt: c.last_at,
+      })),
+
+      audits: audits.rows.map((r: any) => ({
+        type: r.audit_type,
+        result: r.result,
+        auditor: r.auditor_name,
+        auditorType: r.auditor_type,
+        summary: r.summary,
+        evidenceUrl: r.evidence_url,
+        score: r.score === null ? null : Number(r.score),
+        filedAt: r.created_at,
+        validFrom: r.valid_from,
+        // An audit with an expiry in the past is stale, and saying so is the
+        // difference between evidence and decoration.
+        validUntil: r.valid_until,
+        expired: r.valid_until ? new Date(r.valid_until).getTime() < Date.now() : false,
+      })),
+    });
+  })
+);
 
 // =============================================================================
 // AGENT STATS & PROFILE

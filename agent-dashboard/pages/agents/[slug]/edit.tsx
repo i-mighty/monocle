@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import Link from "next/link";
+import { getMyAgents } from "../../../lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
@@ -34,6 +35,9 @@ export default function EditAgent() {
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // "unknown" until we have asked. Rendering the form before that would flash an
+  // editor at somebody who is about to be told they cannot use it.
+  const [ownership, setOwnership] = useState<"unknown" | "mine" | "not-mine">("unknown");
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [original, setOriginal] = useState<AgentDetail | null>(null);
@@ -97,6 +101,26 @@ export default function EditAgent() {
       .finally(() => setLoading(false));
   }, [slug]);
 
+  // Only the account that owns an agent may edit it. The server enforces that on
+  // every write; this decides whether to show an editor or an explanation, so a
+  // non-owner meets one clear sentence instead of a form that rejects every save.
+  useEffect(() => {
+    if (!slug) return;
+    let cancelled = false;
+    getMyAgents()
+      .then(({ agents }) => {
+        if (!cancelled) {
+          setOwnership(agents.some((a) => a.agentId === slug) ? "mine" : "not-mine");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setOwnership("not-mine");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
+
   const dirty = useMemo(() => {
     if (!original) return false;
     return (
@@ -157,6 +181,42 @@ export default function EditAgent() {
       setSubmitting(false);
     }
   };
+
+  // Not yours: say so plainly and point at the place your own agents live.
+  // Rendering the editor and letting every save 403 would be technically safe
+  // and practically hostile.
+  if (ownership === "not-mine") {
+    return (
+      <>
+        <Head>
+          <title>Edit agent — Monocle</title>
+          <meta name="robots" content="noindex, nofollow" />
+        </Head>
+        <div className="min-h-screen bg-[#09090b] text-white flex items-center justify-center px-6">
+          <div className="max-w-md text-center">
+            <h1 className="text-lg font-semibold mb-2">This isn&apos;t your agent</h1>
+            <p className="text-zinc-500 text-sm mb-6">
+              Only the account that created an agent can edit it. Yours are under your profile.
+            </p>
+            <div className="flex gap-2 justify-center">
+              <Link
+                href="/profile"
+                className="px-4 py-2 bg-white text-zinc-900 rounded-lg text-sm font-semibold hover:bg-zinc-200 transition-colors"
+              >
+                My agents
+              </Link>
+              <Link
+                href={`/agents/${encodeURIComponent(slug)}`}
+                className="px-4 py-2 border border-zinc-800 text-zinc-400 rounded-lg text-sm hover:text-white hover:border-zinc-700 transition-colors"
+              >
+                View agent
+              </Link>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

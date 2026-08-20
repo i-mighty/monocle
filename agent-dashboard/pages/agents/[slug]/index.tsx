@@ -3,9 +3,36 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 import AgentKeyPanel from "../../../components/AgentKeyPanel";
+import { getMyAgents } from "../../../lib/api";
 import PayoutWalletPanel from "../../../components/PayoutWalletPanel";
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
+
+/**
+ * Is the signed-in visitor the owner of this agent?
+ *
+ * Decided by asking the server which agents are mine, never by reading the URL.
+ * Used only to choose what to draw — the backend refuses non-owners regardless,
+ * so being wrong here shows or hides a button and changes nothing else.
+ */
+function useIsOwner(agentId: string | undefined) {
+  const [isOwner, setIsOwner] = useState(false);
+  useEffect(() => {
+    if (!agentId) return;
+    let cancelled = false;
+    getMyAgents()
+      .then(({ agents }) => {
+        if (!cancelled) setIsOwner(agents.some((a) => a.agentId === agentId));
+      })
+      .catch(() => {
+        /* signed out, or the call failed — either way, not an owner */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
+  return isOwner;
+}
 
 interface ReputationComponent {
   value: number | null;
@@ -107,6 +134,7 @@ export default function AgentProfile() {
   const [agent, setAgent] = useState<AgentDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const isOwner = useIsOwner(typeof slug === "string" ? slug : undefined);
 
   // Settle-now state
   const [settling, setSettling] = useState(false);
@@ -473,7 +501,7 @@ export default function AgentProfile() {
                   </a>
                 ) : (
                   <p className="text-sm text-zinc-600 italic">
-                    No endpoint configured. Set one in <Link href={`/agents/${encodeURIComponent(agent.agentId)}/edit`} className="text-zinc-400 underline hover:text-white">edit</Link> so callers can reach this agent and the marketplace can list it.
+                    No endpoint configured, so callers cannot reach this agent and the marketplace cannot list it.{isOwner ? <> Set one in <Link href={`/agents/${encodeURIComponent(agent.agentId)}/edit`} className="text-zinc-400 underline hover:text-white">edit</Link>.</> : null}
                   </p>
                 )}
 
@@ -674,14 +702,17 @@ export default function AgentProfile() {
                 </section>
               )}
 
-              {/* Actions */}
+              {/* Actions — editing is offered to the owner only, and lives under
+                  the account. This page is the public face of the agent. */}
               <div className="flex flex-wrap items-center gap-3">
-                <Link
-                  href={`/agents/${encodeURIComponent(agent.agentId)}/edit`}
-                  className="px-5 py-2.5 rounded-xl bg-white text-zinc-900 font-semibold text-sm hover:bg-zinc-200 transition-colors"
-                >
-                  Edit agent
-                </Link>
+                {isOwner && (
+                  <Link
+                    href={`/agents/${encodeURIComponent(agent.agentId)}/edit`}
+                    className="px-5 py-2.5 rounded-xl bg-white text-zinc-900 font-semibold text-sm hover:bg-zinc-200 transition-colors"
+                  >
+                    Edit agent
+                  </Link>
+                )}
                 <Link
                   href="/marketplace"
                   className="px-5 py-2.5 rounded-xl border border-zinc-800 text-zinc-400 font-semibold text-sm hover:text-white hover:border-zinc-700 transition-colors"

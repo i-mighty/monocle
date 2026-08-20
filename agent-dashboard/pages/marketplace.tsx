@@ -218,7 +218,6 @@ export default function Marketplace() {
   const [selectedTaskType, setSelectedTaskType] = useState<string>("");
   const [sortBy, setSortBy] = useState("reputation");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
-  const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [minReputation, setMinReputation] = useState<number | "">("");
 
   const fetchAgents = useCallback(async (offset = 0) => {
@@ -233,7 +232,6 @@ export default function Marketplace() {
     });
 
     if (selectedTaskType) params.set("taskType", selectedTaskType);
-    if (verifiedOnly) params.set("verified", "true");
     if (minReputation !== "") params.set("minReputation", String(minReputation));
 
     try {
@@ -251,7 +249,7 @@ export default function Marketplace() {
     } finally {
       setLoading(false);
     }
-  }, [sortBy, sortOrder, selectedTaskType, verifiedOnly, minReputation]);
+  }, [sortBy, sortOrder, selectedTaskType, minReputation]);
 
   const fetchTaskTypes = useCallback(async () => {
     try {
@@ -271,11 +269,10 @@ export default function Marketplace() {
 
   useEffect(() => {
     // Read initial filters from URL
-    const { taskType, sort, order, verified, minRep } = router.query;
+    const { taskType, sort, order, minRep } = router.query;
     if (taskType && typeof taskType === "string") setSelectedTaskType(taskType);
     if (sort && typeof sort === "string") setSortBy(sort);
     if (order === "asc" || order === "desc") setSortOrder(order);
-    if (verified === "true") setVerifiedOnly(true);
     if (minRep && typeof minRep === "string") setMinReputation(Number(minRep));
   }, [router.query]);
 
@@ -287,7 +284,6 @@ export default function Marketplace() {
     // Update URL with current filters
     const params: Record<string, string> = { sort: sortBy, order: sortOrder };
     if (selectedTaskType) params.taskType = selectedTaskType;
-    if (verifiedOnly) params.verified = "true";
     if (minReputation !== "") params.minRep = String(minReputation);
 
     router.push({ pathname: "/marketplace", query: params }, undefined, { shallow: true });
@@ -295,7 +291,7 @@ export default function Marketplace() {
 
   useEffect(() => {
     handleFilterChange();
-  }, [sortBy, sortOrder, selectedTaskType, verifiedOnly, minReputation]);
+  }, [sortBy, sortOrder, selectedTaskType, minReputation]);
 
   const handlePageChange = (newOffset: number) => {
     fetchAgents(newOffset);
@@ -392,17 +388,13 @@ export default function Marketplace() {
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="verified"
-              checked={verifiedOnly}
-              onChange={(e) => setVerifiedOnly(e.target.checked)}
-              className="w-4 h-4 rounded bg-zinc-900 border-zinc-700 text-white focus:ring-zinc-600"
-            />
-            <label htmlFor="verified" className="text-sm text-zinc-400">
-              Verified only
-            </label>
+          {/* No "verified only" checkbox: the marketplace lists verified agents
+              and nothing else. Making it optional put the burden of noticing on
+              the buyer, with a small badge as the only difference. */}
+          <div className="flex items-end">
+            <p className="text-xs text-zinc-600">
+              Every agent listed here has been verified by Monocle.
+            </p>
           </div>
         </div>
       </div>
@@ -447,7 +439,6 @@ export default function Marketplace() {
           <button
             onClick={() => {
               setSelectedTaskType("");
-              setVerifiedOnly(false);
               setMinReputation("");
               setSortBy("reputation");
               setSortOrder("desc");

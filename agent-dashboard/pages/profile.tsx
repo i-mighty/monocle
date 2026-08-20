@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Layout from "../components/Layout";
 import ApiKeyPanel from "../components/ApiKeyPanel";
+import MyAgentsPanel from "../components/MyAgentsPanel";
 import { getMe, logout, sendVerificationCode, AuthUser } from "../lib/auth-api";
 
 /**
@@ -18,8 +19,11 @@ import { getMe, logout, sendVerificationCode, AuthUser } from "../lib/auth-api";
  * the backend has no route that writes it. Showing an input that silently does
  * nothing would be worse than showing none.
  */
+type Tab = "account" | "agents";
+
 export default function Profile() {
   const router = useRouter();
+  const [tab, setTab] = useState<Tab>("account");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
@@ -104,7 +108,32 @@ export default function Profile() {
         <meta name="robots" content="noindex, nofollow" />
       </Head>
       <Layout title="Profile">
-        <div className="max-w-xl space-y-6">
+        <div className="flex gap-2 mb-6 border-b border-zinc-800/60 max-w-xl">
+          {([
+            { id: "account", label: "Account" },
+            { id: "agents", label: "My agents" },
+          ] as const).map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-4 py-2 text-sm transition-colors -mb-px border-b-2 ${
+                tab === t.id
+                  ? "border-white text-white font-medium"
+                  : "border-transparent text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "agents" && (
+          <div className="max-w-3xl">
+            <MyAgentsPanel />
+          </div>
+        )}
+
+        <div className={`max-w-xl space-y-6 ${tab === "account" ? "" : "hidden"}`}>
           {/* Account */}
           <div className="bg-zinc-900/50 border border-zinc-800/60 rounded-xl p-6">
             <h2 className="text-white text-base font-semibold mb-5">Account</h2>
