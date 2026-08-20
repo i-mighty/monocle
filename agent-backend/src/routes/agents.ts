@@ -749,7 +749,7 @@ router.get(
     if (base.rows.length === 0) throw AppError.agentNotFound(agentId);
     const a = base.rows[0];
 
-    const [caps, outcomes, clients, audits] = await Promise.all([
+    const [caps, outcomes, clients, audits, reviews] = await Promise.all([
       query(
         `select capability, proficiency_level, is_verified
            from agent_capabilities where agent_id = $1 order by capability`,
@@ -780,6 +780,11 @@ router.get(
                 evidence_url, score, valid_from, valid_until, created_at
            from agent_audits where agent_id = $1
           order by created_at desc limit 10`,
+        [agentId]
+      ),
+      query(
+        `select count(*)::int as n, avg(rating)::float as avg
+           from agent_reviews where agent_id = $1`,
         [agentId]
       ),
     ]);
@@ -844,6 +849,15 @@ router.get(
         lastAt: c.last_at,
       })),
 
+      // Written only by agents that paid — see POST /:agentId/reviews. The count
+      // is as much of the signal as the average: 5.0 from one reviewer is not a
+      // reputation, and showing them apart lets a reader tell the difference.
+      reviews: {
+        count: Number(reviews.rows[0].n),
+        average:
+          reviews.rows[0].avg === null ? null : Math.round(Number(reviews.rows[0].avg) * 100) / 100,
+      },
+
       audits: audits.rows.map((r: any) => ({
         type: r.audit_type,
         result: r.result,
@@ -859,6 +873,277 @@ router.get(
         validUntil: r.valid_until,
         expired: r.valid_until ? new Date(r.valid_until).getTime() < Date.now() : false,
       })),
+    });
+  })
+);
+
+// =============================================================================
+// REVIEWS — only from agents that paid
+// =============================================================================
+
+/**
+ * Did `reviewer` actually buy from `subject`, and what does the receipt say?
+ *
+ * Returns null when there is no evidence, which is the whole gate. Two ways to
+ * have paid, matching the two ways Monocle moves money:
+ *
+ *   metered  a tool_usage row: Monocle billed the call and credited the callee.
+ *   x402     an on-chain payment from the reviewer's wallet to the subject's.
+ *
+ * The x402 side is matched on CURRENT payout wallets, so it is approximate in
+ * one direction: if either agent re-pointed its wallet after the payment, that
+ * payment stops counting as proof. It is the conservative failure — an eligible
+ * reviewer is turned away rather than an ineligible one let in — and the metered
+ * path is unaffected because it names agents rather than addresses.
+ */
+async function paymentEvidence(
+  reviewer: string,
+  subject: string
+): Promise<{ basis: "metered" | "x402"; ref: string | null; paid: number; calls: number } | null> {
+  const metered = await query(
+    `select count(*)::int as calls,
+            coalesce(sum(cost_lamports), 0) as paid,
+            max(id::text) as ref
+       from tool_usage
+      where caller_agent_id = $1 and callee_agent_id = $2`,
+    [reviewer, subject]
+  );
+  if (Number(metered.rows[0].calls) > 0) {
+    return {
+      basis: "metered",
+      ref: metered.rows[0].ref,
+      paid: Number(metered.rows[0].paid),
+      calls: Number(metered.rows[0].calls),
+    };
+  }
+
+  const direct = await query(
+    `select count(*)::int as calls,
+            coalesce(sum(p.amount_lamports), 0) as paid,
+            max(p.tx_signature) as ref
+       from x402_payments p
+       join agents r on r.id = $1 and r.public_key = p.payer_wallet
+       join agents s on s.id = $2 and s.public_key = p.recipient_wallet`,
+    [reviewer, subject]
+  );
+  if (Number(direct.rows[0].calls) > 0) {
+    return {
+      basis: "x402",
+      ref: direct.rows[0].ref,
+      paid: Number(direct.rows[0].paid),
+      calls: Number(direct.rows[0].calls),
+    };
+  }
+
+  return null;
+}
+
+/**
+ * POST /agents/:agentId/reviews
+ *   { reviewerAgentId, rating: 1-5, comment? }
+ *
+ * Two separate questions, and both have to be answered yes:
+ *
+ *   1. Do you control the agent you are reviewing AS? Proven the same way every
+ *      other agent action is — a session that owns it, its own scoped key, or a
+ *      developer key belonging to the owning account.
+ *   2. Did that agent PAY the agent it is reviewing? Proven against recorded
+ *      payments, never against anything in the request body.
+ *
+ * Without (1) anyone could review as anyone. Without (2) reviews are free to
+ * write, which is the same as worthless. The dashboard's old review form had
+ * neither: it invented a reviewer id in the browser.
+ *
+ * Submitting again edits your existing review rather than adding a second.
+ */
+router.post(
+  "/:agentId/reviews",
+  gateSensitiveActionByEmail,
+  apiKeyAuthOptional,
+  requireOwnAgentOrOwner("body.reviewerAgentId"),
+  ipRateLimit({ maxRequests: 20, windowMs: 60_000, burstAllowance: 5 }),
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+    const { reviewerAgentId, rating, comment } = req.body ?? {};
+
+    const score = Number(rating);
+    if (!Number.isInteger(score) || score < 1 || score > 5) {
+      throw new AppError(
+        ErrorCodes.VALIDATION_INVALID_FORMAT,
+        { field: "rating" },
+        "rating must be a whole number from 1 to 5"
+      );
+    }
+    if (comment !== undefined && comment !== null && typeof comment !== "string") {
+      throw new AppError(ErrorCodes.VALIDATION_INVALID_FORMAT, { field: "comment" });
+    }
+    const text = typeof comment === "string" ? comment.trim().slice(0, 2000) : null;
+
+    if (reviewerAgentId === agentId) {
+      throw new AppError(
+        ErrorCodes.AUTH_INSUFFICIENT_PERMISSIONS,
+        { agentId },
+        "An agent cannot review itself."
+      );
+    }
+
+    const subject = await query(`select id from agents where id = $1`, [agentId]);
+    if (subject.rows.length === 0) throw AppError.agentNotFound(agentId);
+
+    const evidence = await paymentEvidence(reviewerAgentId, agentId);
+    if (!evidence) {
+      throw new AppError(
+        ErrorCodes.AUTH_INSUFFICIENT_PERMISSIONS,
+        { reviewerAgentId, agentId },
+        `${reviewerAgentId} has not paid ${agentId} for any work. Only agents that have bought from an agent can review it.`
+      );
+    }
+
+    const saved = await query(
+      `insert into agent_reviews
+         (agent_id, reviewer_agent_id, rating, comment, basis, evidence_ref, paid_lamports, calls_at_review)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (agent_id, reviewer_agent_id) do update set
+         rating = excluded.rating,
+         comment = excluded.comment,
+         -- Evidence is refreshed on edit: by now they may have bought more, and
+         -- the review should carry the context it was actually written from.
+         basis = excluded.basis,
+         evidence_ref = excluded.evidence_ref,
+         paid_lamports = excluded.paid_lamports,
+         calls_at_review = excluded.calls_at_review,
+         updated_at = now()
+       returning id, rating, comment, basis, paid_lamports, calls_at_review, created_at, updated_at`,
+      [agentId, reviewerAgentId, score, text, evidence.basis, evidence.ref, evidence.paid, evidence.calls]
+    );
+    const r = saved.rows[0];
+
+    sendSuccess(
+      res,
+      {
+        id: r.id,
+        agentId,
+        reviewerAgentId,
+        rating: Number(r.rating),
+        comment: r.comment,
+        basis: r.basis,
+        paidLamports: Number(r.paid_lamports ?? 0),
+        callsAtReview: Number(r.calls_at_review ?? 0),
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        edited: new Date(r.updated_at).getTime() > new Date(r.created_at).getTime(),
+      },
+      201
+    );
+  })
+);
+
+/**
+ * GET /agents/:agentId/reviews
+ *
+ * Public. Every review here was written by an agent that paid, so the evidence
+ * travels with it: what the reviewer had spent, and over how many calls. A
+ * five-star review from one 1000-lamport call and one from two hundred calls
+ * should not look identical.
+ */
+router.get(
+  "/:agentId/reviews",
+  ipRateLimit({ maxRequests: 60, windowMs: 60_000, burstAllowance: 10 }),
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+    const limit = Math.min(Number(req.query.limit) || 20, 100);
+    const offset = Number(req.query.offset) || 0;
+
+    const [rows, summary] = await Promise.all([
+      query(
+        `select r.id, r.reviewer_agent_id, r.rating, r.comment, r.basis,
+                r.paid_lamports, r.calls_at_review, r.created_at, r.updated_at,
+                a.name as reviewer_name
+           from agent_reviews r
+           left join agents a on a.id = r.reviewer_agent_id
+          where r.agent_id = $1
+          order by r.created_at desc
+          limit $2 offset $3`,
+        [agentId, limit, offset]
+      ),
+      query(
+        `select count(*)::int as n, avg(rating)::float as avg,
+                count(*) filter (where rating = 5)::int as r5,
+                count(*) filter (where rating = 4)::int as r4,
+                count(*) filter (where rating = 3)::int as r3,
+                count(*) filter (where rating = 2)::int as r2,
+                count(*) filter (where rating = 1)::int as r1
+           from agent_reviews where agent_id = $1`,
+        [agentId]
+      ),
+    ]);
+
+    const s = summary.rows[0];
+    sendSuccess(res, {
+      summary: {
+        count: Number(s.n),
+        average: s.avg === null ? null : Math.round(Number(s.avg) * 100) / 100,
+        distribution: { 5: Number(s.r5), 4: Number(s.r4), 3: Number(s.r3), 2: Number(s.r2), 1: Number(s.r1) },
+      },
+      reviews: rows.rows.map((r: any) => ({
+        id: r.id,
+        reviewerAgentId: r.reviewer_agent_id,
+        reviewerName: r.reviewer_name,
+        rating: Number(r.rating),
+        comment: r.comment,
+        basis: r.basis,
+        paidLamports: Number(r.paid_lamports ?? 0),
+        callsAtReview: Number(r.calls_at_review ?? 0),
+        createdAt: r.created_at,
+        edited: new Date(r.updated_at).getTime() > new Date(r.created_at).getTime(),
+      })),
+      pagination: { limit, offset, total: Number(s.n), hasMore: offset + rows.rows.length < Number(s.n) },
+    });
+  })
+);
+
+/**
+ * GET /agents/:agentId/reviews/eligibility?reviewerAgentId=...
+ *
+ * May this agent review that one, and why or why not? The dashboard asks before
+ * drawing a form, so a reviewer meets the rule as an explanation rather than as
+ * a rejected submission.
+ *
+ * Public: it discloses only whether a payment exists between two agents, which
+ * the reviews themselves already reveal.
+ */
+router.get(
+  "/:agentId/reviews/eligibility",
+  ipRateLimit({ maxRequests: 60, windowMs: 60_000, burstAllowance: 10 }),
+  asyncHandler(async (req, res) => {
+    const { agentId } = req.params;
+    const reviewerAgentId = req.query.reviewerAgentId;
+    if (typeof reviewerAgentId !== "string" || !reviewerAgentId) {
+      throw AppError.required("reviewerAgentId");
+    }
+
+    if (reviewerAgentId === agentId) {
+      return sendSuccess(res, { eligible: false, reason: "self", message: "An agent cannot review itself." });
+    }
+
+    const evidence = await paymentEvidence(reviewerAgentId, agentId);
+    const existing = await query(
+      `select rating, comment from agent_reviews where agent_id = $1 and reviewer_agent_id = $2`,
+      [agentId, reviewerAgentId]
+    );
+
+    sendSuccess(res, {
+      eligible: !!evidence,
+      reason: evidence ? "paid" : "no_payment",
+      message: evidence
+        ? `Paid over ${evidence.calls} call${evidence.calls === 1 ? "" : "s"}.`
+        : "Only agents that have paid this agent for work can review it.",
+      basis: evidence?.basis ?? null,
+      paidLamports: evidence?.paid ?? 0,
+      calls: evidence?.calls ?? 0,
+      existingReview: existing.rows[0]
+        ? { rating: Number(existing.rows[0].rating), comment: existing.rows[0].comment }
+        : null,
     });
   })
 );

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import AgentKeyPanel from "../../../components/AgentKeyPanel";
 import { getMyAgents } from "../../../lib/api";
 import PayoutWalletPanel from "../../../components/PayoutWalletPanel";
+import AgentReviews from "../../../components/AgentReviews";
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? "/api/proxy";
 
@@ -447,6 +448,11 @@ export default function AgentProfile() {
                   </div>
                 </dl>
               </section>
+
+              {/* Public: what customers who actually paid say about this agent.
+                  Above the owner panels because this page is read far more often
+                  by buyers than by the person who runs it. */}
+              <AgentReviews agentId={agent.agentId} />
 
               {/* Owner-only: the key this agent needs to bill, settle or
                   withdraw. Renders nothing for anyone else. */}
